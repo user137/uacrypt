@@ -47,6 +47,26 @@ func TestBox512SealHandlesEmptyMessage(t *testing.T) {
 	}
 }
 
+// T-265: a multi-record message opens to exactly its own bytes, no trailing padding.
+func TestBox512SealHandlesAMultiRecordMessage(t *testing.T) {
+	secretKey, _ := GenerateBox512SecretKey()
+	defer secretKey.Close()
+	publicKey := secretKey.PublicKey()
+	defer publicKey.Close()
+	message := bytes.Repeat([]byte("x"), 20_000)
+	sealed, err := publicKey.Seal(message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := secretKey.Open(sealed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, message) {
+		t.Fatal("round trip mismatch for a multi-record message")
+	}
+}
+
 func TestBox512TwoSealsUseDifferentEphemeralMaterial(t *testing.T) {
 	secretKey, _ := GenerateBox512SecretKey()
 	defer secretKey.Close()

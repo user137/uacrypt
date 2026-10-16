@@ -11,14 +11,15 @@ public static class DstuConstants
     public const int BoxSecretKeyBytes = 32;
     public const int BoxPublicKeyBytes = 32;
 
-    /// <summary>1-byte format version + 128-byte KEM ciphertext + 32-byte secretstream header + 16-byte tag.</summary>
-    public const int BoxSealOverhead = 177;
+    /// <summary>The shortest sealed message (format v3, T-265): <see cref="BoxSecretKey.Open"/>'s
+    /// plaintext is at most the sealed length minus this.</summary>
+    public const int BoxOpenMinOverhead = 183;
 
     public const int Box512SecretKeyBytes = 64;
     public const int Box512PublicKeyBytes = 64;
 
-    /// <summary>1-byte format version + 256-byte KEM ciphertext + 32-byte secretstream header + 16-byte tag.</summary>
-    public const int Box512SealOverhead = 305;
+    /// <summary>The <c>l(p)=512</c> sibling of <see cref="BoxOpenMinOverhead"/>.</summary>
+    public const int Box512OpenMinOverhead = 311;
 
     public const int GenericHash256Bytes = 32;
     public const int GenericHash512Bytes = 64;

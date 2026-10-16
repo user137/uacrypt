@@ -29,6 +29,17 @@ public sealed class Box512Tests
         Assert.Empty(secretKey.Open(sealedMessage));
     }
 
+    /// <summary>T-265: a multi-record message opens to exactly its own bytes, no trailing padding.</summary>
+    [Fact]
+    public void SealHandlesAMultiRecordMessage()
+    {
+        using var secretKey = Box512SecretKey.Generate();
+        using var publicKey = secretKey.PublicKey();
+        var message = new byte[20_000];
+        Array.Fill(message, (byte)'x');
+        Assert.Equal(message, secretKey.Open(publicKey.Seal(message)));
+    }
+
     [Fact]
     public void TwoSealsUseDifferentEphemeralMaterial()
     {

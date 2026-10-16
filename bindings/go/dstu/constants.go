@@ -7,21 +7,20 @@ import "C"
 const (
 	BoxSecretKeyBytes = int(C.DSTU_BOX_SECRETKEY_BYTES)
 	BoxPublicKeyBytes = int(C.DSTU_BOX_PUBLICKEY_BYTES)
-	// BoxSealOverhead is the 128-byte KEM ciphertext + 32-byte secretstream header + 16-byte tag
-	// added by BoxPublicKey.Seal.
-	BoxSealOverhead      = int(C.DSTU_BOX_SEAL_OVERHEAD)
+	// BoxOpenMinOverhead is the shortest sealed message (format v3, T-265): BoxSecretKey.Open's
+	// plaintext is at most len(sealed) minus this.
+	BoxOpenMinOverhead   = int(C.DSTU_BOX_OPEN_MIN_OVERHEAD)
 	Box512SecretKeyBytes = int(C.DSTU_BOX512_SECRETKEY_BYTES)
 	Box512PublicKeyBytes = int(C.DSTU_BOX512_PUBLICKEY_BYTES)
-	// Box512SealOverhead is the 256-byte KEM ciphertext + 32-byte secretstream header + 16-byte
-	// tag added by Box512PublicKey.Seal - the l(p)=512 sibling of BoxSealOverhead.
-	Box512SealOverhead  = int(C.DSTU_BOX512_SEAL_OVERHEAD)
-	AuthKeyBytes        = int(C.DSTU_AUTH_KEY_BYTES)
-	AuthTagBytes        = int(C.DSTU_AUTH_TAG_BYTES)
-	GenericHash256Bytes = int(C.DSTU_GENERICHASH_256_BYTES)
-	GenericHash512Bytes = int(C.DSTU_GENERICHASH_512_BYTES)
-	KdfKeyBytes         = int(C.DSTU_KDF_KEY_BYTES)
-	KdfContextBytes     = int(C.DSTU_KDF_CONTEXT_BYTES)
-	KdfSubkeyBytes      = int(C.DSTU_KDF_SUBKEY_BYTES)
+	// Box512OpenMinOverhead is the l(p)=512 sibling of BoxOpenMinOverhead.
+	Box512OpenMinOverhead = int(C.DSTU_BOX512_OPEN_MIN_OVERHEAD)
+	AuthKeyBytes          = int(C.DSTU_AUTH_KEY_BYTES)
+	AuthTagBytes          = int(C.DSTU_AUTH_TAG_BYTES)
+	GenericHash256Bytes   = int(C.DSTU_GENERICHASH_256_BYTES)
+	GenericHash512Bytes   = int(C.DSTU_GENERICHASH_512_BYTES)
+	KdfKeyBytes           = int(C.DSTU_KDF_KEY_BYTES)
+	KdfContextBytes       = int(C.DSTU_KDF_CONTEXT_BYTES)
+	KdfSubkeyBytes        = int(C.DSTU_KDF_SUBKEY_BYTES)
 	// PwhashStrBytes is the fixed buffer size for a PHC string produced by HashPassword.
 	PwhashStrBytes    = int(C.DSTU_PWHASH_STRBYTES)
 	SecretboxKeyBytes = int(C.DSTU_SECRETBOX_KEY_BYTES)

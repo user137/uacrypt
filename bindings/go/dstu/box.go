@@ -53,10 +53,10 @@ func (k *BoxSecretKey) PublicKey() *BoxPublicKey {
 // fails (wrong key, or any tampered wire segment - deliberately not distinguished further, see
 // dstu_core::crypto_box::OpenError's own doc comment) or sealed is too short to be valid.
 func (k *BoxSecretKey) Open(sealed []byte) ([]byte, error) {
-	if len(sealed) < BoxSealOverhead {
+	if len(sealed) < BoxOpenMinOverhead {
 		return nil, &CryptoError{"input is shorter than the minimum valid length for this construction"}
 	}
-	outLen := len(sealed) - BoxSealOverhead
+	outLen := len(sealed) - BoxOpenMinOverhead
 	plaintextOut := make([]byte, outLen)
 	sealedPtr, sealedLen := cBytes(sealed)
 	ptPtr, ptCap := cBytes(plaintextOut)
@@ -112,7 +112,10 @@ func (k *BoxPublicKey) Bytes() []byte {
 // Seal encrypts message (any length) to the holder of this public key, drawing a fresh random
 // seed and ephemeral key internally.
 func (k *BoxPublicKey) Seal(message []byte) ([]byte, error) {
-	outLen := len(message) + BoxSealOverhead
+	var outLen C.size_t
+	if err := statusError(C.dstu_box_sealed_len(C.size_t(len(message)), &outLen)); err != nil {
+		return nil, err
+	}
 	sealedOut := make([]byte, outLen)
 	msgPtr, msgLen := cBytes(message)
 	sealedPtr, sealedCap := cBytes(sealedOut)

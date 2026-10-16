@@ -55,10 +55,10 @@ func (k *Box512SecretKey) PublicKey() *Box512PublicKey {
 // further, see dstu_core::crypto_box512::OpenError's own doc comment) or sealed is too short to be
 // valid.
 func (k *Box512SecretKey) Open(sealed []byte) ([]byte, error) {
-	if len(sealed) < Box512SealOverhead {
+	if len(sealed) < Box512OpenMinOverhead {
 		return nil, &CryptoError{"input is shorter than the minimum valid length for this construction"}
 	}
-	outLen := len(sealed) - Box512SealOverhead
+	outLen := len(sealed) - Box512OpenMinOverhead
 	plaintextOut := make([]byte, outLen)
 	sealedPtr, sealedLen := cBytes(sealed)
 	ptPtr, ptCap := cBytes(plaintextOut)
@@ -114,7 +114,10 @@ func (k *Box512PublicKey) Bytes() []byte {
 // Seal encrypts message (any length) to the holder of this public key, drawing a fresh random
 // seed and ephemeral key internally.
 func (k *Box512PublicKey) Seal(message []byte) ([]byte, error) {
-	outLen := len(message) + Box512SealOverhead
+	var outLen C.size_t
+	if err := statusError(C.dstu_box512_sealed_len(C.size_t(len(message)), &outLen)); err != nil {
+		return nil, err
+	}
 	sealedOut := make([]byte, outLen)
 	msgPtr, msgLen := cBytes(message)
 	sealedPtr, sealedCap := cBytes(sealedOut)

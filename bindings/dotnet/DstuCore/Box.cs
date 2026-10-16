@@ -57,12 +57,12 @@ public sealed class BoxSecretKey : IDisposable
     public byte[] Open(byte[] sealedMessage)
     {
         ArgumentNullException.ThrowIfNull(sealedMessage);
-        if (sealedMessage.Length < DstuConstants.BoxSealOverhead)
+        if (sealedMessage.Length < DstuConstants.BoxOpenMinOverhead)
         {
             throw new DstuException("input is shorter than the minimum valid length for this construction");
         }
 
-        var cap = sealedMessage.Length - DstuConstants.BoxSealOverhead;
+        var cap = sealedMessage.Length - DstuConstants.BoxOpenMinOverhead;
         var plaintextOut = new byte[cap];
         NativeStatus.ThrowIfError(NativeMethods.dstu_box_open(
             _handle, sealedMessage, (nuint)sealedMessage.Length, plaintextOut, (nuint)cap, out var plaintextLen));
@@ -118,10 +118,10 @@ public sealed class BoxPublicKey : IDisposable
     public byte[] Seal(byte[] message)
     {
         ArgumentNullException.ThrowIfNull(message);
-        var cap = message.Length + DstuConstants.BoxSealOverhead;
-        var sealedOut = new byte[cap];
+        NativeStatus.ThrowIfError(NativeMethods.dstu_box_sealed_len((nuint)message.Length, out var cap));
+        var sealedOut = new byte[(int)cap];
         NativeStatus.ThrowIfError(NativeMethods.dstu_box_seal(
-            _handle, message, (nuint)message.Length, sealedOut, (nuint)cap, out var sealedLen));
+            _handle, message, (nuint)message.Length, sealedOut, cap, out var sealedLen));
         return (int)sealedLen == sealedOut.Length ? sealedOut : sealedOut[..(int)sealedLen];
     }
 

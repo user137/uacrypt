@@ -72,6 +72,9 @@ internal static partial class NativeMethods
     internal static partial void dstu_box_publickey_free(IntPtr key);
 
     [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box_sealed_len(nuint messageLen, out nuint lenOut);
+
+    [LibraryImport(LibName)]
     internal static partial DstuStatus dstu_box_seal(
         BoxPublicKeyHandle recipient,
         byte[]? message,
@@ -114,6 +117,9 @@ internal static partial class NativeMethods
 
     [LibraryImport(LibName)]
     internal static partial void dstu_box512_publickey_free(IntPtr key);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box512_sealed_len(nuint messageLen, out nuint lenOut);
 
     [LibraryImport(LibName)]
     internal static partial DstuStatus dstu_box512_seal(
