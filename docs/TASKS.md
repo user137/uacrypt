@@ -9283,6 +9283,12 @@ plan):
   PowerShell per `.claude.local.md`), Pi aarch64: workspace clippy + core/capi/uacrypt tests green.
   PHP not run (Pi disk 97% full) - CI covers it. Open: T-269 (streaming box + `derive_key` in the
   bindings, shared `tests/vectors/box/v3.json` runners). Not pushed.
+  **0.7.0 release pitfall:** every published binding needs a minor bump (0.6 bindings cannot read
+  0.7 box blobs; Python/npm/Ruby are at 0.4.0), and the C ABI break is in CHANGELOG. **For
+  T-269:** C++/.NET/Go `Open` keep their own `size < MIN` check (guards the subtraction), so a
+  177-byte legacy blob says "too short" instead of unsupported-version - fix with the vector
+  runners. After the push: check `bindings-php` (not run here) and `miri.yml` times for the box
+  files (`crypto_box512` was ~50 min vs T-296's ~60-min target).
 - [ ] **T-269** Binding gate for T-262 and T-265, one pass: wire `crypto_pwhash::derive_key`
   and T-265's streaming `crypto_box` API into the 8 bindings and `dstu-core-capi` (shared vectors `crates/dstu-core/tests/vectors/pwhash/derive_key.json`), and
   decide whether the bindings also read/write the passphrase file format (D-219).

@@ -45,9 +45,8 @@ machine-specific paths/gotchas. This is a working dev environment, not a "no too
 workspace (D-119), never a root workspace member. **All eight bindings (Python, Node.js, Ruby,
 PHP, .NET, Java, Go, C++) are done** as of 2026-08-03, all ten standard steps each — see
 `docs/bindings-strategy.md` for the per-binding checklist and `docs/TASKS.md` T-49/T-50/T-160/
-T-159/T-158/T-52/T-51/T-163/T-53 for the full landing history. **`crypto_box` (below) was added to
-all eight 2026-08-06, T-181** — every binding wraps the full `crypto_*` surface as of that date, not
-just the modules that existed when each binding first landed. **`crypto_box512`/`crypto_sign257`
+T-159/T-158/T-52/T-51/T-163/T-53 for the full landing history (`crypto_box` added to all eight
+2026-08-06, T-181). **`crypto_box512`/`crypto_sign257`
 (below, T-193/T-199) were added to all eight bindings plus `dstu-core-capi` 2026-08-09/10, T-204**
 — every binding wraps the full `crypto_*` surface again as of that date.
 

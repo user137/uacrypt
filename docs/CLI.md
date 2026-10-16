@@ -371,8 +371,9 @@ versions compiled into a downloaded binary against the RustSec advisory database
 ## File formats
 
 What each command writes, byte by byte. Sizes are in bytes, `||` means concatenation, and
-multi-byte integers are little-endian. `uacrypt --version` prints the container format version
-next to the release version (currently `2`, D-202).
+multi-byte integers are little-endian. `uacrypt --version` prints the `encrypt` stream format
+version next to the release version (currently `2`, D-202); `box-seal` files carry their own
+version byte (`3` since 0.7.0, D-239) in front of that stream.
 
 **Why containers.** Every everyday command writes a self-describing container, not a bare
 ciphertext. The container holds what decryption needs (the header, the KEM ciphertext), a format
