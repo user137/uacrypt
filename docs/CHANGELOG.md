@@ -5,7 +5,27 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **`dstu-core`: streaming `crypto_box`/`crypto_box512`** (T-265, `docs/DECISIONS.md` D-239):
+  `seal_stream`/`open_stream` hand out the stream-file codec's `FileEncryptor`/`FileDecryptor`,
+  plus `sealed_len`, `SEAL_STREAM_PREFIX_BYTES`/`OPEN_STREAM_PREFIX_BYTES`, `FORMAT_VERSION`.
+  `open_v2_legacy` reads the 0.4-0.6 format (used by `uacrypt box-open` only).
+- **C ABI:** `dstu_box{,512}_seal_stream`/`_open_stream` (returning the codec handles),
+  `dstu_box{,512}_sealed_len`, `DSTU_BOX{,512}_SEAL_STREAM_PREFIX_BYTES`/`_OPEN_STREAM_PREFIX_BYTES`.
+
 ### Changed
+
+- **Breaking: `crypto_box` format v3** (D-239): `0x03 || KEM ciphertext || <stream file>`.
+  `seal` writes it and `open` reads only it, in the core, the C ABI and every binding; a blob from
+  0.4-0.6 is refused as an unsupported version, and 0.6 cannot open 0.7 output.
+- **`uacrypt box-seal`/`box-open` are memory-bounded** (T-265), like `encrypt`/`decrypt`;
+  `box-open` still opens files from 0.4-0.6 (read whole). With `--out -`, `box-open` now prints
+  verified records as it goes and reports INCOMPLETE on a later failure, like `decrypt`.
+- **Breaking (C ABI):** `DSTU_BOX_SEAL_OVERHEAD`/`DSTU_BOX512_SEAL_OVERHEAD` are replaced by
+  `DSTU_BOX_OPEN_MIN_OVERHEAD` (183) / `DSTU_BOX512_OPEN_MIN_OVERHEAD` (311); size `dstu_box*_seal`
+  with `dstu_box*_sealed_len`; `dstu_box*_open`'s plaintext length is now at most `sealed_len`
+  minus that constant, not exact. C++/.NET/Go constants renamed accordingly.
 
 - **Windows release binary links the C runtime statically** (T-295, `docs/DECISIONS.md` D-238):
   `uacrypt.exe` no longer needs the Visual C++ redistributable (`VCRUNTIME140.dll`).

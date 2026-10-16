@@ -123,7 +123,8 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     that uacrypt and all 8 bindings drive (T-284/D-235); no oracle: property/tamper tests.
   - `crypto_box` (`seal`/`open`/`SecretKey`/`PublicKey`) — public-key encryption over
     `hazmat::dstu9041` (`l(p)=256`), hybrid via KDF (a random seed sealed asymmetrically,
-    keyed into `Kupyna256Kmac` over `kem_ct||recipient_pk` (D-201), then secretstream encrypts);
+    keyed into `Kupyna256Kmac` over `kem_ct||recipient_pk` (D-201), then a D-208 stream file -
+    format v3, `seal_stream`/`open_stream` bounded, v2 only via `open_v2_legacy`, T-265/D-239);
     `PublicKey` is 32 bytes, the curve point's `x`-coordinate only (T-178/D-169). `crypto_box512`
     is the direct `l(p)=512` (E512/1) sibling (T-193, 2026-08-08, D-182) — same shape, `PublicKey`/
     `SecretKey` at 64 bytes, seed deliberately fixed at 32 bytes/256 bits (not `l(p)=512`'s full

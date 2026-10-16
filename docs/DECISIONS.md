@@ -15462,3 +15462,43 @@ The winget manifest for 0.6.0 (already released, dynamic CRT) declares
 manifest for the first statically linked release drops it. Rejected: holding winget until 0.7.0
 (delays the install path for no safety gain) and shipping the 0.6.0 manifest without the
 dependency (breaks on clean machines).
+
+## D-239: `crypto_box` format v3 - the KEM prefix in front of a D-208 stream file (T-265, 2026-10-15)
+
+**Context.** `box-seal`/`box-open` read `--in` whole because `crypto_box{,512}::seal` wrote one
+`Final` secretstream chunk (format 2: `0x02 || kem_ct || header || ct || tag`), so `open` needed
+the whole ciphertext before it could release anything. Plan mode + advisor before code.
+
+**Decision - format v3.** `0x03 || kem_ciphertext (128 | 256) || <D-208 stream file: 0x02 ||
+header (32) || records>` - the container shape of D-219's passphrase files: an own prefix, then
+the unchanged stream file, so the codec (`FileEncryptor`/`FileDecryptor`, T-284) does all
+framing and no new framing code exists. The stream key is the existing T-248 derivation
+(`Kupyna256Kmac(seed, label || version || kem_ct || recipient_pk)`, D-201) with version byte 3,
+so a v2 and a v3 blob never share a key. Size: `1 + KEM + 33 + m + 21 * max(1, ceil(m / 8192))`;
+minimum 183 (box256) / 311 (box512). No oracle (D-68): property/tamper/misuse tests, a shared
+`tests/vectors/box/v3.json` for every reader, `legacy_v2.json` (incl. a file from the real 0.6.0
+binary) for the legacy path.
+
+**Decision - API.** `seal_stream(recipient) -> (FileEncryptor, prefix)` and
+`open_stream(&[u8; OPEN_STREAM_PREFIX_BYTES], secret) -> FileDecryptor`: the stream key never
+leaves the core. `sealed_len(m)`; `FORMAT_VERSION`/`LEGACY_FORMAT_VERSION`. `seal`/`open` are
+the in-memory form; `open` zeroizes partial plaintext before an error returns (D-65). The C ABI
+returns the existing codec handles (`dstu_box{,512}_seal_stream`/`_open_stream`) and adds
+`_sealed_len`.
+
+**Owner decisions (2026-10-15), with their consequences put first:**
+- **One written format.** `seal`/`open` in the core, the C ABI and all 8 bindings write and read
+  v3 only - a 0.4-0.6 blob does not open through them (`UnsupportedVersion`), and 0.6 cannot read
+  0.7 blobs (rejected: keeping v2 as a second written format).
+- **`uacrypt box-open` still opens v2 files** via `open_v2_legacy`, a separately named core
+  function kept out of the C ABI and every binding (rejected: v2 reading in every binding's
+  `open`; and a second copy of the T-248 KDF inside `uacrypt`). The legacy path reads the file
+  whole; any input starting with `0x02` takes it.
+
+**Consequences.** C ABI break: `DSTU_BOX{,512}_SEAL_OVERHEAD` (177/305) replaced by
+`DSTU_BOX{,512}_OPEN_MIN_OVERHEAD` (183/311); `_open`'s plaintext length is now "at most"
+`sealed_len - MIN`, not exact (C++/.NET/Go size `Seal` via `_sealed_len`; their `Open` already
+trimmed to the returned length). `box-open --out -` now behaves like `decrypt`: verified records
+are printed, a later failure says INCOMPLETE. The `--iterations` benchmark paths stay in memory and
+serve as the boundedness test's control case. Full streaming in the bindings (and `derive_key`)
+stays T-269.

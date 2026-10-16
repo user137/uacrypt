@@ -72,8 +72,8 @@ cat report.pdf | uacrypt hash --in -          # prints "<hex>  -"
   written to stdout is INCOMPLETE - discard it", and the exit status is non-zero (1 for a bad
   file, 3 if stdout itself failed). Check it: in a shell pipeline such as `... --out - | tar x`
   the pipeline's status is `tar`'s unless you `set -o pipefail`. With `--out <file>` nothing is
-  written unless the whole file verifies. `box-open` decrypts the whole message before printing
-  anything, so it never prints part of one.
+  written unless the whole file verifies. `box-open` (0.7.0, T-265) behaves the same way; a file
+  from 0.4-0.6 is decrypted whole before anything is printed.
 - Windows (measured 2026-09-24): cmd and PowerShell 7.6 passed a 100 kB `encrypt --out -` through
   `>` and through `| uacrypt decrypt --in -` byte for byte. Windows PowerShell 5.1 re-encodes a
   native command's output as text, which corrupts binary data: its `>` turned a 310-byte output
@@ -83,8 +83,8 @@ cat report.pdf | uacrypt hash --in -          # prints "<hex>  -"
 - A closed pipe is an error, not a silent stop: `decrypt ... --out - | head -c 100` makes
   `decrypt` exit 3 with the INCOMPLETE message once `head` exits, which fails a `set -o pipefail`
   pipeline.
-- `box-seal`/`box-open` read all of stdin into memory, as they do a file (not bounded yet, T-265);
-  `encrypt`/`decrypt`/`hash`/`sign`/`verify` read stdin in the same fixed-size chunks as a file.
+- `encrypt`/`decrypt`/`box-seal`/`box-open`/`hash`/`sign`/`verify` read stdin in the same
+  fixed-size chunks as a file (`box-open` of a 0.4-0.6 file reads it whole).
 
 **Progress (0.5.0, T-261, `docs/DECISIONS.md` D-218).** When stderr is a terminal and `--in` is
 a file of 64 MiB or more, `encrypt`, `decrypt`, `hash`, `sign` and `verify` show one line on
@@ -92,8 +92,7 @@ stderr, such as `uacrypt: 1.2 GiB / 4.0 GiB (30%)`. It is redrawn at most 10 tim
 erased before the command prints its result or its error. For stdin, where the size is unknown, it
 is a byte counter (`uacrypt: 96.0 MiB read`) that appears once 64 MiB have been read. There is no
 flag: with stderr redirected or piped (`2>file`, `2>&1 | ...`, a script, CI) nothing is printed at
-all. `box-seal`/`box-open` show none until they stop reading `--in` whole (T-265), and the
-lower-level `kalyna-*`/`kupyna-digest`/`strumok-crypt` commands never do. Known cosmetic limit:
+all. `box-seal`/`box-open` show the same line since 0.7.0 (T-265), and the lower-level `kalyna-*`/`kupyna-digest`/`strumok-crypt` commands never do. Known cosmetic limit:
 in `decrypt --out - | more` on a large file, the line is drawn over the pager's screen, because
 both share the terminal (do not silence it with `2>/dev/null` - that hides the INCOMPLETE warning
 too). Ctrl-C leaves the last line on screen without a newline.
@@ -233,8 +232,10 @@ uacrypt box-open --key box.key --in message.bin.box --out opened.bin
 `box-keygen`'s output (`box.key`) is secret. `box-pubkey` derives the matching `box.pub` (the
 curve point's `x`-coordinate only) from it, safe to share or publish. Both are typed key files
 ([Key files](#key-files)), so `box-seal` refuses a secret key by name instead of sealing to it.
-`box-seal`/`box-open` are **not memory-bounded** yet — `--in` is read whole into memory, unlike
-`encrypt`/`decrypt`'s bounded-chunk streaming (see `crypto_box`'s own module doc for why).
+`box-seal`/`box-open` stream `--in` in bounded memory like `encrypt`/`decrypt` (0.7.0, T-265,
+`docs/DECISIONS.md` D-239). `box-open` still opens files sealed by 0.4-0.6, but reads those whole
+into memory - and any `--in` starting with byte `02` (for instance an `encrypt` output passed by
+mistake) takes that path, so it is read whole before it fails. 0.6 cannot open 0.7 output.
 
 For DSTU 9041's `l(p)=512` curve (E512/1, `docs/TASKS.md` T-193, `docs/DECISIONS.md` D-182),
 generate the key with `box-keygen512` instead; `box-pubkey`, `box-seal` and `box-open` read the
@@ -386,7 +387,7 @@ was not yet so.
 | `encrypt` | encrypted file | `version (1) \|\| header (32)`, then one or more records, each `chunk tag (1) \|\| ciphertext length (4) \|\| ciphertext \|\| auth tag (16)` |
 | `encrypt --passphrase` / `--passphrase-file` | encrypted file | `0x50 \|\| 0x01 \|\| 0x01 \|\| m_cost KiB (4) \|\| t_cost (4) \|\| p_cost (1) \|\| salt (16)`, then the `encrypt` layout above |
 | `box-keygen` / `box-keygen512` / `box-pubkey` | secret / public key | a key line each (the public key is the curve point's `x`-coordinate) |
-| `box-seal` | sealed file | `version (1) \|\| KEM ciphertext (128, or 256 for an l(p)=512 key) \|\| header (32) \|\| ciphertext \|\| auth tag (16)`: 177 or 305 bytes of overhead |
+| `box-seal` | sealed file | `version (1, = 3) \|\| KEM ciphertext (128, or 256 for an l(p)=512 key) \|\| <the encrypt stream format>`: 183 or 311 bytes for an input under 8 KiB, plus 21 per further started 8 KiB (D-239; 0.4-0.6 wrote version 2, one chunk, still read by `box-open`) |
 | `sign-keygen` / `sign-keygen257` | signing key | a key line (the scalar `d`, big-endian) |
 | `sign-pubkey` | verifying key | a key line (`x \|\| y`) of the signing key's curve |
 | `sign` | signature | 42 raw bytes for an m=163 key, 66 for m=257; `verify` picks the curve from the verifying key's kind |
