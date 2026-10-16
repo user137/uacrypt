@@ -419,7 +419,13 @@ mod tests {
     /// Miri, unlike the `crypto_box` tests that call them through the KEM.
     #[test]
     fn seal_all_and_open_all_round_trip_and_fail_closed() {
-        for len in [0, 1, CHUNK_BYTES, CHUNK_BYTES + 1] {
+        // Under Miri only the small cases: bulk Kalyna-GCM is too slow to interpret (T-296).
+        let lens: &[usize] = if cfg!(miri) {
+            &[0, 1]
+        } else {
+            &[0, 1, CHUNK_BYTES, CHUNK_BYTES + 1]
+        };
+        for &len in lens {
             let plaintext: Vec<u8> = (0..len).map(|i| u8::try_from(i % 251).unwrap()).collect();
             let (mut enc, prefix) = FileEncryptor::init(&key()).unwrap();
             let mut file = prefix.to_vec();
