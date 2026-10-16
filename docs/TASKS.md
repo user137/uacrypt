@@ -9276,16 +9276,13 @@ plan):
   `_open_stream`/`_sealed_len`, `DSTU_BOX_SEAL_OVERHEAD` -> `DSTU_BOX_OPEN_MIN_OVERHEAD`, open
   length becomes "at most") -> 3 CLI (bounded, byte-0 dispatch) -> 4 C++/.NET/Go seal sizing and
   open truncation (break-fix; full streaming in the bindings stays T-269) -> docs.
-  **State 2026-10-15 (usage limit):** phases 0-3 done and committed (`ba6002d` core, `ae02f46`
-  capi, `879dee2` CLI; `cargo xtask streaming-bounded` green for box256/512 at 200 MiB; real
-  0.6.0 files open). Phase 4: C++ done (`cargo xtask cpp` green - run it from PowerShell, Git Bash
-  gives 0xc0000139). **Next:** .NET (`DstuConstants.BoxSealOverhead`/`Box512SealOverhead` ->
-  open-min 183/311, `Seal` sized via a new `dstu_box{,512}_sealed_len` P/Invoke in
-  `Native/NativeMethods.cs`, `Open` already trims; add a 20000-byte round-trip test), then Go
-  (`dstu/box.go`/`box512.go`/`constants.go`: same; check `Open` truncates to `ptLen`), then
-  docs: D-239, `docs/CLI.md` (bounded box; v2 still read whole), CHANGELOG `[Unreleased]`
-  (breaking: v3, C ABI `DSTU_BOX*_SEAL_OVERHEAD` removed, `_open` length "at most"), Pi run,
-  closing advisor review. Nothing pushed.
+  **2026-10-16: phases 0-4 and docs done** (`ba6002d` core, `ae02f46` capi, `879dee2` CLI,
+  `8ec9e6d` C++, `6f67f10` .NET/Go, `c3d54fa` D-239/CLI.md/CHANGELOG). Checked: `cargo xtask
+  streaming-bounded` (box256/512 at 200 MiB, control case grows), real 0.6.0 files open, all 8
+  bindings' suites here except PHP (Python/Node/Java/C++/.NET/Go/Ruby green; C++/Go/Ruby from
+  PowerShell per `.claude.local.md`), Pi aarch64: workspace clippy + core/capi/uacrypt tests green.
+  PHP not run (Pi disk 97% full) - CI covers it. Open: T-269 (streaming box + `derive_key` in the
+  bindings, shared `tests/vectors/box/v3.json` runners). Not pushed.
 - [ ] **T-269** Binding gate for T-262 and T-265, one pass: wire `crypto_pwhash::derive_key`
   and T-265's streaming `crypto_box` API into the 8 bindings and `dstu-core-capi` (shared vectors `crates/dstu-core/tests/vectors/pwhash/derive_key.json`), and
   decide whether the bindings also read/write the passphrase file format (D-219).

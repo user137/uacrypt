@@ -405,3 +405,47 @@ pub(crate) fn open_all(dec: &mut FileDecryptor, file: &[u8]) -> Result<Vec<u8>, 
         }
     }
 }
+
+#[cfg(all(test, feature = "std"))]
+mod tests {
+    use super::*;
+
+    fn key() -> Key {
+        Key::from_bytes([0x5a; 32])
+    }
+
+    /// T-265: the in-memory helpers behind `crypto_box::seal`/`open` round-trip at the chunk
+    /// boundaries and fail closed on a cut, a flipped byte and trailing data. Cheap enough for
+    /// Miri, unlike the `crypto_box` tests that call them through the KEM.
+    #[test]
+    fn seal_all_and_open_all_round_trip_and_fail_closed() {
+        for len in [0, 1, CHUNK_BYTES, CHUNK_BYTES + 1] {
+            let plaintext: Vec<u8> = (0..len).map(|i| u8::try_from(i % 251).unwrap()).collect();
+            let (mut enc, prefix) = FileEncryptor::init(&key()).unwrap();
+            let mut file = prefix.to_vec();
+            seal_all(&mut enc, &plaintext, &mut file).unwrap();
+            assert_eq!(
+                open_all(&mut FileDecryptor::new(&key()), &file).unwrap(),
+                plaintext,
+                "len = {len}"
+            );
+
+            assert!(matches!(
+                open_all(&mut FileDecryptor::new(&key()), &file[..file.len() - 1]),
+                Err(FileError::Truncated)
+            ));
+            let mut flipped = file.clone();
+            *flipped.last_mut().unwrap() ^= 1;
+            assert!(matches!(
+                open_all(&mut FileDecryptor::new(&key()), &flipped),
+                Err(FileError::Auth)
+            ));
+            let mut trailing = file.clone();
+            trailing.push(0);
+            assert!(matches!(
+                open_all(&mut FileDecryptor::new(&key()), &trailing),
+                Err(FileError::TrailingData)
+            ));
+        }
+    }
+}
