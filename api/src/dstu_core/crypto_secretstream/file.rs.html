@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/dstu-core/src/crypto_secretstream/file.rs`."><title>file.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-0c87338a.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="dstu_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.99.0 (b940084d7 2026-09-28)" data-channel="1.99.0" data-search-js="search-cf4fc35e.js" data-stringdex-js="stringdex-b5109af9.js" data-settings-js="settings-170eb4bf.js" ><script src="../../../static.files/storage-41dd4d93.js"></script><script defer src="../../../static.files/src-script-813739b1.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-417ebf0a.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-9f56287d.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">dstu_core/crypto_secretstream/</div>file.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! The stream-file codec (T-284, D-208's format): the one implementation of the framing that
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/dstu-core/src/crypto_secretstream/file.rs`."><title>file.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-0c87338a.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="dstu_core" data-themes="" data-resource-suffix="" data-rustdoc-version="1.99.1 (58cf8f9c3 2026-10-13)" data-channel="1.99.1" data-search-js="search-cf4fc35e.js" data-stringdex-js="stringdex-b5109af9.js" data-settings-js="settings-170eb4bf.js" ><script src="../../../static.files/storage-41dd4d93.js"></script><script defer src="../../../static.files/src-script-813739b1.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-417ebf0a.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-9f56287d.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">dstu_core/crypto_secretstream/</div>file.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! The stream-file codec (T-284, D-208's format): the one implementation of the framing that
 <a href=#2 id=2 data-nosnippet>2</a>//! `uacrypt` and every language binding drive, so a framing rule is written once instead of nine
 <a href=#3 id=3 data-nosnippet>3</a>//! times (D-220's O-C). The caller does only I/O.
 <a href=#4 id=4 data-nosnippet>4</a>//!
@@ -349,4 +349,110 @@
 <a href=#349 id=349 data-nosnippet>349</a>        <span class="self">self</span>.final_len = <span class="number">0</span>;
 <a href=#350 id=350 data-nosnippet>350</a>    }
 <a href=#351 id=351 data-nosnippet>351</a>}
+<a href=#352 id=352 data-nosnippet>352</a>
+<a href=#353 id=353 data-nosnippet>353</a><span class="doccomment">/// Appends the records for an in-memory `plaintext` to `out` - the writer contract above, for the
+<a href=#354 id=354 data-nosnippet>354</a>/// one-shot `crypto_box::seal`/`crypto_box512::seal` (T-265).
+<a href=#355 id=355 data-nosnippet>355</a></span><span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
+<a href=#356 id=356 data-nosnippet>356</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>seal_all(
+<a href=#357 id=357 data-nosnippet>357</a>    enc: <span class="kw-2">&amp;mut </span>FileEncryptor,
+<a href=#358 id=358 data-nosnippet>358</a>    plaintext: <span class="kw-2">&amp;</span>[u8],
+<a href=#359 id=359 data-nosnippet>359</a>    out: <span class="kw-2">&amp;mut </span>Vec&lt;u8&gt;,
+<a href=#360 id=360 data-nosnippet>360</a>) -&gt; <span class="prelude-ty">Result</span>&lt;(), FileError&gt; {
+<a href=#361 id=361 data-nosnippet>361</a>    <span class="kw">let </span><span class="kw-2">mut </span>record = [<span class="number">0u8</span>; MAX_RECORD_BYTES];
+<a href=#362 id=362 data-nosnippet>362</a>    <span class="kw">let </span><span class="kw-2">mut </span>rest = plaintext;
+<a href=#363 id=363 data-nosnippet>363</a>    <span class="kw">while </span>rest.len() &gt; CHUNK_BYTES {
+<a href=#364 id=364 data-nosnippet>364</a>        <span class="kw">let </span>(chunk, tail) = rest.split_at(CHUNK_BYTES);
+<a href=#365 id=365 data-nosnippet>365</a>        <span class="kw">let </span><span class="prelude-val">Ok</span>(chunk) = &lt;<span class="kw-2">&amp;</span>[u8; CHUNK_BYTES]&gt;::try_from(chunk) <span class="kw">else </span>{
+<a href=#366 id=366 data-nosnippet>366</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(FileError::InvalidLength);
+<a href=#367 id=367 data-nosnippet>367</a>        };
+<a href=#368 id=368 data-nosnippet>368</a>        enc.seal_chunk(chunk, <span class="kw-2">&amp;mut </span>record)<span class="question-mark">?</span>;
+<a href=#369 id=369 data-nosnippet>369</a>        out.extend_from_slice(<span class="kw-2">&amp;</span>record);
+<a href=#370 id=370 data-nosnippet>370</a>        rest = tail;
+<a href=#371 id=371 data-nosnippet>371</a>    }
+<a href=#372 id=372 data-nosnippet>372</a>    <span class="kw">let </span>n = enc.seal_final(rest, <span class="kw-2">&amp;mut </span>record)<span class="question-mark">?</span>;
+<a href=#373 id=373 data-nosnippet>373</a>    out.extend_from_slice(<span class="kw-2">&amp;</span>record[..n]);
+<a href=#374 id=374 data-nosnippet>374</a>    <span class="prelude-val">Ok</span>(())
+<a href=#375 id=375 data-nosnippet>375</a>}
+<a href=#376 id=376 data-nosnippet>376</a>
+<a href=#377 id=377 data-nosnippet>377</a><span class="doccomment">/// Reads an in-memory stream file to its end - the reader contract above, for the one-shot
+<a href=#378 id=378 data-nosnippet>378</a>/// `crypto_box::open`/`crypto_box512::open` (T-265). On any error the plaintext gathered so far is
+<a href=#379 id=379 data-nosnippet>379</a>/// zeroized before it is dropped (D-65); its capacity is reserved up front so no reallocation
+<a href=#380 id=380 data-nosnippet>380</a>/// leaves a copy behind.
+<a href=#381 id=381 data-nosnippet>381</a></span><span class="attr">#[cfg(feature = <span class="string">"std"</span>)]
+<a href=#382 id=382 data-nosnippet>382</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>open_all(dec: <span class="kw-2">&amp;mut </span>FileDecryptor, file: <span class="kw-2">&amp;</span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;Vec&lt;u8&gt;, FileError&gt; {
+<a href=#383 id=383 data-nosnippet>383</a>    <span class="kw">let </span><span class="kw-2">mut </span>chunk = [<span class="number">0u8</span>; CHUNK_BYTES];
+<a href=#384 id=384 data-nosnippet>384</a>    <span class="kw">let </span><span class="kw-2">mut </span>plaintext = Vec::with_capacity(file.len());
+<a href=#385 id=385 data-nosnippet>385</a>    <span class="kw">let </span><span class="kw-2">mut </span>pos = <span class="number">0</span>;
+<a href=#386 id=386 data-nosnippet>386</a>    <span class="kw">let </span>result = <span class="kw">loop </span>{
+<a href=#387 id=387 data-nosnippet>387</a>        <span class="kw">let </span>want = dec.next_len();
+<a href=#388 id=388 data-nosnippet>388</a>        <span class="kw">let </span><span class="prelude-val">Some</span>(input) = file.get(pos..pos + want) <span class="kw">else </span>{
+<a href=#389 id=389 data-nosnippet>389</a>            <span class="kw">break </span>dec.finish(<span class="kw-2">&amp;mut </span>chunk).map(|n| {
+<a href=#390 id=390 data-nosnippet>390</a>                plaintext.extend_from_slice(<span class="kw-2">&amp;</span>chunk[..n]);
+<a href=#391 id=391 data-nosnippet>391</a>            });
+<a href=#392 id=392 data-nosnippet>392</a>        };
+<a href=#393 id=393 data-nosnippet>393</a>        <span class="kw">match </span>dec.feed(input, <span class="kw-2">&amp;mut </span>chunk) {
+<a href=#394 id=394 data-nosnippet>394</a>            <span class="prelude-val">Ok</span>(n) =&gt; plaintext.extend_from_slice(<span class="kw-2">&amp;</span>chunk[..n]),
+<a href=#395 id=395 data-nosnippet>395</a>            <span class="prelude-val">Err</span>(e) =&gt; <span class="kw">break </span><span class="prelude-val">Err</span>(e),
+<a href=#396 id=396 data-nosnippet>396</a>        }
+<a href=#397 id=397 data-nosnippet>397</a>        pos += want;
+<a href=#398 id=398 data-nosnippet>398</a>    };
+<a href=#399 id=399 data-nosnippet>399</a>    chunk.zeroize();
+<a href=#400 id=400 data-nosnippet>400</a>    <span class="kw">match </span>result {
+<a href=#401 id=401 data-nosnippet>401</a>        <span class="prelude-val">Ok</span>(()) =&gt; <span class="prelude-val">Ok</span>(plaintext),
+<a href=#402 id=402 data-nosnippet>402</a>        <span class="prelude-val">Err</span>(e) =&gt; {
+<a href=#403 id=403 data-nosnippet>403</a>            plaintext.as_mut_slice().zeroize();
+<a href=#404 id=404 data-nosnippet>404</a>            <span class="prelude-val">Err</span>(e)
+<a href=#405 id=405 data-nosnippet>405</a>        }
+<a href=#406 id=406 data-nosnippet>406</a>    }
+<a href=#407 id=407 data-nosnippet>407</a>}
+<a href=#408 id=408 data-nosnippet>408</a>
+<a href=#409 id=409 data-nosnippet>409</a><span class="attr">#[cfg(all(test, feature = <span class="string">"std"</span>))]
+<a href=#410 id=410 data-nosnippet>410</a></span><span class="kw">mod </span>tests {
+<a href=#411 id=411 data-nosnippet>411</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+<a href=#412 id=412 data-nosnippet>412</a>
+<a href=#413 id=413 data-nosnippet>413</a>    <span class="kw">fn </span>key() -&gt; Key {
+<a href=#414 id=414 data-nosnippet>414</a>        Key::from_bytes([<span class="number">0x5a</span>; <span class="number">32</span>])
+<a href=#415 id=415 data-nosnippet>415</a>    }
+<a href=#416 id=416 data-nosnippet>416</a>
+<a href=#417 id=417 data-nosnippet>417</a>    <span class="doccomment">/// T-265: the in-memory helpers behind `crypto_box::seal`/`open` round-trip at the chunk
+<a href=#418 id=418 data-nosnippet>418</a>    /// boundaries and fail closed on a cut, a flipped byte and trailing data. Cheap enough for
+<a href=#419 id=419 data-nosnippet>419</a>    /// Miri, unlike the `crypto_box` tests that call them through the KEM.
+<a href=#420 id=420 data-nosnippet>420</a>    </span><span class="attr">#[test]
+<a href=#421 id=421 data-nosnippet>421</a>    </span><span class="kw">fn </span>seal_all_and_open_all_round_trip_and_fail_closed() {
+<a href=#422 id=422 data-nosnippet>422</a>        <span class="comment">// Under Miri only the small cases: bulk Kalyna-GCM is too slow to interpret (T-296).
+<a href=#423 id=423 data-nosnippet>423</a>        </span><span class="kw">let </span>lens: <span class="kw-2">&amp;</span>[usize] = <span class="kw">if </span><span class="macro">cfg!</span>(miri) {
+<a href=#424 id=424 data-nosnippet>424</a>            <span class="kw-2">&amp;</span>[<span class="number">0</span>, <span class="number">1</span>]
+<a href=#425 id=425 data-nosnippet>425</a>        } <span class="kw">else </span>{
+<a href=#426 id=426 data-nosnippet>426</a>            <span class="kw-2">&amp;</span>[<span class="number">0</span>, <span class="number">1</span>, CHUNK_BYTES, CHUNK_BYTES + <span class="number">1</span>]
+<a href=#427 id=427 data-nosnippet>427</a>        };
+<a href=#428 id=428 data-nosnippet>428</a>        <span class="kw">for </span><span class="kw-2">&amp;</span>len <span class="kw">in </span>lens {
+<a href=#429 id=429 data-nosnippet>429</a>            <span class="kw">let </span>plaintext: Vec&lt;u8&gt; = (<span class="number">0</span>..len).map(|i| u8::try_from(i % <span class="number">251</span>).unwrap()).collect();
+<a href=#430 id=430 data-nosnippet>430</a>            <span class="kw">let </span>(<span class="kw-2">mut </span>enc, prefix) = FileEncryptor::init(<span class="kw-2">&amp;</span>key()).unwrap();
+<a href=#431 id=431 data-nosnippet>431</a>            <span class="kw">let </span><span class="kw-2">mut </span>file = prefix.to_vec();
+<a href=#432 id=432 data-nosnippet>432</a>            seal_all(<span class="kw-2">&amp;mut </span>enc, <span class="kw-2">&amp;</span>plaintext, <span class="kw-2">&amp;mut </span>file).unwrap();
+<a href=#433 id=433 data-nosnippet>433</a>            <span class="macro">assert_eq!</span>(
+<a href=#434 id=434 data-nosnippet>434</a>                open_all(<span class="kw-2">&amp;mut </span>FileDecryptor::new(<span class="kw-2">&amp;</span>key()), <span class="kw-2">&amp;</span>file).unwrap(),
+<a href=#435 id=435 data-nosnippet>435</a>                plaintext,
+<a href=#436 id=436 data-nosnippet>436</a>                <span class="string">"len = {len}"
+<a href=#437 id=437 data-nosnippet>437</a>            </span>);
+<a href=#438 id=438 data-nosnippet>438</a>
+<a href=#439 id=439 data-nosnippet>439</a>            <span class="macro">assert!</span>(<span class="macro">matches!</span>(
+<a href=#440 id=440 data-nosnippet>440</a>                open_all(<span class="kw-2">&amp;mut </span>FileDecryptor::new(<span class="kw-2">&amp;</span>key()), <span class="kw-2">&amp;</span>file[..file.len() - <span class="number">1</span>]),
+<a href=#441 id=441 data-nosnippet>441</a>                <span class="prelude-val">Err</span>(FileError::Truncated)
+<a href=#442 id=442 data-nosnippet>442</a>            ));
+<a href=#443 id=443 data-nosnippet>443</a>            <span class="kw">let </span><span class="kw-2">mut </span>flipped = file.clone();
+<a href=#444 id=444 data-nosnippet>444</a>            <span class="kw-2">*</span>flipped.last_mut().unwrap() ^= <span class="number">1</span>;
+<a href=#445 id=445 data-nosnippet>445</a>            <span class="macro">assert!</span>(<span class="macro">matches!</span>(
+<a href=#446 id=446 data-nosnippet>446</a>                open_all(<span class="kw-2">&amp;mut </span>FileDecryptor::new(<span class="kw-2">&amp;</span>key()), <span class="kw-2">&amp;</span>flipped),
+<a href=#447 id=447 data-nosnippet>447</a>                <span class="prelude-val">Err</span>(FileError::Auth)
+<a href=#448 id=448 data-nosnippet>448</a>            ));
+<a href=#449 id=449 data-nosnippet>449</a>            <span class="kw">let </span><span class="kw-2">mut </span>trailing = file.clone();
+<a href=#450 id=450 data-nosnippet>450</a>            trailing.push(<span class="number">0</span>);
+<a href=#451 id=451 data-nosnippet>451</a>            <span class="macro">assert!</span>(<span class="macro">matches!</span>(
+<a href=#452 id=452 data-nosnippet>452</a>                open_all(<span class="kw-2">&amp;mut </span>FileDecryptor::new(<span class="kw-2">&amp;</span>key()), <span class="kw-2">&amp;</span>trailing),
+<a href=#453 id=453 data-nosnippet>453</a>                <span class="prelude-val">Err</span>(FileError::TrailingData)
+<a href=#454 id=454 data-nosnippet>454</a>            ));
+<a href=#455 id=455 data-nosnippet>455</a>        }
+<a href=#456 id=456 data-nosnippet>456</a>    }
+<a href=#457 id=457 data-nosnippet>457</a>}
 </code></pre></div></section></main></body></html>
