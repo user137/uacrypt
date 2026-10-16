@@ -119,12 +119,12 @@ impl SecretStreamPullState {
             .pull(tag_byte, &ciphertext, &auth_tag, &mut plaintext)
             .dstu()?;
         let mut result = ZendHashTable::new();
-        result
-            .push(tag.to_byte())
-            .map_err(|e| PhpException::default(format!("failed to build result array: {e}")))?;
-        result
-            .push(Binary::from(plaintext))
-            .map_err(|e| PhpException::default(format!("failed to build result array: {e}")))?;
+        result.push(tag.to_byte()).map_err(|e| {
+            PhpException::from_message(format!("failed to build result array: {e}"))
+        })?;
+        result.push(Binary::from(plaintext)).map_err(|e| {
+            PhpException::from_message(format!("failed to build result array: {e}"))
+        })?;
         Ok(result)
     }
 }
