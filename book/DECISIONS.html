@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-0bcf2a55.js";
+            window.path_to_searchindex_js = "searchindex-5499e9ca.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -14251,6 +14251,41 @@ rebuilt every release anyway.</p>
 manifest for the first statically linked release drops it. Rejected: holding winget until 0.7.0
 (delays the install path for no safety gain) and shipping the 0.6.0 manifest without the
 dependency (breaks on clean machines).</p>
+<h2 id="d-239-crypto_box-format-v3---the-kem-prefix-in-front-of-a-d-208-stream-file-t-265-2026-10-15"><a class="header" href="#d-239-crypto_box-format-v3---the-kem-prefix-in-front-of-a-d-208-stream-file-t-265-2026-10-15">D-239: <code>crypto_box</code> format v3 - the KEM prefix in front of a D-208 stream file (T-265, 2026-10-15)</a></h2>
+<p><strong>Context.</strong> <code>box-seal</code>/<code>box-open</code> read <code>--in</code> whole because <code>crypto_box{,512}::seal</code> wrote one
+<code>Final</code> secretstream chunk (format 2: <code>0x02 || kem_ct || header || ct || tag</code>), so <code>open</code> needed
+the whole ciphertext before it could release anything. Plan mode + advisor before code.</p>
+<p><strong>Decision - format v3.</strong> <code>0x03 || kem_ciphertext (128 | 256) || &lt;D-208 stream file: 0x02 || header (32) || records&gt;</code> - the container shape of D-219’s passphrase files: an own prefix, then
+the unchanged stream file, so the codec (<code>FileEncryptor</code>/<code>FileDecryptor</code>, T-284) does all
+framing and no new framing code exists. The stream key is the existing T-248 derivation
+(<code>Kupyna256Kmac(seed, label || version || kem_ct || recipient_pk)</code>, D-201) with version byte 3,
+so a v2 and a v3 blob never share a key. Size: <code>1 + KEM + 33 + m + 21 * max(1, ceil(m / 8192))</code>;
+minimum 183 (box256) / 311 (box512). No oracle (D-68): property/tamper/misuse tests, a shared
+<code>tests/vectors/box/v3.json</code> for every reader, <code>legacy_v2.json</code> (incl. a file from the real 0.6.0
+binary) for the legacy path.</p>
+<p><strong>Decision - API.</strong> <code>seal_stream(recipient) -&gt; (FileEncryptor, prefix)</code> and
+<code>open_stream(&amp;[u8; OPEN_STREAM_PREFIX_BYTES], secret) -&gt; FileDecryptor</code>: the stream key never
+leaves the core. <code>sealed_len(m)</code>; <code>FORMAT_VERSION</code>/<code>LEGACY_FORMAT_VERSION</code>. <code>seal</code>/<code>open</code> are
+the in-memory form; <code>open</code> zeroizes partial plaintext before an error returns (D-65). The C ABI
+returns the existing codec handles (<code>dstu_box{,512}_seal_stream</code>/<code>_open_stream</code>) and adds
+<code>_sealed_len</code>.</p>
+<p><strong>Owner decisions (2026-10-15), with their consequences put first:</strong></p>
+<ul>
+<li><strong>One written format.</strong> <code>seal</code>/<code>open</code> in the core, the C ABI and all 8 bindings write and read
+v3 only - a 0.4-0.6 blob does not open through them (<code>UnsupportedVersion</code>), and 0.6 cannot read
+0.7 blobs (rejected: keeping v2 as a second written format).</li>
+<li><strong><code>uacrypt box-open</code> still opens v2 files</strong> via <code>open_v2_legacy</code>, a separately named core
+function kept out of the C ABI and every binding (rejected: v2 reading in every binding’s
+<code>open</code>; and a second copy of the T-248 KDF inside <code>uacrypt</code>). The legacy path reads the file
+whole; any input starting with <code>0x02</code> takes it.</li>
+</ul>
+<p><strong>Consequences.</strong> C ABI break: <code>DSTU_BOX{,512}_SEAL_OVERHEAD</code> (177/305) replaced by
+<code>DSTU_BOX{,512}_OPEN_MIN_OVERHEAD</code> (183/311); <code>_open</code>’s plaintext length is now “at most”
+<code>sealed_len - MIN</code>, not exact (C++/.NET/Go size <code>Seal</code> via <code>_sealed_len</code>; their <code>Open</code> already
+trimmed to the returned length). <code>box-open --out -</code> now behaves like <code>decrypt</code>: verified records
+are printed, a later failure says INCOMPLETE. The <code>--iterations</code> benchmark paths stay in memory and
+serve as the boundedness test’s control case. Full streaming in the bindings (and <code>derive_key</code>)
+stays T-269.</p>
 
                     </main>
 

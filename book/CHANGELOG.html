@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-0bcf2a55.js";
+            window.path_to_searchindex_js = "searchindex-5499e9ca.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -184,13 +184,40 @@
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
+<h3 id="added"><a class="header" href="#added">Added</a></h3>
+<ul>
+<li><strong><code>dstu-core</code>: streaming <code>crypto_box</code>/<code>crypto_box512</code></strong> (T-265, <code>docs/DECISIONS.md</code> D-239):
+<code>seal_stream</code>/<code>open_stream</code> hand out the stream-file codec’s <code>FileEncryptor</code>/<code>FileDecryptor</code>,
+plus <code>sealed_len</code>, <code>SEAL_STREAM_PREFIX_BYTES</code>/<code>OPEN_STREAM_PREFIX_BYTES</code>, <code>FORMAT_VERSION</code>.
+<code>open_v2_legacy</code> reads the 0.4-0.6 format (used by <code>uacrypt box-open</code> only).</li>
+<li><strong>C ABI:</strong> <code>dstu_box{,512}_seal_stream</code>/<code>_open_stream</code> (returning the codec handles),
+<code>dstu_box{,512}_sealed_len</code>, <code>DSTU_BOX{,512}_SEAL_STREAM_PREFIX_BYTES</code>/<code>_OPEN_STREAM_PREFIX_BYTES</code>.</li>
+</ul>
 <h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
 <ul>
-<li><strong>Windows release binary links the C runtime statically</strong> (T-295, <code>docs/DECISIONS.md</code> D-238):
-<code>uacrypt.exe</code> no longer needs the Visual C++ redistributable (<code>VCRUNTIME140.dll</code>).</li>
+<li>
+<p><strong>Breaking: <code>crypto_box</code> format v3</strong> (D-239): <code>0x03 || KEM ciphertext || &lt;stream file&gt;</code>.
+<code>seal</code> writes it and <code>open</code> reads only it, in the core, the C ABI and every binding; a blob from
+0.4-0.6 is refused as an unsupported version, and 0.6 cannot open 0.7 output.</p>
+</li>
+<li>
+<p><strong><code>uacrypt box-seal</code>/<code>box-open</code> are memory-bounded</strong> (T-265), like <code>encrypt</code>/<code>decrypt</code>;
+<code>box-open</code> still opens files from 0.4-0.6 (read whole). With <code>--out -</code>, <code>box-open</code> now prints
+verified records as it goes and reports INCOMPLETE on a later failure, like <code>decrypt</code>.</p>
+</li>
+<li>
+<p><strong>Breaking (C ABI):</strong> <code>DSTU_BOX_SEAL_OVERHEAD</code>/<code>DSTU_BOX512_SEAL_OVERHEAD</code> are replaced by
+<code>DSTU_BOX_OPEN_MIN_OVERHEAD</code> (183) / <code>DSTU_BOX512_OPEN_MIN_OVERHEAD</code> (311); size <code>dstu_box*_seal</code>
+with <code>dstu_box*_sealed_len</code>; <code>dstu_box*_open</code>’s plaintext length is now at most <code>sealed_len</code>
+minus that constant, not exact. C++/.NET/Go constants renamed accordingly.</p>
+</li>
+<li>
+<p><strong>Windows release binary links the C runtime statically</strong> (T-295, <code>docs/DECISIONS.md</code> D-238):
+<code>uacrypt.exe</code> no longer needs the Visual C++ redistributable (<code>VCRUNTIME140.dll</code>).</p>
+</li>
 </ul>
 <h2 id="060---2026-10-11"><a class="header" href="#060---2026-10-11">[0.6.0] - 2026-10-11</a></h2>
-<h3 id="added"><a class="header" href="#added">Added</a></h3>
+<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
 <ul>
 <li><strong><code>dstu-core</code>: one stream-file codec</strong>, <code>crypto_secretstream::FileEncryptor</code>/<code>FileDecryptor</code>
 (T-284, <code>docs/DECISIONS.md</code> D-235): the <code>uacrypt encrypt</code> file format (D-208) implemented once,
@@ -328,7 +355,7 @@ or a byte counter for stdin once 64 MiB have been read - only when stderr is a t
 10 redraws a second, erased before the result or error is printed. No flag, no new dependency;
 with stderr redirected or piped nothing changes.</li>
 </ul>
-<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
+<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
 <ul>
 <li><strong>Passphrase encryption</strong> (T-262, <code>docs/DECISIONS.md</code> D-219), like <code>age -p</code>:
 <code>encrypt --passphrase</code> asks twice on the terminal without echo, <code>encrypt --passphrase-file &lt;path&gt;</code> reads the first line of a file (for scripts); <code>decrypt</code> recognises a passphrase file by
@@ -460,7 +487,7 @@ scalar multiplication.</li>
 so it is unreachable in practice. The new <code>SecretstreamError::CounterExhausted</code> variant is
 <code>DSTU_ERR_FINALIZED</code> in the C ABI (T-245a).</li>
 </ul>
-<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
+<h3 id="added-3"><a class="header" href="#added-3">Added</a></h3>
 <ul>
 <li>
 <p>Verifiable releases (T-252). Every GitHub Release now carries <code>SHA256SUMS</code> with a Sigstore
@@ -607,7 +634,7 @@ current-state line, pointing to <code>docs/CHANGELOG.md</code> for what changed 
 re-narrating it in the banner itself.</li>
 </ul>
 <h2 id="036---2026-08-13"><a class="header" href="#036---2026-08-13">[0.3.6] - 2026-08-13</a></h2>
-<h3 id="added-3"><a class="header" href="#added-3">Added</a></h3>
+<h3 id="added-4"><a class="header" href="#added-4">Added</a></h3>
 <ul>
 <li><code>build-ruby-gems</code>/<code>publish-rubygems</code> jobs in <code>release.yml</code> (T-164): cross-compiled RubyGems
 native gem publishing for <code>dstu_core</code> (<code>x86_64-linux</code>, <code>aarch64-linux</code>, <code>arm64-darwin</code>,
@@ -629,7 +656,7 @@ gemspec had a distinct, more serious bug caught in the same sweep: <code>README.
 publish - fixed ahead of that first publish. See <code>docs/DECISIONS.md</code> D-191.</li>
 </ul>
 <h2 id="035---2026-08-13"><a class="header" href="#035---2026-08-13">[0.3.5] - 2026-08-13</a></h2>
-<h3 id="added-4"><a class="header" href="#added-4">Added</a></h3>
+<h3 id="added-5"><a class="header" href="#added-5">Added</a></h3>
 <ul>
 <li><code>dstu-core-linux-arm64-gnu</code> - a new npm platform package for the Node.js bindings
 (<code>aarch64-unknown-linux-gnu</code>), built natively on GitHub’s <code>ubuntu-24.04-arm</code> hosted runner (GA for
@@ -680,7 +707,7 @@ lacking <code>contents: write</code> in this job, failing 401 against) <code>rel
 failed attempt before retrying (<code>registry.npmjs.org/dstu-core*</code> still 404).</li>
 </ul>
 <h2 id="032---2026-08-12"><a class="header" href="#032---2026-08-12">[0.3.2] - 2026-08-12</a></h2>
-<h3 id="added-5"><a class="header" href="#added-5">Added</a></h3>
+<h3 id="added-6"><a class="header" href="#added-6">Added</a></h3>
 <ul>
 <li><code>dstu-core</code> (Python bindings) is now genuinely live on <a href="https://pypi.org/project/dstu-core/">PyPI</a>
 0.1.0 - the 0.3.1 tag’s <code>publish-pypi</code> run actually went through (see Fixed, below), so this is
@@ -715,7 +742,7 @@ crates.io/PyPI don’t need re-publishing, just <code>dstu-core</code>/<code>uac
 <code>0.3.2</code> so <code>cargo publish</code> has something new to accept.</li>
 </ul>
 <h2 id="031---2026-08-12"><a class="header" href="#031---2026-08-12">[0.3.1] - 2026-08-12</a></h2>
-<h3 id="added-6"><a class="header" href="#added-6">Added</a></h3>
+<h3 id="added-7"><a class="header" href="#added-7">Added</a></h3>
 <ul>
 <li><code>crypto_box512</code>/<code>crypto_sign257</code>: wired into <code>dstu-core-capi</code> and all eight language bindings
 (Python/Node.js/Ruby/Java/PHP/.NET/Go/C++) - both landed in <code>dstu-core</code> itself already, in 0.3.0
@@ -749,7 +776,7 @@ still pre-1.0, still not independently audited, and the headline provisional gap
 yet confirmed against their primary DSTU texts) are unchanged by this release - see that document
 and <code>docs/DECISIONS.md</code> for the full standing caveats, repeated here exactly as prominently as
 0.2.0’s own notes did below.</p>
-<h3 id="added-7"><a class="header" href="#added-7">Added</a></h3>
+<h3 id="added-8"><a class="header" href="#added-8">Added</a></h3>
 <ul>
 <li><code>hazmat::dstu9041</code>: DSTU 9041:2020 hybrid (ECIES-style) asymmetric encryption over a twisted
 Edwards curve, <code>l(p)=256</code>/E256/1 only (D-47’s “ship the recommended curve first” precedent) -
@@ -827,7 +854,7 @@ DSTU 4145 <code>sign</code>/<code>verify</code> up ~26-32x on the dev machine (<
 <h2 id="020---2026-08-02"><a class="header" href="#020---2026-08-02">[0.2.0] - 2026-08-02</a></h2>
 <p>Second tagged release - GitHub Releases only, no crates.io publish (<code>docs/TASKS.md</code> T-17 stays
 separately gated, same posture as v0.1.0).</p>
-<h3 id="added-8"><a class="header" href="#added-8">Added</a></h3>
+<h3 id="added-9"><a class="header" href="#added-9">Added</a></h3>
 <ul>
 <li><code>crypto_sign</code>/<code>uacrypt</code>: DSTU 4145 digital-signature CLI commands - <code>sign-keygen</code>, <code>sign-pubkey</code>,
 <code>sign</code>, <code>verify</code> (<code>docs/TASKS.md</code> T-124).</li>
@@ -877,7 +904,7 @@ instead.</li>
 <p>First tagged release - GitHub Releases only (<code>docs/TASKS.md</code> T-18); not published to crates.io
 (<code>docs/TASKS.md</code> T-17 stays separately gated on an explicit owner request). Everything below predates
 this tag; there is no reconstructed per-commit history before it.</p>
-<h3 id="added-9"><a class="header" href="#added-9">Added</a></h3>
+<h3 id="added-10"><a class="header" href="#added-10">Added</a></h3>
 <ul>
 <li><code>dstu-core</code>: <code>hazmat</code> primitives for all three in-scope DSTU algorithms - Kupyna (DSTU
 7564:2014, one-shot and streaming), Kalyna (DSTU 7624:2014, single-block encrypt/decrypt across

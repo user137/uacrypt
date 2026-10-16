@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-0bcf2a55.js";
+            window.path_to_searchindex_js = "searchindex-5499e9ca.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -250,8 +250,8 @@ is known to end right after it, so a file with extra bytes appended never prints
 written to stdout is INCOMPLETE - discard it”, and the exit status is non-zero (1 for a bad
 file, 3 if stdout itself failed). Check it: in a shell pipeline such as <code>... --out - | tar x</code>
 the pipeline’s status is <code>tar</code>’s unless you <code>set -o pipefail</code>. With <code>--out &lt;file&gt;</code> nothing is
-written unless the whole file verifies. <code>box-open</code> decrypts the whole message before printing
-anything, so it never prints part of one.</li>
+written unless the whole file verifies. <code>box-open</code> (0.7.0, T-265) behaves the same way; a file
+from 0.4-0.6 is decrypted whole before anything is printed.</li>
 <li>Windows (measured 2026-09-24): cmd and PowerShell 7.6 passed a 100 kB <code>encrypt --out -</code> through
 <code>&gt;</code> and through <code>| uacrypt decrypt --in -</code> byte for byte. Windows PowerShell 5.1 re-encodes a
 native command’s output as text, which corrupts binary data: its <code>&gt;</code> turned a 310-byte output
@@ -261,8 +261,8 @@ byte-order mark). <code>decrypt</code> names this cause when it sees such a star
 <li>A closed pipe is an error, not a silent stop: <code>decrypt ... --out - | head -c 100</code> makes
 <code>decrypt</code> exit 3 with the INCOMPLETE message once <code>head</code> exits, which fails a <code>set -o pipefail</code>
 pipeline.</li>
-<li><code>box-seal</code>/<code>box-open</code> read all of stdin into memory, as they do a file (not bounded yet, T-265);
-<code>encrypt</code>/<code>decrypt</code>/<code>hash</code>/<code>sign</code>/<code>verify</code> read stdin in the same fixed-size chunks as a file.</li>
+<li><code>encrypt</code>/<code>decrypt</code>/<code>box-seal</code>/<code>box-open</code>/<code>hash</code>/<code>sign</code>/<code>verify</code> read stdin in the same
+fixed-size chunks as a file (<code>box-open</code> of a 0.4-0.6 file reads it whole).</li>
 </ul>
 <p><strong>Progress (0.5.0, T-261, <code>docs/DECISIONS.md</code> D-218).</strong> When stderr is a terminal and <code>--in</code> is
 a file of 64 MiB or more, <code>encrypt</code>, <code>decrypt</code>, <code>hash</code>, <code>sign</code> and <code>verify</code> show one line on
@@ -270,8 +270,7 @@ stderr, such as <code>uacrypt: 1.2 GiB / 4.0 GiB (30%)</code>. It is redrawn at 
 erased before the command prints its result or its error. For stdin, where the size is unknown, it
 is a byte counter (<code>uacrypt: 96.0 MiB read</code>) that appears once 64 MiB have been read. There is no
 flag: with stderr redirected or piped (<code>2&gt;file</code>, <code>2&gt;&amp;1 | ...</code>, a script, CI) nothing is printed at
-all. <code>box-seal</code>/<code>box-open</code> show none until they stop reading <code>--in</code> whole (T-265), and the
-lower-level <code>kalyna-*</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> commands never do. Known cosmetic limit:
+all. <code>box-seal</code>/<code>box-open</code> show the same line since 0.7.0 (T-265), and the lower-level <code>kalyna-*</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> commands never do. Known cosmetic limit:
 in <code>decrypt --out - | more</code> on a large file, the line is drawn over the pager’s screen, because
 both share the terminal (do not silence it with <code>2&gt;/dev/null</code> - that hides the INCOMPLETE warning
 too). Ctrl-C leaves the last line on screen without a newline.</p>
@@ -389,8 +388,10 @@ uacrypt box-open --key box.key --in message.bin.box --out opened.bin
 <p><code>box-keygen</code>’s output (<code>box.key</code>) is secret. <code>box-pubkey</code> derives the matching <code>box.pub</code> (the
 curve point’s <code>x</code>-coordinate only) from it, safe to share or publish. Both are typed key files
 (<a href="#key-files">Key files</a>), so <code>box-seal</code> refuses a secret key by name instead of sealing to it.
-<code>box-seal</code>/<code>box-open</code> are <strong>not memory-bounded</strong> yet — <code>--in</code> is read whole into memory, unlike
-<code>encrypt</code>/<code>decrypt</code>’s bounded-chunk streaming (see <code>crypto_box</code>’s own module doc for why).</p>
+<code>box-seal</code>/<code>box-open</code> stream <code>--in</code> in bounded memory like <code>encrypt</code>/<code>decrypt</code> (0.7.0, T-265,
+<code>docs/DECISIONS.md</code> D-239). <code>box-open</code> still opens files sealed by 0.4-0.6, but reads those whole
+into memory - and any <code>--in</code> starting with byte <code>02</code> (for instance an <code>encrypt</code> output passed by
+mistake) takes that path, so it is read whole before it fails. 0.6 cannot open 0.7 output.</p>
 <p>For DSTU 9041’s <code>l(p)=512</code> curve (E512/1, <code>docs/TASKS.md</code> T-193, <code>docs/DECISIONS.md</code> D-182),
 generate the key with <code>box-keygen512</code> instead; <code>box-pubkey</code>, <code>box-seal</code> and <code>box-open</code> read the
 curve from the key (T-257, D-213). Keys are 64 bytes instead of 32, and a sealed file has 305
@@ -495,8 +496,9 @@ Sigstore bundle format, and cosign v2 without that flag fails with “bundle doe
 versions compiled into a downloaded binary against the RustSec advisory database.</p>
 <h2 id="file-formats"><a class="header" href="#file-formats">File formats</a></h2>
 <p>What each command writes, byte by byte. Sizes are in bytes, <code>||</code> means concatenation, and
-multi-byte integers are little-endian. <code>uacrypt --version</code> prints the container format version
-next to the release version (currently <code>2</code>, D-202).</p>
+multi-byte integers are little-endian. <code>uacrypt --version</code> prints the <code>encrypt</code> stream format
+version next to the release version (currently <code>2</code>, D-202); <code>box-seal</code> files carry their own
+version byte (<code>3</code> since 0.7.0, D-239) in front of that stream.</p>
 <p><strong>Why containers.</strong> Every everyday command writes a self-describing container, not a bare
 ciphertext. The container holds what decryption needs (the header, the KEM ciphertext), a format
 version where one exists, and the true ciphertext length inside every authentication tag. Since
@@ -513,7 +515,7 @@ was not yet so.</p>
 <tr><td><code>encrypt</code></td><td>encrypted file</td><td><code>version (1) || header (32)</code>, then one or more records, each <code>chunk tag (1) || ciphertext length (4) || ciphertext || auth tag (16)</code></td></tr>
 <tr><td><code>encrypt --passphrase</code> / <code>--passphrase-file</code></td><td>encrypted file</td><td><code>0x50 || 0x01 || 0x01 || m_cost KiB (4) || t_cost (4) || p_cost (1) || salt (16)</code>, then the <code>encrypt</code> layout above</td></tr>
 <tr><td><code>box-keygen</code> / <code>box-keygen512</code> / <code>box-pubkey</code></td><td>secret / public key</td><td>a key line each (the public key is the curve point’s <code>x</code>-coordinate)</td></tr>
-<tr><td><code>box-seal</code></td><td>sealed file</td><td><code>version (1) || KEM ciphertext (128, or 256 for an l(p)=512 key) || header (32) || ciphertext || auth tag (16)</code>: 177 or 305 bytes of overhead</td></tr>
+<tr><td><code>box-seal</code></td><td>sealed file</td><td><code>version (1, = 3) || KEM ciphertext (128, or 256 for an l(p)=512 key) || &lt;the encrypt stream format&gt;</code>: 183 or 311 bytes for an input under 8 KiB, plus 21 per further started 8 KiB (D-239; 0.4-0.6 wrote version 2, one chunk, still read by <code>box-open</code>)</td></tr>
 <tr><td><code>sign-keygen</code> / <code>sign-keygen257</code></td><td>signing key</td><td>a key line (the scalar <code>d</code>, big-endian)</td></tr>
 <tr><td><code>sign-pubkey</code></td><td>verifying key</td><td>a key line (<code>x || y</code>) of the signing key’s curve</td></tr>
 <tr><td><code>sign</code></td><td>signature</td><td>42 raw bytes for an m=163 key, 66 for m=257; <code>verify</code> picks the curve from the verifying key’s kind</td></tr>
