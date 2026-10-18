@@ -8584,6 +8584,13 @@ which is exactly why the divergence was never caught.
   re-run of `tests/oracle-harness/uapki-kalyna-modes/` on `37039b1`: 78/93, CMAC(empty) = `ERR 27`.
   Left: (b) BC - annex В.8.1.3 is the partial-block GMAC vector BC says doesn't exist (#287 closed
   2026-05-30); check a post-1.85 BC first, comment only on owner go-ahead.
+  **BC checked 2026-10-18:** 1.86 (2026-09-11, sha1 matches Maven Central) has KGCM/KGMac/
+  DSTU7624Mac unchanged from 1.85. Run on our vectors: block-aligned 11/11 identical (control);
+  `kalyna-{gcm,gmac}/partial-*.json` 0/38 tags identical, 38/38 ciphertexts identical - still zero
+  padding. bc-java `main` `004f0ba` (2026-09-24, unreleased) rejects empty GCM/GMAC input and
+  empty CMAC (after the owner's e-mail to BC); padding and the "no partial-block vector" javadoc
+  are unchanged there. **Owner 2026-10-18: no BC comment** - BC already fixed what was reported
+  (the owner wrote to them by e-mail); T-247 is closed.
   Original scope: (**owner-gated, outward-facing**) Upstream reports: (a) an issue on
   specinfo-ua/UAPKI describing the GCM/GMAC padded-length non-injectivity and the CMAC empty-message
   collision, with V1/V3/V4 (D-91 precedent for conventions: `MODULE: short description`, mixed
