@@ -7681,8 +7681,13 @@ Phase 2+ and none currently in flight).
   happened, per the gate-at-both-ends rule) - see D-199's own closing paragraph for what it found
   and the follow-up fixes.
 
-- [ ] **T-231** (2026-09-17, corrected 2026-09-18) **Investigate recurring VmRSS-threshold failure
+- [x] **T-231** (2026-09-17, corrected 2026-09-18) **Investigate recurring VmRSS-threshold failure
   in `bindings-dotnet`'s `MemoryLeakTests.SecretstreamAndBoxLoopDoesNotLeak` (T-213).**
+  **Done 2026-10-18 (0.7.0 step 0): retention, not a leak.** Draft PR #13 (`t231-dotnet-40k`,
+  never merged), run `39163312871`, 40000 iterations: VmRSS +3.87 MB (3.72-3.75 MB at 20000 on
+  `master`, 16-18.10), native remainder (VmRSS minus managed committed) 0.52 MB at 20000 ->
+  0.86 MB at 40000 - a per-iteration leak of the ~50 B the 20000-run midpoints suggested would
+  reach ~2 MB. The growth levels off; threshold and test unchanged. No failure since 2026-09-17.
   **2026-10-11, Java half done (D-234):** the same test in `bindings-java` started failing after
   0.5.0; measured on the Pi it is JVM heap growth, not a leak, and the old 8 MiB test could not
   see a real leak either. Fixed: fixed pre-touched heap for the Java test fork, threshold 1 MiB
