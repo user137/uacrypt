@@ -1,7 +1,7 @@
 """Feeds every kalyna-{gcm,gmac,ccm,cmac} vector to uapki_oracle.exe and compares (D-231).
 
 Usage: python run_oracle.py <path to uapki_oracle.exe> [-v]
-Expected against UAPKI 0bf2b68: 78/93 identical; the 15 differences are all CCM with an empty
+Expected against UAPKI 0bf2b68 and 37039b1: 78/93 identical; the 15 differences are all CCM with an empty
 AAD (UAPKI reads section 13.2's "B = G1" literally, dstu-core reads it as T(G1), D-205 (b)).
 """
 import glob

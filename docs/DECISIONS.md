@@ -15280,6 +15280,8 @@ differences are CCM with an empty AAD: same ciphertext, different tag, because U
 CCM edge cases are now marked "std transcription + UAPKI 2.0.3". All GCM/GMAC partial-block vectors
 (D-204) and both CMAC paths match too. Empty CMAC input is rejected by us and accepted by UAPKI, so
 no vector covers it. `dstu7624_self_test` passes on that build (annex examples, incl. XTS/KW).
+Update 2026-10-18: re-run on UAPKI `37039b1` gives the same 78/93; empty CMAC is now rejected
+there too (`62a1bdf`, `ERR 27`).
 
 **Independence.** Partial. UAPKI's rewrite came after our report, which described only the empty
 GCM/GMAC input and empty CMAC, not CCM and not the padding/length rules. Our fixed code was never

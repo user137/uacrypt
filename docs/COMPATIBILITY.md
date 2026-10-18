@@ -12,7 +12,8 @@ Compared against:
   change. That is uapkic 2.0.2, the version in every tagged UAPKI release up to v2.0.17.
 - **UAPKI 2.0.3**: uapkic as rewritten on 2026-09-29 (`deffe4a`, "Fix Kalyna GCM, GMAC and CCM
   modes"), not yet in a tagged release. Built from `master` `0bf2b68` and run directly against
-  `dstu-core` on Kalyna-128/128 only (2026-10-03); `dstu7624_self_test` passes.
+  `dstu-core` on Kalyna-128/128 only (2026-10-03); `dstu7624_self_test` passes. Re-run on `master`
+  `37039b1` (2026-10-18): same results, except that an empty CMAC message is now rejected (`62a1bdf`).
 - **Bouncy Castle**: `bcprov-jdk18on` 1.85 (`KGCMBlockCipher`, `KGMac`, `KCCMBlockCipher`,
   `DSTU7624Mac`), run directly.
 - **Standard**: DSTU 7624:2014 (draft edition), DSTU 7564:2014 (draft edition), DSTU 4145-2002.
@@ -36,7 +37,7 @@ Compared against:
 | CCM | AAD not block-aligned, otherwise | standard | same | same | differs (`len‖AAD‖0`, not `len‖0‖AAD`) |
 | CCM | empty plaintext | rejected (outside §13.1's domain) | accepted | rejected | accepted |
 | CMAC | message not block-aligned (annex В.5.2) | standard | same | same | throws |
-| CMAC | empty message | rejected (outside §9's domain) | `MAC(ε) = MAC(0^l)` | `MAC(ε) = MAC(0^l)` (unchanged) | `MAC(ε) = MAC(0^l)` |
+| CMAC | empty message | rejected (outside §9's domain) | `MAC(ε) = MAC(0^l)` | rejected (`62a1bdf`, 2026-10-06) | `MAC(ε) = MAC(0^l)` |
 
 Practical consequence: for GCM/GMAC/CCM with arbitrary-length data, UAPKI ≤ 2.0.2, Bouncy Castle and
 dstu-core produce different tags, so tags exchanged between them only verify on block-aligned inputs.

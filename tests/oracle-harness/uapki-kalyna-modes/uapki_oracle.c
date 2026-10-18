@@ -1,12 +1,15 @@
 /*
  * Runs dstu-core's Kalyna GCM/GMAC/CCM/CMAC vectors through UAPKI's uapkic 2.0.3 (D-231). Driven by
- * run_oracle.py; not a CI harness. Pinned to specinfo-ua/UAPKI main 0bf2b68 (2026-09-30), which
+ * run_oracle.py; not a CI harness. Pinned to specinfo-ua/UAPKI main 37039b1 (2026-10-13), which
  * carries the 2.0.3 mode rewrite (deffe4a); uapkic 2.0.2 and older use the pre-standard modes.
+ * jitterentropy refuses to compile with optimizations, so it is built separately at -O0.
  *
- *   git clone https://github.com/specinfo-ua/UAPKI && git -C UAPKI checkout 0bf2b68
+ *   git clone https://github.com/specinfo-ua/UAPKI && git -C UAPKI checkout 37039b1
  *   cd UAPKI/library/uapkic
- *   gcc -O1 -DUAPKIC_STATIC '-DUAPKIC_VERSION_STRING="3.0.0"' -I include -I src \
- *       <this dir>/uapki_oracle.c src/*.c -o uapki_oracle.exe -lbcrypt     (-lbcrypt: Windows only)
+ *   F="-DUAPKIC_STATIC -DUAPKIC_VERSION_STRING=\"3.0.0\" -I include -I src"
+ *   for f in src/jitterentropy*.c; do gcc -O0 $F -c $f -o ${f%.c}.o; done
+ *   gcc -O1 $F <this dir>/uapki_oracle.c $(ls src/*.c | grep -v jitterentropy) src/jitterentropy*.o \
+ *       -o uapki_oracle.exe -lbcrypt     (-lbcrypt: Windows only)
  *   python <this dir>/run_oracle.py <path to uapki_oracle.exe>
  *
  * stdin: one case per line, "<mode> <block_bytes> <q> <n_max> <key> <iv> <aad> <data>", hex, "-" = empty.

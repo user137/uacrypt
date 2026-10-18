@@ -8579,7 +8579,12 @@ which is exactly why the divergence was never caught.
   `CLAUDE.md`'s "cross-checked against real Bouncy Castle" wording scoped to block-aligned input for
   GCM/GMAC (from T-237 - pair the addition with a deletion). Also move the 2026-09-23 "Standards
   baseline" table into `docs/SECURITY.md` (policy belongs there; TASKS.md keeps a pointer).
-- [ ] **T-247** (**owner-gated, outward-facing**) Upstream reports: (a) an issue on
+- [x] **T-247** **Superseded 2026-10-18, nothing posted:** the private GHSAs (T-233) already reached
+  UAPKI, which fixed GCM/GMAC/CCM (`deffe4a`, 2.0.3) and empty CMAC (`62a1bdf`, 2026-10-06);
+  re-run of `tests/oracle-harness/uapki-kalyna-modes/` on `37039b1`: 78/93, CMAC(empty) = `ERR 27`.
+  Left: (b) BC - annex В.8.1.3 is the partial-block GMAC vector BC says doesn't exist (#287 closed
+  2026-05-30); check a post-1.85 BC first, comment only on owner go-ahead.
+  Original scope: (**owner-gated, outward-facing**) Upstream reports: (a) an issue on
   specinfo-ua/UAPKI describing the GCM/GMAC padded-length non-injectivity and the CMAC empty-message
   collision, with V1/V3/V4 (D-91 precedent for conventions: `MODULE: short description`, mixed
   UA/EN); (b) a comment on bc-java github #287 with V1/V4 as a concrete UAPKI-vs-BC divergence data
