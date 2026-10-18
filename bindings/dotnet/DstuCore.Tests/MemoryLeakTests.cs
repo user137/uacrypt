@@ -89,7 +89,7 @@ public class MemoryLeakTests
         }
 
         const int warmup = 2000;
-        const int n = 20000;
+        const int n = 40000; // T-231 one-off reading, never merged
         // Comfortable margin above normal .NET GC/JIT churn but far below what N leaked handles
         // would show at this scale - same order of magnitude as the Java binding's own threshold.
         const long maxAcceptableGrowthBytes = 8L * 1024 * 1024;
