@@ -14542,7 +14542,8 @@ abort, and the blocks are zeroized before they are freed. Two new `PwHashError` 
 (`OutOfMemory`, `Derive`) break an exhaustive `match`; `dstu-core-capi`'s one match maps them to
 `DSTU_ERR_HASH_ERROR` (`hash_password` never returns them). **Binding gate:** `derive_key` is a
 new `crypto_*` function, so T-269 tracks wiring it into the 8 bindings and the C ABI; the
-passphrase file format stays `uacrypt`-only until then.
+passphrase file format stays `uacrypt`-only until then. (Superseded 2026-10-18: D-240 moves the
+format into the core and every binding.)
 
 **Decision - CLI.**
 - `encrypt`: exactly one of `--key`, `--passphrase` (terminal, asked twice), `--passphrase-file`.
@@ -15536,3 +15537,23 @@ is a compat pin, not an oracle: two files written by the released 0.6.0 `uacrypt
 `crates/dstu-core/tests/gen_passphrase_file_vectors.py`. Checked: those files open in the core, a
 file from the new `uacrypt` opens in 0.6.0 and back, and every header refusal runs under Miri (the
 Argon2-running tests are `cfg_attr(miri, ignore)`: 256 MiB per run).
+
+**Decisions made while wiring it (T-269 phases 2-3, 2026-10-19), recorded so they are not only in
+code:**
+- C ABI statuses: `NotPassphraseFile` and `UnsupportedFormat` both map to
+  `DSTU_ERR_UNSUPPORTED_VERSION`, `UnsupportedParams` to the new `DSTU_ERR_UNSUPPORTED_PARAMS` (18),
+  Argon2 out of memory to `DSTU_ERR_OUT_OF_MEMORY` (19), an empty passphrase to
+  `DSTU_ERR_INVALID_LENGTH`. Consequence: the .NET/Go/C++ bindings report a key-encrypted stream
+  as "unsupported format version", while the direct-Rust bindings (Python/Node/Ruby/PHP/Java) carry
+  the core's "not a passphrase file" message. Both fail closed; only the wording differs.
+- .NET/Go/C++ refuse an empty passphrase themselves as an argument error, before the C call.
+- Blocking: every new Argon2 call holds the Python GIL, the Node event loop and the Ruby GVL, the
+  same choice the existing `hash_password` wrappers made (no binding offloads it).
+- No new fuzz target: `Header::parse` destructures a fixed 28-byte array with no length field to
+  trust, so it has no parsing state to explore; `open_stream` would cost a 256 MiB Argon2 run per
+  input; the bytes after the header are the D-208 stream file, already covered by the
+  `crypto_secretstream_file` fuzz target. Recorded as foreclosed, not skipped.
+- Shapes per binding: the existing stream type gains constructors (Python/Ruby subclasses, Node
+  `stream.Transform` subclasses, PHP/Java/.NET/C++ `forBox`/`forBox512`/`forPassphrase` factories,
+  Go `NewBox*`/`NewPassphrase*` functions); PHP's writer/reader constructors also accept an already
+  started codec object, which is how the factories build them.

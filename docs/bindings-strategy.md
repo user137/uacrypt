@@ -1085,7 +1085,8 @@ own idiomatic error-return shape — exception, `Result`, `(value, err)` — mat
 already surfaces `crypto_secretbox`'s `open` failure). No new streaming primitive — `seal`/`open`
 already documented as not memory-bounded at the Rust/C-ABI layer (D-169/D-171), the binding inherits
 that limitation, document it in the same place `crypto_secretbox`'s own binding wrapper already
-notes its own non-streaming nature.
+notes its own non-streaming nature. (Since T-265/T-269 every binding also has the streaming form,
+over its existing stream type.)
 
 **Test-vector note**: no DSTU vector oracle exists for this composite construction (D-169's own
 "Provenance" section — same as `crypto_secretstream`, D-68) — every binding's local test suite
