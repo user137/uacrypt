@@ -11,14 +11,14 @@ use jni::sys::jbyteArray;
 use jni::JNIEnv;
 use std::ptr;
 
-fn secret_key_from_bytes(bytes: &[u8]) -> Result<SecretKey, Failure> {
+pub(crate) fn secret_key_from_bytes(bytes: &[u8]) -> Result<SecretKey, Failure> {
     let e = to_array::<64>(bytes, "secretKey")?;
     SecretKey::from_bytes(&e).ok_or_else(|| {
         Failure::Misuse("invalid secret key: must be in the range {2, ..., n-2}".to_string())
     })
 }
 
-fn public_key_from_bytes(bytes: &[u8]) -> Result<PublicKey, Failure> {
+pub(crate) fn public_key_from_bytes(bytes: &[u8]) -> Result<PublicKey, Failure> {
     let x = to_array::<64>(bytes, "publicKey")?;
     PublicKey::from_bytes(&x).ok_or_else(|| {
         Failure::Misuse(

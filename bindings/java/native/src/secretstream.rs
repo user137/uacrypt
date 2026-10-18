@@ -12,10 +12,12 @@
 //! file format itself.
 
 use crate::util::{guard, to_array, Failure, IntoCrypto};
+use dstu_core::crypto_pwhash::passphrase_file::{self, Header, HEADER_BYTES};
 use dstu_core::crypto_secretstream::{
     FileDecryptor, FileEncryptor, Key, PullState, PushState, Tag, CHUNK_BYTES, FILE_PREFIX_BYTES,
     MAX_RECORD_BYTES,
 };
+use dstu_core::{crypto_box, crypto_box512};
 use jni::objects::{JByteArray, JClass};
 use jni::sys::{jboolean, jbyteArray, jint, jlong, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
@@ -424,4 +426,139 @@ pub extern "system" fn Java_ua_dstucrypto_dstucore_SecretStreamDecryptor_nativeF
             drop(Box::from_raw(handle as *mut FileDecryptor));
         }
     }
+}
+
+/// T-269: hands an encryptor started under a box KEM prefix or a passphrase-file header to Java,
+/// writing its whole prefix into `prefix_out` (sized by the Java side; a mismatch is a misuse).
+fn start_encryptor(
+    env: &mut JNIEnv,
+    prefix_out: &JByteArray,
+    (enc, prefix): (FileEncryptor, &[u8]),
+) -> Result<jlong, Failure> {
+    let out_len = env.get_array_length(prefix_out).expect("prefix length");
+    if usize::try_from(out_len).ok() != Some(prefix.len()) {
+        return Err(Failure::Misuse(format!(
+            "prefixOut must be exactly {} bytes",
+            prefix.len()
+        )));
+    }
+    env.set_byte_array_region(prefix_out, 0, &to_signed(prefix))
+        .expect("set prefix");
+    Ok(Box::into_raw(Box::new(enc)) as jlong)
+}
+
+/// Starts a `crypto_box` (format v3) stream to `publicKey`.
+#[no_mangle]
+pub extern "system" fn Java_ua_dstucrypto_dstucore_SecretStreamEncryptor_nativeBoxSeal<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    public_key: JByteArray<'local>,
+    prefix_out: JByteArray<'local>,
+) -> jlong {
+    guard(&mut env, 0, |env| {
+        let bytes = env.convert_byte_array(&public_key).expect("convert key");
+        let recipient = crate::crypto_box::public_key_from_bytes(&bytes)?;
+        let (enc, prefix) = crypto_box::seal_stream(&recipient).crypto()?;
+        start_encryptor(env, &prefix_out, (enc, &prefix))
+    })
+}
+
+/// Starts a `crypto_box512` (format v3) stream to `publicKey`.
+#[no_mangle]
+pub extern "system" fn Java_ua_dstucrypto_dstucore_SecretStreamEncryptor_nativeBox512Seal<
+    'local,
+>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    public_key: JByteArray<'local>,
+    prefix_out: JByteArray<'local>,
+) -> jlong {
+    guard(&mut env, 0, |env| {
+        let bytes = env.convert_byte_array(&public_key).expect("convert key");
+        let recipient = crate::box512::public_key_from_bytes(&bytes)?;
+        let (enc, prefix) = crypto_box512::seal_stream(&recipient).crypto()?;
+        start_encryptor(env, &prefix_out, (enc, &prefix))
+    })
+}
+
+/// Starts a passphrase file (D-219/D-240); runs Argon2 (256 MiB, t=3) on the calling thread, as
+/// `Pwhash.hashPassword` does.
+#[no_mangle]
+pub extern "system" fn Java_ua_dstucrypto_dstucore_SecretStreamEncryptor_nativePassphraseSeal<
+    'local,
+>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    passphrase: JByteArray<'local>,
+    prefix_out: JByteArray<'local>,
+) -> jlong {
+    guard(&mut env, 0, |env| {
+        let passphrase = env
+            .convert_byte_array(&passphrase)
+            .expect("convert passphrase");
+        let (enc, prefix) = passphrase_file::seal_stream(&passphrase).crypto()?;
+        start_encryptor(env, &prefix_out, (enc, &prefix))
+    })
+}
+
+/// Opens a `crypto_box` stream: `prefix` is its first `Box.OPEN_STREAM_PREFIX_BYTES` bytes.
+#[no_mangle]
+pub extern "system" fn Java_ua_dstucrypto_dstucore_SecretStreamDecryptor_nativeBoxOpen<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    secret_key: JByteArray<'local>,
+    prefix: JByteArray<'local>,
+) -> jlong {
+    guard(&mut env, 0, |env| {
+        let key = env.convert_byte_array(&secret_key).expect("convert key");
+        let secret = crate::crypto_box::secret_key_from_bytes(&key)?;
+        let prefix = env.convert_byte_array(&prefix).expect("convert prefix");
+        let prefix = to_array::<{ crypto_box::OPEN_STREAM_PREFIX_BYTES }>(&prefix, "prefix")?;
+        let dec = crypto_box::open_stream(&prefix, &secret).crypto()?;
+        Ok(Box::into_raw(Box::new(dec)) as jlong)
+    })
+}
+
+/// Opens a `crypto_box512` stream: `prefix` is its first `Box512.OPEN_STREAM_PREFIX_BYTES` bytes.
+#[no_mangle]
+pub extern "system" fn Java_ua_dstucrypto_dstucore_SecretStreamDecryptor_nativeBox512Open<
+    'local,
+>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    secret_key: JByteArray<'local>,
+    prefix: JByteArray<'local>,
+) -> jlong {
+    guard(&mut env, 0, |env| {
+        let key = env.convert_byte_array(&secret_key).expect("convert key");
+        let secret = crate::box512::secret_key_from_bytes(&key)?;
+        let prefix = env.convert_byte_array(&prefix).expect("convert prefix");
+        let prefix = to_array::<{ crypto_box512::OPEN_STREAM_PREFIX_BYTES }>(&prefix, "prefix")?;
+        let dec = crypto_box512::open_stream(&prefix, &secret).crypto()?;
+        Ok(Box::into_raw(Box::new(dec)) as jlong)
+    })
+}
+
+/// Opens a passphrase file: `header` is its first 28 bytes, checked before Argon2 runs. A wrong
+/// passphrase fails at the first record.
+#[no_mangle]
+pub extern "system" fn Java_ua_dstucrypto_dstucore_SecretStreamDecryptor_nativePassphraseOpen<
+    'local,
+>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    header: JByteArray<'local>,
+    passphrase: JByteArray<'local>,
+) -> jlong {
+    guard(&mut env, 0, |env| {
+        let header = env.convert_byte_array(&header).expect("convert header");
+        let header = to_array::<HEADER_BYTES>(&header, "header")?;
+        let passphrase = env
+            .convert_byte_array(&passphrase)
+            .expect("convert passphrase");
+        let dec = Header::parse(&header)
+            .and_then(|h| h.open_stream(&passphrase))
+            .crypto()?;
+        Ok(Box::into_raw(Box::new(dec)) as jlong)
+    })
 }

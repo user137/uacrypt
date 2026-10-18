@@ -36,6 +36,11 @@ public final class SecretStreamEncryptor extends OutputStream {
     // class only needs it to cut input into chunks.
     static final int CHUNK_BYTES = 8 * 1024;
     private static final int FILE_PREFIX_BYTES = 33;
+    // The box/passphrase prefix in front of the stream file's own (D-239/D-240); the native side
+    // refuses any other length, so a drift fails every test.
+    private static final int BOX_SEAL_PREFIX_BYTES = 1 + 128 + FILE_PREFIX_BYTES;
+    private static final int BOX512_SEAL_PREFIX_BYTES = 1 + 256 + FILE_PREFIX_BYTES;
+    private static final int PASSPHRASE_SEAL_PREFIX_BYTES = 28 + FILE_PREFIX_BYTES;
 
     private final OutputStream out;
     private long handle;
@@ -48,17 +53,60 @@ public final class SecretStreamEncryptor extends OutputStream {
     // lifetime (SpotBugs EI_EXPOSE_REP2, T-208) - the same "store the wrapped stream by reference"
     // shape java.io.FilterOutputStream/DeflaterOutputStream use in the JDK itself. There is no
     // meaningful defensive copy of an OutputStream to make here.
-    @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "streaming encryptor must retain the caller's sink to write to it, same as java.io.FilterOutputStream")
     public SecretStreamEncryptor(byte[] key, OutputStream out) throws IOException {
+        this(out, startWithKey(key));
+    }
+
+    @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "streaming encryptor must retain the caller's sink to write to it, same as java.io.FilterOutputStream")
+    private SecretStreamEncryptor(OutputStream out, Started started) throws IOException {
         this.out = out;
-        byte[] prefix = new byte[FILE_PREFIX_BYTES];
-        this.handle = nativeInit(key, prefix);
+        this.handle = started.handle;
         try {
-            out.write(prefix);
+            out.write(started.prefix);
         } catch (IOException | RuntimeException e) {
             nativeFree(handle);
             handle = 0;
             throw e;
+        }
+    }
+
+    /**
+     * {@code crypto_box} sealed to {@code publicKey} as a stream (format v3, T-265/T-269): the
+     * same bytes {@link Box#seal} returns, written chunk by chunk.
+     */
+    public static SecretStreamEncryptor forBox(byte[] publicKey, OutputStream out) throws IOException {
+        byte[] prefix = new byte[BOX_SEAL_PREFIX_BYTES];
+        return new SecretStreamEncryptor(out, new Started(nativeBoxSeal(publicKey, prefix), prefix));
+    }
+
+    /** {@code crypto_box512} counterpart of {@link #forBox}. */
+    public static SecretStreamEncryptor forBox512(byte[] publicKey, OutputStream out) throws IOException {
+        byte[] prefix = new byte[BOX512_SEAL_PREFIX_BYTES];
+        return new SecretStreamEncryptor(out, new Started(nativeBox512Seal(publicKey, prefix), prefix));
+    }
+
+    /**
+     * A passphrase file (D-219/D-240) - the bytes {@code uacrypt encrypt --passphrase} writes.
+     * Runs Argon2id (256 MiB, t=3, about a second) on the calling thread before writing anything.
+     */
+    public static SecretStreamEncryptor forPassphrase(byte[] passphrase, OutputStream out) throws IOException {
+        byte[] prefix = new byte[PASSPHRASE_SEAL_PREFIX_BYTES];
+        return new SecretStreamEncryptor(out, new Started(nativePassphraseSeal(passphrase, prefix), prefix));
+    }
+
+    private static Started startWithKey(byte[] key) {
+        byte[] prefix = new byte[FILE_PREFIX_BYTES];
+        return new Started(nativeInit(key, prefix), prefix);
+    }
+
+    /** A native encryptor handle and the bytes to write before its first record. */
+    private static final class Started {
+        final long handle;
+        final byte[] prefix;
+
+        Started(long handle, byte[] prefix) {
+            this.handle = handle;
+            this.prefix = prefix;
         }
     }
 
@@ -152,6 +200,12 @@ public final class SecretStreamEncryptor extends OutputStream {
     }
 
     private static native long nativeInit(byte[] key, byte[] prefixOut);
+
+    private static native long nativeBoxSeal(byte[] publicKey, byte[] prefixOut);
+
+    private static native long nativeBox512Seal(byte[] publicKey, byte[] prefixOut);
+
+    private static native long nativePassphraseSeal(byte[] passphrase, byte[] prefixOut);
 
     private static native byte[] nativeSealChunk(long handle, byte[] src, int offset);
 

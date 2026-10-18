@@ -41,12 +41,12 @@ correctness/rejection/misuse suite each surface is verified against (D-64/D-65).
 | Type | Members | Notes |
 |---|---|---|
 | `SecretBox` | `keygen`, `seal`, `open` | Single-message authenticated encryption. `examples secretbox`. |
-| `Box` | `keygen`, `publicKey`, `seal`, `open` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, `l(p)=256`, D-169). `seal`/`open` are not memory-bounded — the whole message is held in memory. `examples box`. |
+| `Box` | `keygen`, `publicKey`, `seal`, `open`; `SecretStreamEncryptor.forBox`, `SecretStreamDecryptor.forBox` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, `l(p)=256`, D-169). `seal`/`open` hold the whole message in memory; the `forBox` streams write and read the same bytes (format v3) chunk by chunk, as `uacrypt box-seal`/`box-open` do (`forBox512` for `Box512`). `examples box`. |
 | `Box512` | Same members as `Box` | `l(p)=512`/E512/1 sibling of `crypto_box` (T-193/T-204) — distinct class, not interchangeable. `examples box512`. |
 | `SecretStream`, `SecretStreamEncryptor`, `SecretStreamDecryptor` | `keygen`; `OutputStream`/`InputStream` subclasses | Chunked streaming AEAD. Wire format matches `uacrypt encrypt`/`decrypt` exactly (D-118). `close()` deliberately never emits the `Final` chunk — call `complete()` explicitly on the success path (it also flushes the sink); `close()` closes the sink or source, as `java.io` filter streams do (0.2.0, T-275); see the class doc comment. `examples secretstream-file`. |
 | `Sign` | `keygen`, `verifyingKey`, `sign`, `verify` | DSTU 4145 `m=163` digital signatures, deterministic nonce (no RNG dependency). `examples sign`. |
 | `Sign257` | Same members as `Sign` | `m=257` sibling of `crypto_sign` (T-199/T-204) — the curve real Diia-issued qualified signatures use. Distinct class, untagged (curve dispatch stays a `uacrypt`-layer concern, D-118). `examples sign257`. |
-| `Pwhash`, `PwhashStrength` | `hashPassword`, `verifyPassword`, `{INTERACTIVE,MODERATE,SENSITIVE}` | Argon2id (the one deliberately non-DSTU component, D-49/D-50). `examples password-hashing`. |
+| `Pwhash`, `PwhashStrength` | `hashPassword`, `verifyPassword`, `deriveKey`, `{INTERACTIVE,MODERATE,SENSITIVE}`; `SecretStreamEncryptor.forPassphrase`, `SecretStreamDecryptor.forPassphrase` | Argon2id (the one deliberately non-DSTU component, D-49/D-50). `deriveKey` equals libsodium's `crypto_pwhash`. The `forPassphrase` streams write and read the files `uacrypt encrypt --passphrase` makes (D-219/D-240); each runs Argon2id at 256 MiB once, on the calling thread. `examples password-hashing`. |
 | `Auth` | `keygen`, `auth`, `verify` | Keyed message authentication (Kupyna-KMAC). `examples misc`. |
 | `Kdf` | `keygen`, `deriveSubkey` | Deterministic subkey derivation. `examples misc`. |
 | `GenericHash`, `Kupyna256Hasher`, `Kupyna512Hasher` | `hash256`, `hash512`, `update`, `finish` | One-shot and streaming Kupyna hashing. `examples misc`. |

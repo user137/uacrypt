@@ -19,5 +19,15 @@ public final class Pwhash {
     /** Verifies {@code password} against a PHC string produced by {@link #hashPassword}. Returns {@code false} for both a wrong password and a malformed hash string. */
     public static native boolean verifyPassword(byte[] password, String hash);
 
+    /**
+     * Derives a 32-byte key from {@code password} and a 16-byte {@code salt} - libsodium's
+     * {@code crypto_pwhash} (Argon2id v1.3), byte for byte (T-269). Runs on the calling thread.
+     */
+    public static byte[] deriveKey(byte[] password, byte[] salt, PwhashStrength strength) {
+        return nativeDeriveKey(password, salt, strength.ordinal());
+    }
+
     private static native String nativeHashPassword(byte[] password, int strength);
+
+    private static native byte[] nativeDeriveKey(byte[] password, byte[] salt, int strength);
 }

@@ -24,6 +24,11 @@ public final class SecretStreamDecryptor extends InputStream {
     }
 
     private static final int CHUNK_BYTES = SecretStreamEncryptor.CHUNK_BYTES;
+    // The version byte and KEM ciphertext in front of a box stream file (D-239), and the
+    // passphrase-file header (D-240); the native side refuses any other length.
+    private static final int BOX_OPEN_PREFIX_BYTES = 1 + 128;
+    private static final int BOX512_OPEN_PREFIX_BYTES = 1 + 256;
+    private static final int PASSPHRASE_HEADER_BYTES = 28;
 
     private final InputStream in;
     private long handle;
@@ -32,10 +37,14 @@ public final class SecretStreamDecryptor extends InputStream {
     private boolean done = false;
     private boolean closed = false;
 
-    @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "streaming decryptor must retain the caller's source to read from it, same as java.io.FilterInputStream")
     public SecretStreamDecryptor(byte[] key, InputStream in) throws IOException {
+        this(in, nativeNew(key));
+    }
+
+    @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "streaming decryptor must retain the caller's source to read from it, same as java.io.FilterInputStream")
+    private SecretStreamDecryptor(InputStream in, long handle) throws IOException {
         this.in = in;
-        this.handle = nativeNew(key);
+        this.handle = handle;
         try {
             // The version byte and header, read now so a wrong version fails at construction.
             step();
@@ -45,6 +54,41 @@ public final class SecretStreamDecryptor extends InputStream {
             handle = 0;
             throw e;
         }
+    }
+
+    /** Reads a {@code crypto_box} stream (or a {@link Box#seal} blob) with bounded memory. */
+    public static SecretStreamDecryptor forBox(byte[] secretKey, InputStream in) throws IOException {
+        byte[] prefix = readPrefix(in, BOX_OPEN_PREFIX_BYTES, "sealed message");
+        return new SecretStreamDecryptor(in, nativeBoxOpen(secretKey, prefix));
+    }
+
+    /** {@code crypto_box512} counterpart of {@link #forBox}. */
+    public static SecretStreamDecryptor forBox512(byte[] secretKey, InputStream in) throws IOException {
+        byte[] prefix = readPrefix(in, BOX512_OPEN_PREFIX_BYTES, "sealed message");
+        return new SecretStreamDecryptor(in, nativeBox512Open(secretKey, prefix));
+    }
+
+    /**
+     * Reads a passphrase file. The header is checked before Argon2 runs (on the calling thread);
+     * a wrong passphrase throws {@link DstuException} at the first record.
+     */
+    public static SecretStreamDecryptor forPassphrase(byte[] passphrase, InputStream in) throws IOException {
+        byte[] header = readPrefix(in, PASSPHRASE_HEADER_BYTES, "passphrase file header");
+        return new SecretStreamDecryptor(in, nativePassphraseOpen(header, passphrase));
+    }
+
+    /** The bytes in front of the stream file; a shorter input cannot be opened at all. */
+    private static byte[] readPrefix(InputStream in, int size, String what) throws IOException {
+        byte[] prefix = new byte[size];
+        int got = 0;
+        while (got < size) {
+            int n = in.read(prefix, got, size - got);
+            if (n == -1) {
+                throw new DstuException("input too short to contain a " + what);
+            }
+            got += n;
+        }
+        return prefix;
     }
 
     @Override
@@ -121,6 +165,12 @@ public final class SecretStreamDecryptor extends InputStream {
     }
 
     private static native long nativeNew(byte[] key);
+
+    private static native long nativeBoxOpen(byte[] secretKey, byte[] prefix);
+
+    private static native long nativeBox512Open(byte[] secretKey, byte[] prefix);
+
+    private static native long nativePassphraseOpen(byte[] header, byte[] passphrase);
 
     private static native int nativeNextLen(long handle);
 

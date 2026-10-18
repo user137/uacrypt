@@ -65,4 +65,34 @@ class PwhashTest {
         assertEquals(expect.equals("accept"), Pwhash.verifyPassword(pw, hash), name);
         assertFalse(Pwhash.verifyPassword((password + "x").getBytes(StandardCharsets.UTF_8), hash), name);
     }
+
+    private static byte[] unhex(String hex) {
+        byte[] out = new byte[hex.length() / 2];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = (byte) Integer.parseInt(hex.substring(2 * i, 2 * i + 2), 16);
+        }
+        return out;
+    }
+
+    /** T-269: deriveKey equals libsodium crypto_pwhash (the vectors' oracle, D-219). */
+    @Test
+    void deriveKeyMatchesTheLibsodiumVectors() throws Exception {
+        String json = new String(Files.readAllBytes(RepoRoot.find().resolve("crates").resolve("dstu-core")
+                .resolve("tests").resolve("vectors").resolve("pwhash").resolve("derive_key.json")), StandardCharsets.UTF_8);
+        Matcher m = Pattern.compile("\"name\": \"([^\"]*)\",\\s*\"password_hex\": \"([0-9a-f]*)\",\\s*"
+                + "\"salt_hex\": \"([0-9a-f]*)\",\\s*\"key_hex\": \"([0-9a-f]*)\"").matcher(json);
+        int seen = 0;
+        while (m.find()) {
+            byte[] key = Pwhash.deriveKey(unhex(m.group(2)), unhex(m.group(3)), PwhashStrength.MODERATE);
+            assertTrue(java.util.Arrays.equals(unhex(m.group(4)), key), m.group(1));
+            seen++;
+        }
+        assertEquals(3, seen);
+    }
+
+    @Test
+    void deriveKeyRefusesAWrongLengthSalt() {
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> Pwhash.deriveKey(new byte[] {1}, new byte[15], PwhashStrength.MODERATE));
+    }
 }

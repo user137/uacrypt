@@ -9340,6 +9340,11 @@ plan):
     (`DSTU_CORE_BOX_512_...`), fixed with `#[php(name)]`. Verified on the Pi (`cargo xtask php`):
     158 tests, 0 skipped, phpstan clean; `method_exists`/`function_exists` for the 512 names.
     Next: Java.
+  - Java done 2026-10-19: `Pwhash.deriveKey`, `SecretStreamEncryptor`/`Decryptor`
+    `.forBox`/`forBox512`/`forPassphrase` (private constructors over a started native handle; the
+    native side refuses a prefix buffer of the wrong size). Verified: `cargo xtask java` - 155
+    tests, 0 failures, 1 skipped (the Linux-only `MemoryLeakTest`, as before), SpotBugs/clippy in
+    `mvn verify`. Next: .NET (capi).
 - [ ] **T-263** Text output (A1), only if the owner wants it. **After 1.0 (owner 2026-10-09).**
 
 Release:
