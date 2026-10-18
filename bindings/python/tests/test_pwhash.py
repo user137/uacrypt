@@ -57,3 +57,26 @@ def test_shared_verify_vectors(case: dict[str, str]) -> None:
         case["expect"] == "accept"
     )
     assert not d.pwhash_verify_password(password + b"x", case["hash"])
+
+
+_DERIVE_VECTORS = _VERIFY_VECTORS.parent / "derive_key.json"
+
+
+def test_derive_key_matches_libsodium() -> None:
+    """T-269: `pwhash_derive_key` equals libsodium `crypto_pwhash` (the vectors' oracle, D-219)."""
+    vectors = json.loads(_DERIVE_VECTORS.read_text(encoding="utf-8"))
+    assert len(vectors["cases"]) == 3
+    for case in vectors["cases"]:
+        key = d.pwhash_derive_key(
+            bytes.fromhex(case["password_hex"]),
+            bytes.fromhex(case["salt_hex"]),
+            d.PWHASH_MODERATE,
+        )
+        assert key.hex() == case["key_hex"], case["name"]
+
+
+def test_derive_key_refuses_bad_arguments() -> None:
+    with pytest.raises(ValueError):
+        d.pwhash_derive_key(b"pw", b"\x00" * 15)
+    with pytest.raises(ValueError):
+        d.pwhash_derive_key(b"pw", b"\x00" * 16, 255)

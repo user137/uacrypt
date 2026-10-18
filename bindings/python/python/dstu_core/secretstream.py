@@ -16,7 +16,14 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from ._dstu_core import SecretStreamFileDecryptor, SecretStreamFileEncryptor
+from ._dstu_core import (
+    BOX512_OPEN_STREAM_PREFIX_BYTES,
+    BOX_OPEN_STREAM_PREFIX_BYTES,
+    PASSPHRASE_FILE_HEADER_BYTES,
+    DstuError,
+    SecretStreamFileDecryptor,
+    SecretStreamFileEncryptor,
+)
 
 # dstu-core's `crypto_secretstream::CHUNK_BYTES` (D-208): the codec seals and checks it; this
 # module only needs it to cut the caller's data into chunks.
@@ -42,11 +49,14 @@ class SecretStreamEncryptor:
     """
 
     def __init__(self, key: bytes, out: _Writable) -> None:
+        self._start(SecretStreamFileEncryptor(key), out)
+
+    def _start(self, enc: SecretStreamFileEncryptor, out: _Writable) -> None:
         self._out = out
-        self._enc = SecretStreamFileEncryptor(key)
-        self._out.write(self._enc.prefix)
+        self._enc = enc
         self._buf = bytearray()
         self._closed = False
+        self._out.write(self._enc.prefix)
 
     def write(self, data: bytes) -> int:
         """Buffers `data`, sealing every full 8 KiB chunk that is certain not to be the last one.
@@ -125,8 +135,11 @@ class SecretStreamDecryptor:
     """
 
     def __init__(self, key: bytes, inp: _Readable) -> None:
+        self._start(SecretStreamFileDecryptor(key), inp)
+
+    def _start(self, dec: SecretStreamFileDecryptor, inp: _Readable) -> None:
         self._inp = inp
-        self._dec = SecretStreamFileDecryptor(key)
+        self._dec = dec
         self._done = False
         # The version byte and header, read now so a wrong version fails at construction.
         for _ in range(2):
@@ -164,3 +177,61 @@ class SecretStreamDecryptor:
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
         self.close()
+
+
+def _read_prefix(inp: _Readable, size: int, what: str) -> bytes:
+    """The bytes in front of the stream file; a shorter input cannot be opened at all."""
+    prefix = _read_up_to(inp, size)
+    if len(prefix) < size:
+        raise DstuError(f"input too short to contain a {what}")
+    return prefix
+
+
+class BoxEncryptor(SecretStreamEncryptor):
+    """`crypto_box` sealed to `public_key` as a stream (format v3, T-265): the same bytes
+    `box_seal` returns, written chunk by chunk; `box_open`/`BoxDecryptor` read them."""
+
+    def __init__(self, public_key: bytes, out: _Writable) -> None:
+        self._start(SecretStreamFileEncryptor.box_seal(public_key), out)
+
+
+class BoxDecryptor(SecretStreamDecryptor):
+    """Reads a `crypto_box` stream (or a `box_seal` blob) with bounded memory."""
+
+    def __init__(self, secret_key: bytes, inp: _Readable) -> None:
+        prefix = _read_prefix(inp, BOX_OPEN_STREAM_PREFIX_BYTES, "sealed message")
+        self._start(SecretStreamFileDecryptor.box_open(secret_key, prefix), inp)
+
+
+class Box512Encryptor(SecretStreamEncryptor):
+    """`crypto_box512` counterpart of `BoxEncryptor`."""
+
+    def __init__(self, public_key: bytes, out: _Writable) -> None:
+        self._start(SecretStreamFileEncryptor.box512_seal(public_key), out)
+
+
+class Box512Decryptor(SecretStreamDecryptor):
+    """`crypto_box512` counterpart of `BoxDecryptor`."""
+
+    def __init__(self, secret_key: bytes, inp: _Readable) -> None:
+        prefix = _read_prefix(inp, BOX512_OPEN_STREAM_PREFIX_BYTES, "sealed message")
+        self._start(SecretStreamFileDecryptor.box512_open(secret_key, prefix), inp)
+
+
+class PassphraseEncryptor(SecretStreamEncryptor):
+    """A passphrase file (D-219/D-240) - the bytes `uacrypt encrypt --passphrase` writes. The
+    constructor runs Argon2id (256 MiB, t=3, about a second) before writing anything."""
+
+    def __init__(self, passphrase: bytes, out: _Writable) -> None:
+        self._start(SecretStreamFileEncryptor.passphrase_seal(passphrase), out)
+
+
+class PassphraseDecryptor(SecretStreamDecryptor):
+    """Reads a passphrase file. The header is checked before Argon2 runs; a wrong passphrase
+    raises `DstuError` at the first record."""
+
+    def __init__(self, passphrase: bytes, inp: _Readable) -> None:
+        header = _read_prefix(
+            inp, PASSPHRASE_FILE_HEADER_BYTES, "passphrase file header"
+        )
+        self._start(SecretStreamFileDecryptor.passphrase_open(header, passphrase), inp)

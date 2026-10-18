@@ -11,14 +11,14 @@ use dstu_core::crypto_box::{open, seal, PublicKey, SecretKey};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-fn secret_key_from_bytes(bytes: &[u8]) -> PyResult<SecretKey> {
+pub(crate) fn secret_key_from_bytes(bytes: &[u8]) -> PyResult<SecretKey> {
     let e = to_array::<32>(bytes, "secret_key")?;
     SecretKey::from_bytes(&e).ok_or_else(|| {
         PyValueError::new_err("invalid secret key: must be in the range {2, ..., n-2}")
     })
 }
 
-fn public_key_from_bytes(bytes: &[u8]) -> PyResult<PublicKey> {
+pub(crate) fn public_key_from_bytes(bytes: &[u8]) -> PyResult<PublicKey> {
     let x = to_array::<32>(bytes, "public_key")?;
     PublicKey::from_bytes(&x).ok_or_else(|| {
         PyValueError::new_err(

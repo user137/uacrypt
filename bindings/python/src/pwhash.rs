@@ -3,7 +3,7 @@
 //! [`dstu_core::crypto_pwhash::Strength`]'s three named presets - not a raw cost-parameter knob.
 
 use crate::util::IntoDstuError;
-use dstu_core::crypto_pwhash::{hash_password, verify_password, Strength};
+use dstu_core::crypto_pwhash::{derive_key, hash_password, verify_password, Strength};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
@@ -31,4 +31,15 @@ pub fn pwhash_hash_password(password: &[u8], strength: u8) -> PyResult<String> {
 #[pyfunction]
 pub fn pwhash_verify_password(password: &[u8], hash: &str) -> bool {
     verify_password(password, hash)
+}
+
+/// Derives a 32-byte key from `password` and a 16-byte `salt` - libsodium's `crypto_pwhash`
+/// (Argon2id v1.3), byte for byte (T-269). Holds the GIL while Argon2 runs, as
+/// [`pwhash_hash_password`] does.
+#[pyfunction]
+#[pyo3(signature = (password, salt, strength=1))]
+pub fn pwhash_derive_key(password: &[u8], salt: &[u8], strength: u8) -> PyResult<Vec<u8>> {
+    let salt = crate::util::to_array::<{ dstu_core::crypto_pwhash::SALT_BYTES }>(salt, "salt")?;
+    let key = derive_key(password, &salt, strength_from_u8(strength)?).dstu()?;
+    Ok(key.to_vec())
 }

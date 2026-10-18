@@ -9321,6 +9321,11 @@ plan):
     (18) / `DSTU_ERR_OUT_OF_MEMORY` (19), header regenerated. Verified: `ffi_passphrase_file`
     8/8 (shared vectors, libsodium derive_key vectors, round trip, empty/null), all capi suites,
     `cargo xtask capi` clean, Miri 5 passed / 3 ignored. Next: phase 3, Python first.
+  - Python done 2026-10-18: `pwhash_derive_key`, `BoxEncryptor`/`BoxDecryptor`,
+    `Box512Encryptor`/`Box512Decryptor`, `PassphraseEncryptor`/`PassphraseDecryptor` (subclasses of
+    the secretstream file wrappers over new static constructors on the native codec classes; Argon2
+    holds the GIL like `hash_password`). Verified: pytest 160 passed, 0 skipped (v3/legacy_v2/
+    passphrase_file/derive_key vectors, uacrypt interop both ways), ruff, clippy. Next: Node.js.
 - [ ] **T-263** Text output (A1), only if the owner wants it. **After 1.0 (owner 2026-10-09).**
 
 Release:

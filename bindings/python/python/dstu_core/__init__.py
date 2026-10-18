@@ -6,8 +6,12 @@ docs/DECISIONS.md for the full threat model and per-construction status
 """
 
 from ._dstu_core import (
+    BOX512_OPEN_STREAM_PREFIX_BYTES,
+    BOX_OPEN_STREAM_PREFIX_BYTES,
+    PASSPHRASE_FILE_HEADER_BYTES,
     PWHASH_INTERACTIVE,
     PWHASH_MODERATE,
+    PWHASH_SALTBYTES,
     PWHASH_SENSITIVE,
     SECRETSTREAM_TAG_FINAL,
     SECRETSTREAM_TAG_MESSAGE,
@@ -33,6 +37,7 @@ from ._dstu_core import (
     kdf_keygen,
     kupyna256,
     kupyna512,
+    pwhash_derive_key,
     pwhash_hash_password,
     pwhash_verify_password,
     randombytes_buf,
@@ -53,19 +58,38 @@ from ._dstu_core import (
     stream_encrypt,
     stream_keygen,
 )
-from .secretstream import SecretStreamDecryptor, SecretStreamEncryptor
+from .secretstream import (
+    Box512Decryptor,
+    Box512Encryptor,
+    BoxDecryptor,
+    BoxEncryptor,
+    PassphraseDecryptor,
+    PassphraseEncryptor,
+    SecretStreamDecryptor,
+    SecretStreamEncryptor,
+)
 
 __all__ = [
+    "BOX512_OPEN_STREAM_PREFIX_BYTES",
+    "BOX_OPEN_STREAM_PREFIX_BYTES",
+    "PASSPHRASE_FILE_HEADER_BYTES",
     "PWHASH_INTERACTIVE",
     "PWHASH_MODERATE",
+    "PWHASH_SALTBYTES",
     "PWHASH_SENSITIVE",
     "SECRETSTREAM_TAG_FINAL",
     "SECRETSTREAM_TAG_MESSAGE",
     "SECRETSTREAM_TAG_PUSH",
     "SECRETSTREAM_TAG_REKEY",
+    "Box512Decryptor",
+    "Box512Encryptor",
+    "BoxDecryptor",
+    "BoxEncryptor",
     "DstuError",
     "Kupyna256Hasher",
     "Kupyna512Hasher",
+    "PassphraseDecryptor",
+    "PassphraseEncryptor",
     "SecretStreamDecryptor",
     "SecretStreamEncryptor",
     "SecretStreamPullState",
@@ -85,6 +109,7 @@ __all__ = [
     "kdf_keygen",
     "kupyna256",
     "kupyna512",
+    "pwhash_derive_key",
     "pwhash_hash_password",
     "pwhash_verify_password",
     "randombytes_buf",

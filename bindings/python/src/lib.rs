@@ -52,11 +52,19 @@ fn _dstu_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(crypto_box::box_public_key, m)?)?;
     m.add_function(wrap_pyfunction!(crypto_box::box_seal, m)?)?;
     m.add_function(wrap_pyfunction!(crypto_box::box_open, m)?)?;
+    m.add(
+        "BOX_OPEN_STREAM_PREFIX_BYTES",
+        dstu_core::crypto_box::OPEN_STREAM_PREFIX_BYTES,
+    )?;
 
     m.add_function(wrap_pyfunction!(box512::box512_keygen, m)?)?;
     m.add_function(wrap_pyfunction!(box512::box512_public_key, m)?)?;
     m.add_function(wrap_pyfunction!(box512::box512_seal, m)?)?;
     m.add_function(wrap_pyfunction!(box512::box512_open, m)?)?;
+    m.add(
+        "BOX512_OPEN_STREAM_PREFIX_BYTES",
+        dstu_core::crypto_box512::OPEN_STREAM_PREFIX_BYTES,
+    )?;
 
     m.add_function(wrap_pyfunction!(secretstream::secretstream_keygen, m)?)?;
     m.add_class::<secretstream::SecretStreamPushState>()?;
@@ -96,6 +104,12 @@ fn _dstu_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_function(wrap_pyfunction!(pwhash::pwhash_hash_password, m)?)?;
     m.add_function(wrap_pyfunction!(pwhash::pwhash_verify_password, m)?)?;
+    m.add_function(wrap_pyfunction!(pwhash::pwhash_derive_key, m)?)?;
+    m.add("PWHASH_SALTBYTES", dstu_core::crypto_pwhash::SALT_BYTES)?;
+    m.add(
+        "PASSPHRASE_FILE_HEADER_BYTES",
+        dstu_core::crypto_pwhash::passphrase_file::HEADER_BYTES,
+    )?;
     m.add("PWHASH_INTERACTIVE", 0u8)?;
     m.add("PWHASH_MODERATE", 1u8)?;
     m.add("PWHASH_SENSITIVE", 2u8)?;
