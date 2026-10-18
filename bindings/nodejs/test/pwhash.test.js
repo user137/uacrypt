@@ -40,3 +40,20 @@ for (const c of JSON.parse(fs.readFileSync(VERIFY_VECTORS, 'utf8')).cases) {
     assert.strictEqual(dstu.pwhashVerifyPassword(Buffer.concat([password, Buffer.from('x')]), c.hash), false);
   });
 }
+
+// T-269: pwhashDeriveKey equals libsodium crypto_pwhash (the vectors' oracle, D-219).
+const DERIVE_VECTORS = path.resolve(VERIFY_VECTORS, '..', 'derive_key.json');
+
+test('pwhashDeriveKey matches the libsodium vectors', () => {
+  const cases = JSON.parse(fs.readFileSync(DERIVE_VECTORS, 'utf8')).cases;
+  assert.strictEqual(cases.length, 3);
+  for (const c of cases) {
+    const key = dstu.pwhashDeriveKey(Buffer.from(c.password_hex, 'hex'), Buffer.from(c.salt_hex, 'hex'), dstu.PWHASH_MODERATE);
+    assert.strictEqual(key.toString('hex'), c.key_hex, c.name);
+  }
+});
+
+test('pwhashDeriveKey refuses a wrong-length salt and an unknown strength', () => {
+  assert.throws(() => dstu.pwhashDeriveKey(Buffer.from('pw'), Buffer.alloc(15)), /salt/);
+  assert.throws(() => dstu.pwhashDeriveKey(Buffer.from('pw'), Buffer.alloc(16), 255), /strength/);
+});

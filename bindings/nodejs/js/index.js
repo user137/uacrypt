@@ -15,10 +15,9 @@
  */
 
 const native = require('../native/index.js');
-const { SecretStreamEncryptor, SecretStreamDecryptor } = require('./secretstream.js');
+const streams = require('./secretstream.js');
 
 module.exports = {
   ...native,
-  SecretStreamEncryptor,
-  SecretStreamDecryptor,
+  ...streams,
 };

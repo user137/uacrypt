@@ -12,13 +12,13 @@ use napi::bindgen_prelude::Buffer;
 use napi::{Error, Result};
 use napi_derive::napi;
 
-fn secret_key_from_bytes(bytes: &[u8]) -> Result<SecretKey> {
+pub(crate) fn secret_key_from_bytes(bytes: &[u8]) -> Result<SecretKey> {
     let e = to_array::<32>(bytes, "secretKey")?;
     SecretKey::from_bytes(&e)
         .ok_or_else(|| Error::from_reason("invalid secret key: must be in the range {2, ..., n-2}"))
 }
 
-fn public_key_from_bytes(bytes: &[u8]) -> Result<PublicKey> {
+pub(crate) fn public_key_from_bytes(bytes: &[u8]) -> Result<PublicKey> {
     let x = to_array::<32>(bytes, "publicKey")?;
     PublicKey::from_bytes(&x).ok_or_else(|| {
         Error::from_reason(

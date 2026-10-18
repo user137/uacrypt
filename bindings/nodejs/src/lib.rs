@@ -63,3 +63,22 @@ pub const SECRETSTREAM_TAG_PUSH: u8 = 0x01;
 pub const SECRETSTREAM_TAG_REKEY: u8 = 0x02;
 #[napi]
 pub const SECRETSTREAM_TAG_FINAL: u8 = 0x03;
+
+#[napi]
+pub const PWHASH_SALTBYTES: u32 = 16;
+#[napi]
+pub const PASSPHRASE_FILE_HEADER_BYTES: u32 = 28;
+#[napi]
+pub const BOX_OPEN_STREAM_PREFIX_BYTES: u32 = 129;
+#[napi]
+pub const BOX512_OPEN_STREAM_PREFIX_BYTES: u32 = 257;
+
+// The literals above are what napi can export as constants; tie them to the core's own values.
+const _: () = assert!(
+    PWHASH_SALTBYTES as usize == dstu_core::crypto_pwhash::SALT_BYTES
+        && PASSPHRASE_FILE_HEADER_BYTES as usize
+            == dstu_core::crypto_pwhash::passphrase_file::HEADER_BYTES
+        && BOX_OPEN_STREAM_PREFIX_BYTES as usize == dstu_core::crypto_box::OPEN_STREAM_PREFIX_BYTES
+        && BOX512_OPEN_STREAM_PREFIX_BYTES as usize
+            == dstu_core::crypto_box512::OPEN_STREAM_PREFIX_BYTES
+);

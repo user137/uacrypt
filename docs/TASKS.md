@@ -9326,6 +9326,10 @@ plan):
     the secretstream file wrappers over new static constructors on the native codec classes; Argon2
     holds the GIL like `hash_password`). Verified: pytest 160 passed, 0 skipped (v3/legacy_v2/
     passphrase_file/derive_key vectors, uacrypt interop both ways), ruff, clippy. Next: Node.js.
+  - Node.js done 2026-10-18: `pwhashDeriveKey`, `BoxEncryptor`/`BoxDecryptor`, `Box512*`,
+    `Passphrase*` (`stream.Transform` subclasses; napi factories on the native codec classes;
+    decryptors collect their prefix before opening). Verified: `npm test` 146 passed, 0 skipped
+    (incl. a destroyed writer emitting no Final, D-118), eslint, clippy. Next: Ruby.
 - [ ] **T-263** Text output (A1), only if the owner wants it. **After 1.0 (owner 2026-10-09).**
 
 Release:

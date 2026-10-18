@@ -42,9 +42,14 @@ const CHUNK_BYTES = 8 * 1024;
 class SecretStreamEncryptor extends Transform {
   constructor(key, options) {
     super(options);
-    this._enc = new native.SecretStreamFileEncryptor(key);
+    this._enc = this._startCodec(key);
     this._buf = Buffer.alloc(0);
     this.push(this._enc.prefix);
+  }
+
+  /** The native codec for `key`; the box/passphrase subclasses start it their own way. */
+  _startCodec(key) {
+    return new native.SecretStreamFileEncryptor(key);
   }
 
   _transform(chunk, _encoding, callback) {
@@ -96,14 +101,27 @@ class SecretStreamEncryptor extends Transform {
 class SecretStreamDecryptor extends Transform {
   constructor(key, options) {
     super(options);
-    this._dec = new native.SecretStreamFileDecryptor(key);
+    this._dec = this._startCodec(key);
     this._buf = Buffer.alloc(0);
+  }
+
+  /** The native codec for `key`, or null while a subclass still collects its prefix. */
+  _startCodec(key) {
+    return new native.SecretStreamFileDecryptor(key);
   }
 
   _transform(chunk, _encoding, callback) {
     this._buf = Buffer.concat([this._buf, chunk]);
     let err;
     try {
+      if (this._dec === null) {
+        if (this._buf.length < this._prefixBytes) {
+          process.nextTick(callback);
+          return;
+        }
+        this._dec = this._openPrefixed(this._buf.subarray(0, this._prefixBytes));
+        this._buf = this._buf.subarray(this._prefixBytes);
+      }
       let pos = 0;
       for (let want = this._dec.nextLen(); this._buf.length - pos >= want; want = this._dec.nextLen()) {
         const plaintext = this._dec.feed(this._buf.subarray(pos, pos + want));
@@ -121,6 +139,7 @@ class SecretStreamDecryptor extends Transform {
   _flush(callback) {
     let err;
     try {
+      if (this._dec === null) throw new Error(`input too short to contain a ${this._prefixName}`);
       const plaintext = this._dec.finish();
       if (plaintext.length > 0) this.push(plaintext);
     } catch (e) {
@@ -130,4 +149,107 @@ class SecretStreamDecryptor extends Transform {
   }
 }
 
-module.exports = { SecretStreamEncryptor, SecretStreamDecryptor };
+function checkLength(buf, bytes, name) {
+  if (!Buffer.isBuffer(buf) || buf.length !== bytes) {
+    throw new TypeError(`${name} must be a ${bytes}-byte Buffer`);
+  }
+}
+
+/**
+ * `crypto_box` sealed to `publicKey` as a stream (format v3, T-265/T-269): the same bytes
+ * `boxSeal` returns, written chunk by chunk; `boxOpen`/`BoxDecryptor` read them.
+ */
+class BoxEncryptor extends SecretStreamEncryptor {
+  _startCodec(publicKey) {
+    return native.SecretStreamFileEncryptor.boxSeal(publicKey);
+  }
+}
+
+/** `crypto_box512` counterpart of `BoxEncryptor`. */
+class Box512Encryptor extends SecretStreamEncryptor {
+  _startCodec(publicKey) {
+    return native.SecretStreamFileEncryptor.box512Seal(publicKey);
+  }
+}
+
+/**
+ * A passphrase file (D-219/D-240) - the bytes `uacrypt encrypt --passphrase` writes. The
+ * constructor runs Argon2id (256 MiB, t=3, about a second) on the calling thread.
+ */
+class PassphraseEncryptor extends SecretStreamEncryptor {
+  _startCodec(passphrase) {
+    return native.SecretStreamFileEncryptor.passphraseSeal(passphrase);
+  }
+}
+
+/**
+ * Collects the bytes in front of the stream file, then opens the codec with them. The secret is
+ * held only until then.
+ */
+class PrefixedDecryptor extends SecretStreamDecryptor {
+  _startCodec(secret) {
+    this._secret = secret;
+    return null;
+  }
+
+  _openPrefixed(prefix) {
+    const dec = this._openCodec(this._secret, prefix);
+    this._secret = null;
+    return dec;
+  }
+}
+
+/** Reads a `crypto_box` stream (or a `boxSeal` blob) with bounded memory. */
+class BoxDecryptor extends PrefixedDecryptor {
+  constructor(secretKey, options) {
+    checkLength(secretKey, 32, 'secretKey');
+    super(secretKey, options);
+    this._prefixBytes = native.BOX_OPEN_STREAM_PREFIX_BYTES;
+    this._prefixName = 'sealed message';
+  }
+
+  _openCodec(secretKey, prefix) {
+    return native.SecretStreamFileDecryptor.boxOpen(secretKey, prefix);
+  }
+}
+
+/** `crypto_box512` counterpart of `BoxDecryptor`. */
+class Box512Decryptor extends PrefixedDecryptor {
+  constructor(secretKey, options) {
+    checkLength(secretKey, 64, 'secretKey');
+    super(secretKey, options);
+    this._prefixBytes = native.BOX512_OPEN_STREAM_PREFIX_BYTES;
+    this._prefixName = 'sealed message';
+  }
+
+  _openCodec(secretKey, prefix) {
+    return native.SecretStreamFileDecryptor.box512Open(secretKey, prefix);
+  }
+}
+
+/**
+ * Reads a passphrase file. The header is checked before Argon2 runs (on the calling thread, once
+ * the header has arrived); a wrong passphrase errors at the first record.
+ */
+class PassphraseDecryptor extends PrefixedDecryptor {
+  constructor(passphrase, options) {
+    super(passphrase, options);
+    this._prefixBytes = native.PASSPHRASE_FILE_HEADER_BYTES;
+    this._prefixName = 'passphrase file header';
+  }
+
+  _openCodec(passphrase, header) {
+    return native.SecretStreamFileDecryptor.passphraseOpen(header, passphrase);
+  }
+}
+
+module.exports = {
+  SecretStreamEncryptor,
+  SecretStreamDecryptor,
+  BoxEncryptor,
+  BoxDecryptor,
+  Box512Encryptor,
+  Box512Decryptor,
+  PassphraseEncryptor,
+  PassphraseDecryptor,
+};

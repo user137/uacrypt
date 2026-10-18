@@ -12,10 +12,11 @@
 //! file format itself.
 
 use crate::util::{to_array, IntoDstuError};
+use dstu_core::crypto_pwhash::passphrase_file::{self, Header, HEADER_BYTES};
 use dstu_core::crypto_secretstream::{
-    FileDecryptor, FileEncryptor, Key, PullState, PushState, Tag, CHUNK_BYTES, FILE_PREFIX_BYTES,
-    MAX_RECORD_BYTES,
+    FileDecryptor, FileEncryptor, Key, PullState, PushState, Tag, CHUNK_BYTES, MAX_RECORD_BYTES,
 };
+use dstu_core::{crypto_box, crypto_box512};
 use napi::bindgen_prelude::Buffer;
 use napi::{Error, Result};
 use napi_derive::napi;
@@ -139,11 +140,13 @@ impl SecretStreamPullState {
 }
 
 /// Stream-file writer (T-284): the D-208 framing from the core codec. `js/secretstream.js`'s
-/// `SecretStreamEncryptor` drives it and does only buffering.
+/// `SecretStreamEncryptor` drives it and does only buffering. The constructor takes a stream key;
+/// the `boxSeal`/`box512Seal`/`passphraseSeal` factories (T-269) start the same codec under a
+/// `crypto_box` KEM prefix or a passphrase-file header, and `prefix` then includes it.
 #[napi]
 pub struct SecretStreamFileEncryptor {
     inner: FileEncryptor,
-    prefix: [u8; FILE_PREFIX_BYTES],
+    prefix: Vec<u8>,
 }
 
 #[napi]
@@ -152,10 +155,46 @@ impl SecretStreamFileEncryptor {
     pub fn new(key: Buffer) -> Result<Self> {
         let key = Key::from_bytes(to_array::<32>(&key, "key")?);
         let (inner, prefix) = FileEncryptor::init(&key).dstu()?;
-        Ok(Self { inner, prefix })
+        Ok(Self {
+            inner,
+            prefix: prefix.to_vec(),
+        })
     }
 
-    /// The format version byte and header - write these first.
+    /// Starts a `crypto_box` (format v3) stream to `publicKey`.
+    #[napi(factory, js_name = "boxSeal")]
+    pub fn box_seal(public_key: Buffer) -> Result<Self> {
+        let recipient = crate::crypto_box::public_key_from_bytes(&public_key)?;
+        let (inner, prefix) = crypto_box::seal_stream(&recipient).dstu()?;
+        Ok(Self {
+            inner,
+            prefix: prefix.to_vec(),
+        })
+    }
+
+    /// Starts a `crypto_box512` (format v3) stream to `publicKey`.
+    #[napi(factory, js_name = "box512Seal")]
+    pub fn box512_seal(public_key: Buffer) -> Result<Self> {
+        let recipient = crate::box512::public_key_from_bytes(&public_key)?;
+        let (inner, prefix) = crypto_box512::seal_stream(&recipient).dstu()?;
+        Ok(Self {
+            inner,
+            prefix: prefix.to_vec(),
+        })
+    }
+
+    /// Starts a passphrase file (D-219/D-240); runs Argon2 (256 MiB, t=3) on the calling thread,
+    /// as `pwhashHashPassword` does.
+    #[napi(factory, js_name = "passphraseSeal")]
+    pub fn passphrase_seal(passphrase: Buffer) -> Result<Self> {
+        let (inner, prefix) = passphrase_file::seal_stream(&passphrase).dstu()?;
+        Ok(Self {
+            inner,
+            prefix: prefix.to_vec(),
+        })
+    }
+
+    /// Everything to write before the first record.
     #[napi(getter)]
     pub fn prefix(&self) -> Buffer {
         Buffer::from(self.prefix.to_vec())
@@ -198,6 +237,37 @@ impl SecretStreamFileDecryptor {
         Ok(Self {
             inner: FileDecryptor::new(&key),
         })
+    }
+
+    /// Opens a `crypto_box` stream: `prefix` is its first `BOX_OPEN_STREAM_PREFIX_BYTES` bytes;
+    /// feed the rest.
+    #[napi(factory, js_name = "boxOpen")]
+    pub fn box_open(secret_key: Buffer, prefix: Buffer) -> Result<Self> {
+        let secret = crate::crypto_box::secret_key_from_bytes(&secret_key)?;
+        let prefix = to_array::<{ crypto_box::OPEN_STREAM_PREFIX_BYTES }>(&prefix, "prefix")?;
+        let inner = crypto_box::open_stream(&prefix, &secret).dstu()?;
+        Ok(Self { inner })
+    }
+
+    /// Opens a `crypto_box512` stream: `prefix` is its first `BOX512_OPEN_STREAM_PREFIX_BYTES`
+    /// bytes; feed the rest.
+    #[napi(factory, js_name = "box512Open")]
+    pub fn box512_open(secret_key: Buffer, prefix: Buffer) -> Result<Self> {
+        let secret = crate::box512::secret_key_from_bytes(&secret_key)?;
+        let prefix = to_array::<{ crypto_box512::OPEN_STREAM_PREFIX_BYTES }>(&prefix, "prefix")?;
+        let inner = crypto_box512::open_stream(&prefix, &secret).dstu()?;
+        Ok(Self { inner })
+    }
+
+    /// Opens a passphrase file: `header` is its first `PASSPHRASE_FILE_HEADER_BYTES` bytes,
+    /// checked before Argon2 runs; feed the rest. A wrong passphrase fails at the first record.
+    #[napi(factory, js_name = "passphraseOpen")]
+    pub fn passphrase_open(header: Buffer, passphrase: Buffer) -> Result<Self> {
+        let header = to_array::<HEADER_BYTES>(&header, "header")?;
+        let inner = Header::parse(&header)
+            .and_then(|h| h.open_stream(&passphrase))
+            .dstu()?;
+        Ok(Self { inner })
     }
 
     #[napi(js_name = "nextLen")]
