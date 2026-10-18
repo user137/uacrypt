@@ -13,6 +13,20 @@ All notable changes to this project are documented in this file. Format follows
   `open_v2_legacy` reads the 0.4-0.6 format (used by `uacrypt box-open` only).
 - **C ABI:** `dstu_box{,512}_seal_stream`/`_open_stream` (returning the codec handles),
   `dstu_box{,512}_sealed_len`, `DSTU_BOX{,512}_SEAL_STREAM_PREFIX_BYTES`/`_OPEN_STREAM_PREFIX_BYTES`.
+- **`dstu-core`: the passphrase file in the core** (T-269, `docs/DECISIONS.md` D-240):
+  `crypto_pwhash::passphrase_file` (`seal_stream`, `Header::parse`, `Header::open_stream`) writes
+  and reads the files `uacrypt encrypt --passphrase` makes - same bytes as 0.5/0.6 (D-219). An
+  empty passphrase is refused.
+- **C ABI:** `dstu_pwhash_derive_key`, `dstu_passphrase_file_check_header`/`_seal_stream`/
+  `_open_stream` (the codec handles again), statuses `DSTU_ERR_UNSUPPORTED_PARAMS` (18) and
+  `DSTU_ERR_OUT_OF_MEMORY` (19), `DSTU_PWHASH_SALTBYTES`/`_KEYBYTES`,
+  `DSTU_PASSPHRASE_FILE_*_BYTES`.
+- **All 8 bindings** (T-269): `derive_key` (libsodium's `crypto_pwhash`, byte for byte), streaming
+  `crypto_box`/`crypto_box512` and passphrase files through each binding's existing stream type
+  (Python `BoxEncryptor`/`PassphraseDecryptor`, Node.js `stream.Transform` subclasses, Ruby
+  `BoxWriter`/`PassphraseReader`, PHP/Java/.NET/C++ `forBox`/`forPassphrase` factories, Go
+  `NewBoxEncryptWriter`/`NewPassphraseDecryptReader`), tested against shared vectors and
+  `uacrypt` in both directions.
 
 ### Changed
 
@@ -26,6 +40,8 @@ All notable changes to this project are documented in this file. Format follows
   `DSTU_BOX_OPEN_MIN_OVERHEAD` (183) / `DSTU_BOX512_OPEN_MIN_OVERHEAD` (311); size `dstu_box*_seal`
   with `dstu_box*_sealed_len`; `dstu_box*_open`'s plaintext length is now at most `sealed_len`
   minus that constant, not exact. C++/.NET/Go constants renamed accordingly.
+- **C++/.NET/Go `Box*.Open`** report a 0.4-0.6 blob shorter than a v3 one as an unsupported version,
+  not as too short (T-269).
 
 - **Windows release binary links the C runtime statically** (T-295, `docs/DECISIONS.md` D-238):
   `uacrypt.exe` no longer needs the Visual C++ redistributable (`VCRUNTIME140.dll`).

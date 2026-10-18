@@ -482,7 +482,9 @@ checked against RFC 9106's Appendix A Argon2id vector (`src/crypto_pwhash.rs` un
 `MEMLIMIT_MODERATE`, 32-byte output) through PyNaCl 1.6.2's bundled libsodium, installed in a
 throwaway venv (T-262, D-219). The three cases (ASCII, Ukrainian UTF-8, empty password) are in
 `crates/dstu-core/tests/vectors/pwhash/derive_key.json`, with the generator's source named in the
-file; they are also the shared cross-language vectors for T-269.
+file; they are also the shared cross-language vectors for T-269. Its sibling
+`pwhash/passphrase_file.json` is a compat pin, not an oracle: files written by the released 0.6.0
+`uacrypt` plus byte edits, for the D-219 header, which is this project's own format (D-240).
 
 `verify_password`'s accept/reject cases (T-272, D-222) are in
 `crates/dstu-core/tests/vectors/pwhash/verify.json`: accepted hashes come from libsodium

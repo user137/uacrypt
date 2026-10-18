@@ -9281,7 +9281,9 @@ plan):
   done (its reason was wrong; owner decides).
 - [ ] **T-264** Shell completions (`uacrypt completions bash|zsh|fish|powershell`) and a man page,
   generated from the same command table the parser uses.
-- [ ] **T-265** Bounded-memory `box-seal`/`box-open` (today they read `--in` whole). Needs a
+- [x] **T-265** (**done 2026-10-19**: pushed on `1fa8634`, every workflow green incl.
+  `bindings-php` and `miri.yml` (~60 min); the binding gate and the C++/.NET/Go "too short" fix
+  closed in T-269) Bounded-memory `box-seal`/`box-open` (today they read `--in` whole). Needs a
   multi-chunk `crypto_box` stream API in `dstu-core` -> the new-primitive binding gate applies.
   **Plan approved 2026-10-15 (plan mode + advisor; D-239 to write):** format v3 = `0x03 ||
   kem_ct || <D-208 stream file>` (the D-219 container shape; KDF version byte 3), one written
@@ -9306,7 +9308,7 @@ plan):
   177-byte legacy blob says "too short" instead of unsupported-version - fix with the vector
   runners. After the push: check `bindings-php` (not run here) and `miri.yml` times for the box
   files (`crypto_box512` was ~50 min vs T-296's ~60-min target).
-- [ ] **T-269** Binding gate for T-262 and T-265, one pass: wire `crypto_pwhash::derive_key`
+- [x] **T-269** (**done 2026-10-19**) Binding gate for T-262 and T-265, one pass: wire `crypto_pwhash::derive_key`
   and T-265's streaming `crypto_box` API into the 8 bindings and `dstu-core-capi` (shared vectors `crates/dstu-core/tests/vectors/pwhash/derive_key.json`), and
   decide whether the bindings also read/write the passphrase file format (D-219).
   **Owner 2026-10-18: yes, through the core (D-240).** State log (plan: the 0.7.0 section):
@@ -9360,6 +9362,9 @@ plan):
     Verified from PowerShell: `cargo xtask cpp` (ctest green, interop included), `cpp-tidy` and
     `cpp-cppcheck` clean. Seen, not fixed (untouched code): GCC `-Warray-bounds` false positives
     on `tampered.back() ^= 1` in the existing tests (lines ~164-710). Next: phase 4 (docs).
+  - Phase 4 done 2026-10-19: CHANGELOG `[Unreleased]`, CLAUDE.md status, `docs/bindings-strategy.md`
+    step 2, `docs/ORACLES.md`, `docs/dstu-crypto-project.md` mapping, `docs/CLI.md` note, 8 binding
+    READMEs. Not pushed. After the owner's push: check every workflow, incl. `miri.yml`'s time.
 - [ ] **T-263** Text output (A1), only if the owner wants it. **After 1.0 (owner 2026-10-09).**
 
 Release:

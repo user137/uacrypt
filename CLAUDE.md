@@ -106,7 +106,8 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     a binding (D-118).
   - `crypto_pwhash` (`hash_password`/`verify_password`/`derive_key`/`Strength`) — `argon2` behind
     a `pwhash` feature (off by default); presets are libsodium's constants, `derive_key` equals
-    libsodium's `crypto_pwhash` byte for byte (T-71/D-50/D-219).
+    libsodium's `crypto_pwhash` byte for byte (T-71/D-50/D-219); `passphrase_file` is the D-219
+    file codec that `uacrypt`, capi and all 8 bindings share (T-269/D-240).
   - `crypto_secretbox` (`seal`/`open`/`SecretKey`) — `Kalyna256_256Gcm`, internal nonce,
     `version||nonce||ciphertext||tag`, no caller AAD; internal AAD `version||nonce||ct_len` binds the
     nonce (D-63) and the true length (defence in depth since D-204; D-200/D-202).
@@ -149,12 +150,10 @@ Kupyna-256 with no length cap, delegating to the streaming `Hasher`.
 the language bindings under `bindings/`, which are each their own separate Cargo workspace, D-119).
 Opaque handles, explicit `DstuStatus` error codes, `catch_unwind` at every boundary call,
 zeroize-on-free, `cbindgen`-generated header (`include/dstu_core.h`, regenerated+diffed via `cargo
-xtask capi`). Wraps the full `crypto_*` surface except `crypto_pwhash::derive_key` (T-269). The
-foundation the
+xtask capi`). Wraps the full `crypto_*` surface, incl. `derive_key`, the streaming box and the
+passphrase file (T-269). The foundation the
 .NET/Go/C++ bindings link against directly — usable from any language with a C FFI, not just those
-three. (The five direct-Rust bindings - Python/Node/Ruby/PHP/Java - link `dstu-core` itself, not
-this crate, but reached the same `crypto_box512`/`crypto_sign257` coverage independently, T-204's
-own Phase 3.)
+three. (The five direct-Rust bindings - Python/Node/Ruby/PHP/Java - link `dstu-core` itself.)
 
 Official test vectors are extracted and verified for Kalyna, Kupyna, DSTU 4145, and Strumok
 (`crates/dstu-core/tests/vectors/{kalyna,kupyna,dstu4145,strumok}/*.json` — see `docs/ORACLES.md`

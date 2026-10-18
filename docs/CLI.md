@@ -141,7 +141,8 @@ uacrypt encrypt --passphrase-file pass.txt --in report.pdf --out report.pdf.enc 
 it needs when given the other. The passphrase goes through Argon2id (`dstu_core::crypto_pwhash::
 derive_key`, libsodium's `crypto_pwhash` with its `MODERATE` limits: 256 MiB of memory, t=3), so
 each `encrypt` or `decrypt` with a passphrase takes about a second and 256 MiB on purpose; the
-streaming itself stays bounded as above. The prompt appears only when stderr is a terminal; with
+streaming itself stays bounded as above. Since 0.7.0 every language binding reads and writes the
+same passphrase files (`dstu_core::crypto_pwhash::passphrase_file`, D-240). The prompt appears only when stderr is a terminal; with
 stderr redirected, pass `--passphrase-file`. In Git Bash's mintty window the prompt is refused
 (it would go to a hidden console): use `winpty uacrypt ...`, cmd, PowerShell or Windows Terminal,
 or `--passphrase-file`. A passphrase file holds one line; a trailing newline (`\n` or `\r\n`) and a

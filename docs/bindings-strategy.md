@@ -351,8 +351,9 @@ it and weren't retroactively re-run for it at the time; D-151's own pass covered
 retroactively the same day it was added, see that entry.)
 
 1. [ ] Scaffold the binding crate/project, wired into the Cargo workspace where applicable.
-2. [ ] Wrap the full `crypto_*` surface (since T-262 that includes `crypto_pwhash::derive_key`,
-   not yet in any binding - T-269), zero-config (D-116), including a `selftest()` wrapper
+2. [ ] Wrap the full `crypto_*` surface (since T-269 that includes `crypto_pwhash::derive_key`,
+   the streaming `crypto_box`/`crypto_box512` and the passphrase file, D-240 - all 8 bindings
+   have them, through their existing stream type), zero-config (D-116), including a `selftest()` wrapper
        around T-161.
 3. [ ] Wrap `crypto_secretstream` in the language's idiomatic stream/pipe primitive (D-118).
        **Two pitfalls found by advisor review while building T-49's own wrapper — check both
