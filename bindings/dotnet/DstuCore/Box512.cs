@@ -11,6 +11,8 @@ public sealed class Box512SecretKey : IDisposable
 {
     private readonly Box512SecretKeyHandle _handle;
 
+    internal Box512SecretKeyHandle Handle => _handle;
+
     private Box512SecretKey(Box512SecretKeyHandle handle)
     {
         _handle = handle;
@@ -59,12 +61,9 @@ public sealed class Box512SecretKey : IDisposable
     public byte[] Open(byte[] sealedMessage)
     {
         ArgumentNullException.ThrowIfNull(sealedMessage);
-        if (sealedMessage.Length < DstuConstants.Box512OpenMinOverhead)
-        {
-            throw new DstuException("input is shorter than the minimum valid length for this construction");
-        }
-
-        var cap = sealedMessage.Length - DstuConstants.Box512OpenMinOverhead;
+        // The core checks the version byte before the length (T-269): a short 0.4-0.6 blob is
+        // reported as an unsupported version, not as too short.
+        var cap = Math.Max(0, sealedMessage.Length - DstuConstants.Box512OpenMinOverhead);
         var plaintextOut = new byte[cap];
         NativeStatus.ThrowIfError(NativeMethods.dstu_box512_open(
             _handle, sealedMessage, (nuint)sealedMessage.Length, plaintextOut, (nuint)cap, out var plaintextLen));
@@ -84,6 +83,8 @@ public sealed class Box512SecretKey : IDisposable
 public sealed class Box512PublicKey : IDisposable
 {
     private readonly Box512PublicKeyHandle _handle;
+
+    internal Box512PublicKeyHandle Handle => _handle;
 
     internal Box512PublicKey(Box512PublicKeyHandle handle)
     {

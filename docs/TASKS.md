@@ -9345,6 +9345,11 @@ plan):
     native side refuses a prefix buffer of the wrong size). Verified: `cargo xtask java` - 155
     tests, 0 failures, 1 skipped (the Linux-only `MemoryLeakTest`, as before), SpotBugs/clippy in
     `mvn verify`. Next: .NET (capi).
+  - .NET done 2026-10-19: `Pwhash.DeriveKey`, `SecretStreamEncryptStream`/`DecryptStream`
+    `.ForBox`/`ForBox512`/`ForPassphrase` over the capi stream functions, statuses 18/19 in
+    `DstuStatus`/`NativeStatus`; `Box*.Open` no longer pre-checks the length (a short v2 blob is now
+    an unsupported version, the T-265 mislabel); an empty passphrase is an `ArgumentException`
+    before the C call. Verified: `cargo xtask dotnet` - 203 passed, 0 skipped. Next: Go.
 - [ ] **T-263** Text output (A1), only if the owner wants it. **After 1.0 (owner 2026-10-09).**
 
 Release:

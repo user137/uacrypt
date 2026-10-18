@@ -71,14 +71,77 @@ public sealed class SecretStreamEncryptStream : Stream
     private bool _completed;
 
     public SecretStreamEncryptStream(Stream inner, SecretstreamKey key, bool leaveOpen = false)
+        : this(inner, StartWithKey(key), leaveOpen)
+    {
+    }
+
+    private SecretStreamEncryptStream(Stream inner, (FileEncryptorHandle Enc, byte[] Prefix) started, bool leaveOpen)
     {
         ArgumentNullException.ThrowIfNull(inner);
-        ArgumentNullException.ThrowIfNull(key);
         _inner = inner;
         _leaveOpen = leaveOpen;
+        _enc = started.Enc;
+        try
+        {
+            _inner.Write(started.Prefix, 0, started.Prefix.Length);
+        }
+        catch
+        {
+            _enc.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary><c>crypto_box</c> sealed to <paramref name="recipient"/> as a stream (format v3,
+    /// T-265/T-269): the same bytes <see cref="BoxPublicKey.Seal"/> returns, written chunk by
+    /// chunk. <see cref="Complete"/> rules as for a key stream.</summary>
+    public static SecretStreamEncryptStream ForBox(Stream inner, BoxPublicKey recipient, bool leaveOpen = false)
+    {
+        ArgumentNullException.ThrowIfNull(inner);
+        ArgumentNullException.ThrowIfNull(recipient);
+        var prefix = new byte[DstuConstants.BoxSealStreamPrefixBytes];
+        NativeStatus.ThrowIfError(NativeMethods.dstu_box_seal_stream(recipient.Handle, prefix, out var enc));
+        return new SecretStreamEncryptStream(inner, (enc, prefix), leaveOpen);
+    }
+
+    /// <summary><c>crypto_box512</c> counterpart of <see cref="ForBox"/>.</summary>
+    public static SecretStreamEncryptStream ForBox512(Stream inner, Box512PublicKey recipient, bool leaveOpen = false)
+    {
+        ArgumentNullException.ThrowIfNull(inner);
+        ArgumentNullException.ThrowIfNull(recipient);
+        var prefix = new byte[DstuConstants.Box512SealStreamPrefixBytes];
+        NativeStatus.ThrowIfError(NativeMethods.dstu_box512_seal_stream(recipient.Handle, prefix, out var enc));
+        return new SecretStreamEncryptStream(inner, (enc, prefix), leaveOpen);
+    }
+
+    /// <summary>A passphrase file (D-219/D-240) - the bytes <c>uacrypt encrypt --passphrase</c>
+    /// writes. Runs Argon2id (256 MiB, t=3, about a second) on the calling thread before writing
+    /// anything. An empty passphrase is refused with <see cref="ArgumentException"/>.</summary>
+    public static SecretStreamEncryptStream ForPassphrase(Stream inner, byte[] passphrase, bool leaveOpen = false)
+    {
+        ArgumentNullException.ThrowIfNull(inner);
+        CheckPassphrase(passphrase);
+        var prefix = new byte[DstuConstants.PassphraseFileSealStreamPrefixBytes];
+        NativeStatus.ThrowIfError(NativeMethods.dstu_passphrase_file_seal_stream(
+            passphrase, (nuint)passphrase.Length, prefix, out var enc));
+        return new SecretStreamEncryptStream(inner, (enc, prefix), leaveOpen);
+    }
+
+    internal static void CheckPassphrase(byte[] passphrase)
+    {
+        ArgumentNullException.ThrowIfNull(passphrase);
+        if (passphrase.Length == 0)
+        {
+            throw new ArgumentException("the passphrase is empty", nameof(passphrase));
+        }
+    }
+
+    private static (FileEncryptorHandle, byte[]) StartWithKey(SecretstreamKey key)
+    {
+        ArgumentNullException.ThrowIfNull(key);
         var prefix = new byte[DstuConstants.SecretstreamFilePrefixBytes];
-        NativeStatus.ThrowIfError(NativeMethods.dstu_secretstream_file_encryptor_new(key.Handle, prefix, out _enc));
-        _inner.Write(prefix, 0, prefix.Length);
+        NativeStatus.ThrowIfError(NativeMethods.dstu_secretstream_file_encryptor_new(key.Handle, prefix, out var enc));
+        return (enc, prefix);
     }
 
     public override bool CanRead => false;
@@ -199,12 +262,74 @@ public sealed class SecretStreamDecryptStream : Stream
     private bool _done;
 
     public SecretStreamDecryptStream(Stream inner, SecretstreamKey key, bool leaveOpen = false)
+        : this(inner, NewWithKey(key), leaveOpen)
+    {
+    }
+
+    /// <summary>Reads a <c>crypto_box</c> stream (or a <see cref="BoxPublicKey.Seal"/> blob) with
+    /// bounded memory.</summary>
+    public static SecretStreamDecryptStream ForBox(Stream inner, BoxSecretKey secret, bool leaveOpen = false)
     {
         ArgumentNullException.ThrowIfNull(inner);
+        ArgumentNullException.ThrowIfNull(secret);
+        var prefix = ReadPrefix(inner, DstuConstants.BoxOpenStreamPrefixBytes, "sealed message");
+        NativeStatus.ThrowIfError(NativeMethods.dstu_box_open_stream(secret.Handle, prefix, out var dec));
+        return new SecretStreamDecryptStream(inner, dec, leaveOpen);
+    }
+
+    /// <summary><c>crypto_box512</c> counterpart of <see cref="ForBox"/>.</summary>
+    public static SecretStreamDecryptStream ForBox512(Stream inner, Box512SecretKey secret, bool leaveOpen = false)
+    {
+        ArgumentNullException.ThrowIfNull(inner);
+        ArgumentNullException.ThrowIfNull(secret);
+        var prefix = ReadPrefix(inner, DstuConstants.Box512OpenStreamPrefixBytes, "sealed message");
+        NativeStatus.ThrowIfError(NativeMethods.dstu_box512_open_stream(secret.Handle, prefix, out var dec));
+        return new SecretStreamDecryptStream(inner, dec, leaveOpen);
+    }
+
+    /// <summary>Reads a passphrase file. The header is checked before Argon2 runs (on the calling
+    /// thread); a wrong passphrase throws <see cref="DstuException"/> at the first record.</summary>
+    public static SecretStreamDecryptStream ForPassphrase(Stream inner, byte[] passphrase, bool leaveOpen = false)
+    {
+        ArgumentNullException.ThrowIfNull(inner);
+        SecretStreamEncryptStream.CheckPassphrase(passphrase);
+        var header = ReadPrefix(inner, DstuConstants.PassphraseFileHeaderBytes, "passphrase file header");
+        NativeStatus.ThrowIfError(NativeMethods.dstu_passphrase_file_open_stream(
+            header, passphrase, (nuint)passphrase.Length, out var dec));
+        return new SecretStreamDecryptStream(inner, dec, leaveOpen);
+    }
+
+    /// <summary>The bytes in front of the stream file; a shorter input cannot be opened.</summary>
+    private static byte[] ReadPrefix(Stream inner, int size, string what)
+    {
+        var prefix = new byte[size];
+        var got = 0;
+        while (got < size)
+        {
+            var r = inner.Read(prefix, got, size - got);
+            if (r == 0)
+            {
+                throw new DstuException($"input too short to contain a {what}");
+            }
+
+            got += r;
+        }
+
+        return prefix;
+    }
+
+    private static FileDecryptorHandle NewWithKey(SecretstreamKey key)
+    {
         ArgumentNullException.ThrowIfNull(key);
+        return NativeMethods.dstu_secretstream_file_decryptor_new(key.Handle);
+    }
+
+    private SecretStreamDecryptStream(Stream inner, FileDecryptorHandle dec, bool leaveOpen)
+    {
+        ArgumentNullException.ThrowIfNull(inner);
         _inner = inner;
         _leaveOpen = leaveOpen;
-        _dec = NativeMethods.dstu_secretstream_file_decryptor_new(key.Handle);
+        _dec = dec;
         try
         {
             // The version byte and header, read now so a wrong version fails at construction.

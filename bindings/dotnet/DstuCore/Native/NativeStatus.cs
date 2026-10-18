@@ -47,6 +47,10 @@ internal static class NativeStatus
                 throw new DstuException("non-final chunk of the wrong length - the input is corrupted");
             case DstuStatus.ErrTrailingData:
                 throw new DstuException("trailing data after the secretstream's Final chunk");
+            case DstuStatus.ErrUnsupportedParams:
+                throw new DstuException("passphrase file names Argon2 parameters this build does not accept");
+            case DstuStatus.ErrOutOfMemory:
+                throw new DstuException("not enough memory for Argon2");
             case DstuStatus.ErrBufferTooSmall:
             case DstuStatus.ErrNullPointer:
             case DstuStatus.ErrInvalidLength:

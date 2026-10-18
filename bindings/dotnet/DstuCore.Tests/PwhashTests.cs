@@ -85,4 +85,29 @@ public sealed class PwhashTests
         Assert.Equal(expect == "accept", Pwhash.VerifyPassword(Encoding.UTF8.GetBytes(password), hash));
         Assert.False(Pwhash.VerifyPassword(Encoding.UTF8.GetBytes(password + "x"), hash));
     }
+
+    /// <summary>T-269: <see cref="Pwhash.DeriveKey"/> equals libsodium crypto_pwhash (the vectors'
+    /// oracle, D-219).</summary>
+    [Fact]
+    public void DeriveKeyMatchesTheLibsodiumVectors()
+    {
+        var path = Path.Combine(RepoRoot.Path, "crates", "dstu-core", "tests", "vectors", "pwhash", "derive_key.json");
+        var cases = JsonDocument.Parse(File.ReadAllText(path)).RootElement.GetProperty("cases").EnumerateArray().ToList();
+        Assert.Equal(3, cases.Count);
+        foreach (var c in cases)
+        {
+            var key = Pwhash.DeriveKey(
+                Convert.FromHexString(c.GetProperty("password_hex").GetString()!),
+                Convert.FromHexString(c.GetProperty("salt_hex").GetString()!),
+                PwhashStrength.Moderate);
+            Assert.Equal(c.GetProperty("key_hex").GetString(), Convert.ToHexString(key).ToLowerInvariant());
+        }
+    }
+
+    [Fact]
+    public void DeriveKeyRefusesAWrongLengthSaltAndAnUnknownStrength()
+    {
+        Assert.Throws<ArgumentException>(() => Pwhash.DeriveKey("pw"u8.ToArray(), new byte[15]));
+        Assert.Throws<ArgumentException>(() => Pwhash.DeriveKey("pw"u8.ToArray(), new byte[16], (PwhashStrength)255));
+    }
 }

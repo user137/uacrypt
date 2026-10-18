@@ -319,6 +319,38 @@ internal static partial class NativeMethods
     [LibraryImport(LibName)]
     internal static partial IntPtr dstu_secretstream_file_decryptor_last_error(FileDecryptorHandle dec);
 
+    // ---- streaming crypto_box/crypto_box512 and passphrase files (T-265/T-269) ----
+    // Each prefix buffer is exactly the matching DstuConstants length; the C side reads or writes
+    // that many bytes.
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box_seal_stream(
+        BoxPublicKeyHandle recipient, byte[] prefixOut, out FileEncryptorHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box_open_stream(
+        BoxSecretKeyHandle secret, byte[] prefix, out FileDecryptorHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box512_seal_stream(
+        Box512PublicKeyHandle recipient, byte[] prefixOut, out FileEncryptorHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box512_open_stream(
+        Box512SecretKeyHandle secret, byte[] prefix, out FileDecryptorHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_passphrase_file_seal_stream(
+        byte[] passphrase, nuint passphraseLen, byte[] prefixOut, out FileEncryptorHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_passphrase_file_open_stream(
+        byte[] header, byte[] passphrase, nuint passphraseLen, out FileDecryptorHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_pwhash_derive_key(
+        byte[] password, nuint passwordLen, byte[] salt, PwhashStrength strength, byte[] keyOut);
+
     [LibraryImport(LibName)]
     internal static partial void dstu_secretstream_file_decryptor_free(IntPtr dec);
 

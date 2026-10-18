@@ -21,6 +21,18 @@ public static class DstuConstants
     /// <summary>The <c>l(p)=512</c> sibling of <see cref="BoxOpenMinOverhead"/>.</summary>
     public const int Box512OpenMinOverhead = 311;
 
+    // T-269: the bytes in front of a box stream file (D-239) and the passphrase-file header
+    // (D-240) - the C ABI's DSTU_BOX*_SEAL/OPEN_STREAM_PREFIX_BYTES and
+    // DSTU_PASSPHRASE_FILE_*_BYTES. The native side reads/writes exactly this many bytes.
+    internal const int BoxSealStreamPrefixBytes = 162;
+    internal const int BoxOpenStreamPrefixBytes = 129;
+    internal const int Box512SealStreamPrefixBytes = 290;
+    internal const int Box512OpenStreamPrefixBytes = 257;
+    internal const int PassphraseFileHeaderBytes = 28;
+    internal const int PassphraseFileSealStreamPrefixBytes = 61;
+    public const int PwhashSaltBytes = 16;
+    public const int PwhashKeyBytes = 32;
+
     public const int GenericHash256Bytes = 32;
     public const int GenericHash512Bytes = 64;
 
