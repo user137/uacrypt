@@ -2735,7 +2735,9 @@ fn fill_chunk(reader: &mut impl std::io::Read, buf: &mut [u8]) -> std::io::Resul
 /// [`dstu_core::crypto_secretstream::PushState`]. One-chunk-ahead buffering (`cur`/`next`) is what
 /// lets the last chunk be tagged [`Tag::Final`](dstu_core::crypto_secretstream::Tag::Final)
 /// without a second pass over the input - including the empty-input case, which produces a single
-/// zero-length `Final` chunk.
+/// zero-length `Final` chunk. Test-only since T-269: `encrypt` gets its encryptor and prefix from
+/// the key or the passphrase-file codec and calls [`write_stream_records`] itself.
+#[cfg(test)]
 fn write_secretstream_file(
     key: &dstu_core::crypto_secretstream::Key,
     input: &mut impl std::io::Read,
@@ -2804,24 +2806,25 @@ fn run_secretstream_encrypt(
     create: impl FnOnce() -> Result<Output, CliError>,
 ) -> Result<(), CliError> {
     let mut input = source.open()?;
-    let (key, header) = match secret {
-        StreamSecret::Key(key) => (key, None),
+    let (mut enc, prefix) = match secret {
+        StreamSecret::Key(key) => {
+            let (enc, prefix) = dstu_core::crypto_secretstream::FileEncryptor::init(&key)?;
+            (enc, prefix.to_vec())
+        }
         StreamSecret::Passphrase(given) => {
             let phrase = match given {
                 Some(phrase) => phrase,
                 None => passphrase::from_terminal(true)?,
             };
-            let mut salt = [0u8; dstu_core::crypto_pwhash::SALT_BYTES];
-            dstu_core::randombytes::randombytes_buf(&mut salt)
-                .map_err(|e| CliError::Random(e.to_string()))?;
-            let key = passphrase::stream_key(&phrase, &salt)?;
-            (key, Some(passphrase::encode_header(&salt)))
+            let (enc, prefix) = dstu_core::crypto_pwhash::passphrase_file::seal_stream(&phrase)
+                .map_err(passphrase::cli_error)?;
+            (enc, prefix.to_vec())
         }
     };
     let mut out = create()?;
-    let result = header
-        .map_or(Ok(()), |header| out.write_all(&header))
-        .and_then(|()| write_secretstream_file(&key, &mut input, source, &mut out));
+    let result = out
+        .write_all(&prefix)
+        .and_then(|()| write_stream_records(&mut enc, &mut input, source, &mut out));
     // Closed before the rename: an in-place `--force` must not rename over an open `--in`.
     drop(input);
     out.finish(result)
@@ -2837,37 +2840,40 @@ fn run_secretstream_decrypt(
     source: &Source,
     create: impl FnOnce() -> Result<Output, CliError>,
 ) -> Result<(), CliError> {
+    use dstu_core::crypto_pwhash::passphrase_file::{Header, CONTAINER_TYPE, HEADER_BYTES};
     use dstu_core::crypto_secretstream::FORMAT_VERSION;
 
     let (mut raw, total) = source.open_sized()?;
     let mut first = [0u8; 1];
     read_exact_or_truncated(&mut raw, &mut first, source)?;
-    let (key, by_passphrase) = match (first[0], secret) {
-        (passphrase::CONTAINER_TYPE, StreamSecret::Key(_)) => {
+    let (mut dec, by_passphrase) = match (first[0], secret) {
+        (CONTAINER_TYPE, StreamSecret::Key(_)) => {
             return Err(CliError::DecryptKeyForPassphraseFile)
         }
-        (passphrase::CONTAINER_TYPE, StreamSecret::Passphrase(given)) => {
-            let mut header = [0u8; passphrase::HEADER_LEN];
+        (CONTAINER_TYPE, StreamSecret::Passphrase(given)) => {
+            let mut header = [0u8; HEADER_BYTES];
             header[0] = first[0];
             read_exact_or_truncated(&mut raw, &mut header[1..], source)?;
-            let salt = passphrase::parse_header(&header)?;
+            let header = Header::parse(&header).map_err(passphrase::cli_error)?;
             let phrase = match given {
                 Some(phrase) => phrase,
                 None => passphrase::from_terminal(false)?,
             };
-            let key = passphrase::stream_key(&phrase, &salt)?;
+            let dec = header.open_stream(&phrase).map_err(passphrase::cli_error)?;
             read_exact_or_truncated(&mut raw, &mut first, source)?;
-            (key, true)
+            (dec, true)
         }
         (FORMAT_VERSION, StreamSecret::Passphrase(_)) => return Err(CliError::DecryptNeedsKey),
         (other, StreamSecret::Passphrase(_)) => {
             return Err(CliError::SecretstreamUnsupportedVersion(other))
         }
-        (_, StreamSecret::Key(key)) => (key, false),
+        (_, StreamSecret::Key(key)) => (
+            dstu_core::crypto_secretstream::FileDecryptor::new(&key),
+            false,
+        ),
     };
     let mut out = create()?;
     let mut input = progress::wrap(raw, total);
-    let mut dec = dstu_core::crypto_secretstream::FileDecryptor::new(&key);
     let fed = dec
         .feed(
             &first,

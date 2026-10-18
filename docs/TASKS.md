@@ -9309,6 +9309,13 @@ plan):
 - [ ] **T-269** Binding gate for T-262 and T-265, one pass: wire `crypto_pwhash::derive_key`
   and T-265's streaming `crypto_box` API into the 8 bindings and `dstu-core-capi` (shared vectors `crates/dstu-core/tests/vectors/pwhash/derive_key.json`), and
   decide whether the bindings also read/write the passphrase file format (D-219).
+  **Owner 2026-10-18: yes, through the core (D-240).** State log (plan: the 0.7.0 section):
+  - Phase 1 done 2026-10-18: `crypto_pwhash::passphrase_file` (`seal_stream`, `Header::parse`/
+    `open_stream`), `uacrypt` switched (all suites green, unchanged messages), vectors
+    `pwhash/passphrase_file.json` from the 0.6.0 binary (generator
+    `crates/dstu-core/tests/gen_passphrase_file_vectors.py`). Verified: new<->0.6.0 files both
+    ways, wrong passphrase exit 1 with no output, `--no-default-features --features pwhash`
+    build, Miri 4 passed / 3 Argon2 tests ignored. Next: phase 2 (capi).
 - [ ] **T-263** Text output (A1), only if the owner wants it. **After 1.0 (owner 2026-10-09).**
 
 Release:

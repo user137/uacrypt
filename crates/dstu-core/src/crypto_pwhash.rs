@@ -33,6 +33,8 @@
 //! assert!(!verify_password(b"wrong guess", &stored_hash));
 //! ```
 
+pub mod passphrase_file;
+
 use crate::randombytes::{randombytes_buf, RandomError};
 use argon2::password_hash::{PasswordHash, PasswordHasher, SaltString};
 use argon2::{Algorithm, Argon2, Params, Version};
