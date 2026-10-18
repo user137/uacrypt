@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5d9ff98a.js";
+            window.path_to_searchindex_js = "searchindex-f9bf4739.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -9515,6 +9515,13 @@ UAPKI, which fixed GCM/GMAC/CCM (<code>deffe4a</code>, 2.0.3) and empty CMAC (<c
 re-run of <code>tests/oracle-harness/uapki-kalyna-modes/</code> on <code>37039b1</code>: 78/93, CMAC(empty) = <code>ERR 27</code>.
 Left: (b) BC - annex В.8.1.3 is the partial-block GMAC vector BC says doesn’t exist (#287 closed
 2026-05-30); check a post-1.85 BC first, comment only on owner go-ahead.
+<strong>BC checked 2026-10-18:</strong> 1.86 (2026-09-11, sha1 matches Maven Central) has KGCM/KGMac/
+DSTU7624Mac unchanged from 1.85. Run on our vectors: block-aligned 11/11 identical (control);
+<code>kalyna-{gcm,gmac}/partial-*.json</code> 0/38 tags identical, 38/38 ciphertexts identical - still zero
+padding. bc-java <code>main</code> <code>004f0ba</code> (2026-09-24, unreleased) rejects empty GCM/GMAC input and
+empty CMAC (after the owner’s e-mail to BC); padding and the “no partial-block vector” javadoc
+are unchanged there. <strong>Owner 2026-10-18: no BC comment</strong> - BC already fixed what was reported
+(the owner wrote to them by e-mail); T-247 is closed.
 Original scope: (<strong>owner-gated, outward-facing</strong>) Upstream reports: (a) an issue on
 specinfo-ua/UAPKI describing the GCM/GMAC padded-length non-injectivity and the CMAC empty-message
 collision, with V1/V3/V4 (D-91 precedent for conventions: <code>MODULE: short description</code>, mixed
@@ -11184,6 +11191,32 @@ T-275 (O-F: Java <code>close()</code> closes the sink - a behaviour change, Java
 </ol>
 <p><strong>Outside the versions:</strong> T-267 (site, right after 0.5.0), T-295 (winget, after the 0.6.0 release - owner 2026-10-11), T-247
 (upstream reports, owner go-ahead only).</p>
+<p><strong>0.7.0 detailed plan (owner-approved 2026-10-18; T-265 done, T-247 closed):</strong></p>
+<ul>
+<li>Step 0, T-231 .NET: one 40000-iteration CI reading (iteration count from an env var, default
+20000) via a draft PR - <code>bindings-dotnet.yml</code> runs only on <code>master</code> pushes and PRs. The native
+remainder went 0.13-0.22 MB at n/2 -&gt; 0.70-0.74 MB at n in 3 runs (16-18.10): linear growth to
+~1.7 MB = a native leak to find; a plateau = allocator, close T-231.</li>
+<li>Step 1, T-269 (<strong>owner 2026-10-18: the D-219 passphrase file moves into the core</strong>): (1) core
+codec from <code>crates/uacrypt/src/passphrase.rs</code>, <code>pwhash</code> feature, shaped like <code>crypto_box</code>’s
+<code>seal_stream</code>/<code>open_stream</code>, D-219 rules unchanged, <code>uacrypt</code> switches to it (same bytes), new
+D- entry, vectors <code>pwhash/passphrase_file.json</code> from 0.6.0 files; header-refusal tests stay under
+Miri, Argon2-running tests <code>cfg_attr(miri, ignore)</code>; no passphrase files in the MemoryLeakTests
+loops. (2) capi: <code>derive_key</code> + passphrase-file handles. (3) 8 bindings in T-284’s order:
+<code>derive_key</code>, streaming box/box512, passphrase file, runners for <code>box/v3.json</code>,
+<code>box/legacy_v2.json</code>, <code>pwhash/*.json</code>; D-118 pitfalls; the T-265 C++/.NET/Go “too short” fix;
+new capi statuses in the .NET/Go/C++ enums. (4) docs. Own plan mode + advisor first.</li>
+<li>Step 2: T-286, T-287 (first check which bindings keep a <code>SecretKey</code> handle), T-293 (own plan).</li>
+<li>Step 3: T-254 (2nd oracle: BC <code>DSTU7564Digest(384)</code>, else provisional; check whether it lands in
+<code>crypto_generichash</code> -&gt; binding gate), T-253 (own plan; BC <code>DSTU7624WrapEngine</code> if it pads;
+constant-time unwrap check). <strong>Owner decision open:</strong> DSTU 9041 <code>l(p)=384</code> in 0.7.0 or later.</li>
+<li>Step 4: T-264 (the parser is hand-written, no <code>clap</code>; no new dependency without the owner).</li>
+<li>Step 5: T-249 + the T-223/T-225 fuzz additions.</li>
+<li>Release: version bumps incl. every published binding’s minor (v3 box, C ABI break), the D-238
+<code>workflow_dispatch</code> dry run, green Miri on the tagged commit, winget 0.7.0 without VCRedist.</li>
+<li>After 0.7.0 (“хвиля”, Claude’s reading, owner to correct): prepare the remaining T-164
+registries (Packagist, NuGet, Maven Central, pkg.go.dev, vcpkg) - each publish owner-gated.</li>
+</ul>
 <p><strong>After 1.0 (owner 2026-10-09):</strong> T-237 (BC harness), T-263 (text/armor output). <strong>Closed:</strong> T-250
 (no migration; the 0.3.x binaries stay available for decrypting old data).</p>
 <p><strong>Owner, 2026-10-08: 0.5.0 ships as it stands</strong> (the day 0.4.0 shipped). Moved to 0.6.0, still
