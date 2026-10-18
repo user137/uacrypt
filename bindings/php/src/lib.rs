@@ -58,6 +58,28 @@ pub const DSTU_CORE_PWHASH_MODERATE: i32 = 1;
 pub const DSTU_CORE_PWHASH_SENSITIVE: i32 = 2;
 
 #[php_const]
+pub const DSTU_CORE_PWHASH_SALTBYTES: i32 = 16;
+#[php_const]
+pub const DSTU_CORE_PASSPHRASE_FILE_HEADER_BYTES: i32 = 28;
+#[php_const]
+pub const DSTU_CORE_BOX_OPEN_STREAM_PREFIX_BYTES: i32 = 129;
+// Named explicitly: the default rename splits `BOX512` into `BOX_512` (seen on the Pi).
+#[php_const]
+#[php(name = "DSTU_CORE_BOX512_OPEN_STREAM_PREFIX_BYTES")]
+pub const DSTU_CORE_BOX512_OPEN_STREAM_PREFIX_BYTES: i32 = 257;
+
+// The literals above are what `php_const` can export; tie them to the core's own values.
+const _: () = assert!(
+    DSTU_CORE_PWHASH_SALTBYTES as usize == dstu_core::crypto_pwhash::SALT_BYTES
+        && DSTU_CORE_PASSPHRASE_FILE_HEADER_BYTES as usize
+            == dstu_core::crypto_pwhash::passphrase_file::HEADER_BYTES
+        && DSTU_CORE_BOX_OPEN_STREAM_PREFIX_BYTES as usize
+            == dstu_core::crypto_box::OPEN_STREAM_PREFIX_BYTES
+        && DSTU_CORE_BOX512_OPEN_STREAM_PREFIX_BYTES as usize
+            == dstu_core::crypto_box512::OPEN_STREAM_PREFIX_BYTES
+);
+
+#[php_const]
 pub const DSTU_CORE_SECRETSTREAM_TAG_MESSAGE: i32 = 0x00;
 #[php_const]
 pub const DSTU_CORE_SECRETSTREAM_TAG_PUSH: i32 = 0x01;
@@ -73,6 +95,10 @@ pub fn module(module: ModuleBuilder) -> ModuleBuilder {
         .constant(wrap_constant!(DSTU_CORE_PWHASH_INTERACTIVE))
         .constant(wrap_constant!(DSTU_CORE_PWHASH_MODERATE))
         .constant(wrap_constant!(DSTU_CORE_PWHASH_SENSITIVE))
+        .constant(wrap_constant!(DSTU_CORE_PWHASH_SALTBYTES))
+        .constant(wrap_constant!(DSTU_CORE_PASSPHRASE_FILE_HEADER_BYTES))
+        .constant(wrap_constant!(DSTU_CORE_BOX_OPEN_STREAM_PREFIX_BYTES))
+        .constant(wrap_constant!(DSTU_CORE_BOX512_OPEN_STREAM_PREFIX_BYTES))
         .constant(wrap_constant!(DSTU_CORE_SECRETSTREAM_TAG_MESSAGE))
         .constant(wrap_constant!(DSTU_CORE_SECRETSTREAM_TAG_PUSH))
         .constant(wrap_constant!(DSTU_CORE_SECRETSTREAM_TAG_REKEY))

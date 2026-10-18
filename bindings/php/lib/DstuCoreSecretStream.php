@@ -47,12 +47,46 @@ final class DstuCoreSecretStreamWriter
     private string $buf = '';
     private bool $closed = false;
 
-    /** @param resource $out */
+    /**
+     * @param string|DstuCoreSecretStreamFileEncryptor $key a stream key, or a codec already
+     *        started by one of the named constructors below
+     * @param resource $out
+     */
     public function __construct($key, $out)
     {
         $this->out = $out;
-        $this->enc = new DstuCoreSecretStreamFileEncryptor($key);
+        $this->enc = $key instanceof DstuCoreSecretStreamFileEncryptor
+            ? $key
+            : new DstuCoreSecretStreamFileEncryptor($key);
         $this->writeAll($this->enc->prefix());
+    }
+
+    /**
+     * `crypto_box` sealed to $publicKey as a stream (format v3, T-265/T-269): the same bytes
+     * dstu_core_box_seal() returns, written chunk by chunk.
+     *
+     * @param resource $out
+     */
+    public static function forBox(string $publicKey, $out): self
+    {
+        return new self(DstuCoreSecretStreamFileEncryptor::box_seal($publicKey), $out);
+    }
+
+    /** @param resource $out */
+    public static function forBox512(string $publicKey, $out): self
+    {
+        return new self(DstuCoreSecretStreamFileEncryptor::box512_seal($publicKey), $out);
+    }
+
+    /**
+     * A passphrase file (D-219/D-240) - the bytes `uacrypt encrypt --passphrase` writes. Runs
+     * Argon2id (256 MiB, t=3, about a second) before writing anything.
+     *
+     * @param resource $out
+     */
+    public static function forPassphrase(string $passphrase, $out): self
+    {
+        return new self(DstuCoreSecretStreamFileEncryptor::passphrase_seal($passphrase), $out);
     }
 
     /**
@@ -180,14 +214,72 @@ final class DstuCoreSecretStreamReader implements Iterator
     private ?string $current = null;
     private int $index = -1;
 
-    /** @param resource $inp */
+    /**
+     * @param string|DstuCoreSecretStreamFileDecryptor $key a stream key, or a codec already
+     *        opened by one of the named constructors below
+     * @param resource $inp
+     */
     public function __construct($key, $inp)
     {
         $this->inp = $inp;
-        $this->dec = new DstuCoreSecretStreamFileDecryptor($key);
+        $this->dec = $key instanceof DstuCoreSecretStreamFileDecryptor
+            ? $key
+            : new DstuCoreSecretStreamFileDecryptor($key);
         // The version byte and header, read now so a wrong version fails at construction.
         $this->step();
         $this->step();
+    }
+
+    /**
+     * Reads a `crypto_box` stream (or a dstu_core_box_seal() blob) with bounded memory.
+     *
+     * @param resource $inp
+     */
+    public static function forBox(string $secretKey, $inp): self
+    {
+        $prefix = self::readPrefix($inp, DSTU_CORE_BOX_OPEN_STREAM_PREFIX_BYTES, 'sealed message');
+
+        return new self(DstuCoreSecretStreamFileDecryptor::box_open($secretKey, $prefix), $inp);
+    }
+
+    /** @param resource $inp */
+    public static function forBox512(string $secretKey, $inp): self
+    {
+        $prefix = self::readPrefix($inp, DSTU_CORE_BOX512_OPEN_STREAM_PREFIX_BYTES, 'sealed message');
+
+        return new self(DstuCoreSecretStreamFileDecryptor::box512_open($secretKey, $prefix), $inp);
+    }
+
+    /**
+     * Reads a passphrase file. The header is checked before Argon2 runs; a wrong passphrase
+     * throws DstuCoreException at the first record.
+     *
+     * @param resource $inp
+     */
+    public static function forPassphrase(string $passphrase, $inp): self
+    {
+        $header = self::readPrefix($inp, DSTU_CORE_PASSPHRASE_FILE_HEADER_BYTES, 'passphrase file header');
+
+        return new self(DstuCoreSecretStreamFileDecryptor::passphrase_open($header, $passphrase), $inp);
+    }
+
+    /**
+     * The bytes in front of the stream file; a shorter input cannot be opened at all.
+     *
+     * @param resource $inp
+     */
+    private static function readPrefix($inp, int $size, string $what): string
+    {
+        $prefix = '';
+        while (strlen($prefix) < $size) {
+            $piece = fread($inp, $size - strlen($prefix));
+            if ($piece === false || $piece === '') {
+                dstu_core_throw_error("input too short to contain a {$what}");
+            }
+            $prefix .= $piece;
+        }
+
+        return $prefix;
     }
 
     /** @param resource $inp */

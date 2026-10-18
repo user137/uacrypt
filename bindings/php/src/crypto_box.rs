@@ -14,7 +14,7 @@ use ext_php_rs::{
 use crate::{error::IntoDstuException, util::to_array};
 use dstu_core::crypto_box::{open, seal, PublicKey, SecretKey};
 
-fn secret_key_from_bytes(bytes: &[u8]) -> Result<SecretKey, PhpException> {
+pub(crate) fn secret_key_from_bytes(bytes: &[u8]) -> Result<SecretKey, PhpException> {
     let e = to_array::<32>(bytes, "secret_key")?;
     SecretKey::from_bytes(&e).ok_or_else(|| {
         PhpException::new(
@@ -25,7 +25,7 @@ fn secret_key_from_bytes(bytes: &[u8]) -> Result<SecretKey, PhpException> {
     })
 }
 
-fn public_key_from_bytes(bytes: &[u8]) -> Result<PublicKey, PhpException> {
+pub(crate) fn public_key_from_bytes(bytes: &[u8]) -> Result<PublicKey, PhpException> {
     let x = to_array::<32>(bytes, "public_key")?;
     PublicKey::from_bytes(&x).ok_or_else(|| {
         PhpException::new(

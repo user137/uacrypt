@@ -7,7 +7,7 @@ use ext_php_rs::{
 };
 
 use crate::error::IntoDstuException;
-use dstu_core::crypto_pwhash::{hash_password, verify_password, Strength};
+use dstu_core::crypto_pwhash::{derive_key, hash_password, verify_password, Strength, SALT_BYTES};
 
 fn strength_from_u8(strength: u8) -> Result<Strength, PhpException> {
     match strength {
@@ -41,10 +41,25 @@ pub fn dstu_core_pwhash_verify_password(password: Binary<u8>, hash: String) -> b
     verify_password(&password, &hash)
 }
 
+/// Derives a 32-byte key from `password` and a 16-byte `salt` - libsodium's `crypto_pwhash`
+/// (Argon2id v1.3), byte for byte (T-269). Runs on the calling thread, as
+/// [`dstu_core_pwhash_hash_password`] does.
+#[php_function]
+pub fn dstu_core_pwhash_derive_key(
+    password: Binary<u8>,
+    salt: Binary<u8>,
+    strength: u8,
+) -> Result<Binary<u8>, PhpException> {
+    let salt = crate::util::to_array::<SALT_BYTES>(&salt, "salt")?;
+    let key = derive_key(&password, &salt, strength_from_u8(strength)?).dstu()?;
+    Ok(Binary::from(key.to_vec()))
+}
+
 /// Registers this module's functions - see `secretbox::register`'s doc comment for why each
 /// module registers its own.
 pub fn register(module: ModuleBuilder) -> ModuleBuilder {
     module
         .function(wrap_function!(dstu_core_pwhash_hash_password))
         .function(wrap_function!(dstu_core_pwhash_verify_password))
+        .function(wrap_function!(dstu_core_pwhash_derive_key))
 }

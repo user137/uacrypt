@@ -17,10 +17,11 @@ use ext_php_rs::{
 };
 
 use crate::{error::IntoDstuException, util::to_array};
+use dstu_core::crypto_pwhash::passphrase_file::{self, Header, HEADER_BYTES};
 use dstu_core::crypto_secretstream::{
-    FileDecryptor, FileEncryptor, Key, PullState, PushState, Tag, CHUNK_BYTES, FILE_PREFIX_BYTES,
-    MAX_RECORD_BYTES,
+    FileDecryptor, FileEncryptor, Key, PullState, PushState, Tag, CHUNK_BYTES, MAX_RECORD_BYTES,
 };
+use dstu_core::{crypto_box, crypto_box512};
 
 fn tag_from_byte(byte: u8) -> Result<Tag, PhpException> {
     Tag::from_byte(byte).ok_or_else(|| {
@@ -131,9 +132,12 @@ impl SecretStreamPullState {
 
 /// Stream-file writer (T-284): the D-208 framing from the core codec.
 /// `lib/DstuCoreSecretStream.php`'s `DstuCoreSecretStreamWriter` drives it and does only I/O.
+/// The constructor takes a stream key; the static `box_seal`/`box512_seal`/`passphrase_seal`
+/// (T-269) start the same codec under a `crypto_box` KEM prefix or a passphrase-file header, and
+/// `prefix()` then includes it.
 #[php_class]
 #[php(name = "DstuCoreSecretStreamFileEncryptor")]
-pub struct SecretStreamFileEncryptor(RefCell<FileEncryptor>, [u8; FILE_PREFIX_BYTES]);
+pub struct SecretStreamFileEncryptor(RefCell<FileEncryptor>, Vec<u8>);
 
 #[php_impl]
 #[php(change_method_case = "snake_case")]
@@ -141,10 +145,33 @@ impl SecretStreamFileEncryptor {
     pub fn __construct(key: Binary<u8>) -> Result<Self, PhpException> {
         let key = Key::from_bytes(to_array::<32>(&key, "key")?);
         let (inner, prefix) = FileEncryptor::init(&key).dstu()?;
-        Ok(Self(RefCell::new(inner), prefix))
+        Ok(Self(RefCell::new(inner), prefix.to_vec()))
     }
 
-    /// The format version byte and header - write these first.
+    /// Starts a `crypto_box` (format v3) stream to `public_key`.
+    pub fn box_seal(public_key: Binary<u8>) -> Result<Self, PhpException> {
+        let recipient = crate::crypto_box::public_key_from_bytes(&public_key)?;
+        let (inner, prefix) = crypto_box::seal_stream(&recipient).dstu()?;
+        Ok(Self(RefCell::new(inner), prefix.to_vec()))
+    }
+
+    /// Starts a `crypto_box512` (format v3) stream to `public_key`. Named explicitly: the
+    /// snake_case rename would split `box512` into `box_512`.
+    #[php(name = "box512_seal")]
+    pub fn box512_seal(public_key: Binary<u8>) -> Result<Self, PhpException> {
+        let recipient = crate::box512::public_key_from_bytes(&public_key)?;
+        let (inner, prefix) = crypto_box512::seal_stream(&recipient).dstu()?;
+        Ok(Self(RefCell::new(inner), prefix.to_vec()))
+    }
+
+    /// Starts a passphrase file (D-219/D-240); runs Argon2 (256 MiB, t=3) on the calling thread,
+    /// as `dstu_core_pwhash_hash_password` does.
+    pub fn passphrase_seal(passphrase: Binary<u8>) -> Result<Self, PhpException> {
+        let (inner, prefix) = passphrase_file::seal_stream(&passphrase).dstu()?;
+        Ok(Self(RefCell::new(inner), prefix.to_vec()))
+    }
+
+    /// Everything to write before the first record.
     pub fn prefix(&self) -> Binary<u8> {
         Binary::from(self.1.to_vec())
     }
@@ -182,6 +209,39 @@ impl SecretStreamFileDecryptor {
     pub fn __construct(key: Binary<u8>) -> Result<Self, PhpException> {
         let key = Key::from_bytes(to_array::<32>(&key, "key")?);
         Ok(Self(RefCell::new(FileDecryptor::new(&key))))
+    }
+
+    /// Opens a `crypto_box` stream: `prefix` is its first
+    /// `DSTU_CORE_BOX_OPEN_STREAM_PREFIX_BYTES` bytes; feed the rest.
+    pub fn box_open(secret_key: Binary<u8>, prefix: Binary<u8>) -> Result<Self, PhpException> {
+        let secret = crate::crypto_box::secret_key_from_bytes(&secret_key)?;
+        let prefix = to_array::<{ crypto_box::OPEN_STREAM_PREFIX_BYTES }>(&prefix, "prefix")?;
+        let inner = crypto_box::open_stream(&prefix, &secret).dstu()?;
+        Ok(Self(RefCell::new(inner)))
+    }
+
+    /// Opens a `crypto_box512` stream: `prefix` is its first
+    /// `DSTU_CORE_BOX512_OPEN_STREAM_PREFIX_BYTES` bytes; feed the rest.
+    #[php(name = "box512_open")]
+    pub fn box512_open(secret_key: Binary<u8>, prefix: Binary<u8>) -> Result<Self, PhpException> {
+        let secret = crate::box512::secret_key_from_bytes(&secret_key)?;
+        let prefix = to_array::<{ crypto_box512::OPEN_STREAM_PREFIX_BYTES }>(&prefix, "prefix")?;
+        let inner = crypto_box512::open_stream(&prefix, &secret).dstu()?;
+        Ok(Self(RefCell::new(inner)))
+    }
+
+    /// Opens a passphrase file: `header` is its first `DSTU_CORE_PASSPHRASE_FILE_HEADER_BYTES`
+    /// bytes, checked before Argon2 runs; feed the rest. A wrong passphrase fails at the first
+    /// record.
+    pub fn passphrase_open(
+        header: Binary<u8>,
+        passphrase: Binary<u8>,
+    ) -> Result<Self, PhpException> {
+        let header = to_array::<HEADER_BYTES>(&header, "header")?;
+        let inner = Header::parse(&header)
+            .and_then(|h| h.open_stream(&passphrase))
+            .dstu()?;
+        Ok(Self(RefCell::new(inner)))
     }
 
     pub fn next_len(&self) -> u32 {

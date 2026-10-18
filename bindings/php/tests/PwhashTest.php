@@ -55,4 +55,28 @@ final class PwhashTest extends TestCase
         $this->assertSame($expect === 'accept', dstu_core_pwhash_verify_password($password, $hash));
         $this->assertFalse(dstu_core_pwhash_verify_password($password . 'x', $hash));
     }
+
+    /** T-269: dstu_core_pwhash_derive_key equals libsodium crypto_pwhash (the vectors' oracle, D-219). */
+    public function testDeriveKeyMatchesTheLibsodiumVectors(): void
+    {
+        $path = dirname(__DIR__, 3) . '/crates/dstu-core/tests/vectors/pwhash/derive_key.json';
+        $cases = json_decode(file_get_contents($path), true, flags: JSON_THROW_ON_ERROR)['cases'];
+        $this->assertCount(3, $cases);
+        foreach ($cases as $case) {
+            $key = dstu_core_pwhash_derive_key(hex2bin($case['password_hex']), hex2bin($case['salt_hex']), DSTU_CORE_PWHASH_MODERATE);
+            $this->assertSame($case['key_hex'], bin2hex($key), $case['name']);
+        }
+    }
+
+    public function testDeriveKeyRefusesAWrongLengthSalt(): void
+    {
+        $this->expectException(\ValueError::class);
+        dstu_core_pwhash_derive_key('pw', str_repeat("\x00", 15), DSTU_CORE_PWHASH_MODERATE);
+    }
+
+    public function testDeriveKeyRefusesAnUnknownStrength(): void
+    {
+        $this->expectException(\ValueError::class);
+        dstu_core_pwhash_derive_key('pw', str_repeat("\x00", 16), 255);
+    }
 }

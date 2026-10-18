@@ -9334,6 +9334,12 @@ plan):
     `Passphrase*` (subclasses of `SecretStreamWriter`/`Reader` over new singleton constructors on
     the native codec classes). Verified: `cargo xtask ruby` from PowerShell - 160 examples, 0
     failures, rubocop clean, clippy/fmt. Next: PHP (CI or the Pi).
+  - PHP done 2026-10-19: `dstu_core_pwhash_derive_key`, `DstuCoreSecretStreamWriter`/`Reader`
+    `::forBox`/`forBox512`/`forPassphrase` (the constructors also take a started codec), static
+    native constructors. The digit-rename pitfall hit a `php_const` too
+    (`DSTU_CORE_BOX_512_...`), fixed with `#[php(name)]`. Verified on the Pi (`cargo xtask php`):
+    158 tests, 0 skipped, phpstan clean; `method_exists`/`function_exists` for the 512 names.
+    Next: Java.
 - [ ] **T-263** Text output (A1), only if the owner wants it. **After 1.0 (owner 2026-10-09).**
 
 Release:

@@ -73,6 +73,21 @@ class DstuCoreSecretStreamFileEncryptor
 {
     public function __construct(string $key) {}
 
+    public static function box_seal(string $public_key): self
+    {
+        return new self('');
+    }
+
+    public static function box512_seal(string $public_key): self
+    {
+        return new self('');
+    }
+
+    public static function passphrase_seal(string $passphrase): self
+    {
+        return new self('');
+    }
+
     public function prefix(): string
     {
         return '';
@@ -93,6 +108,21 @@ class DstuCoreSecretStreamFileEncryptor
 class DstuCoreSecretStreamFileDecryptor
 {
     public function __construct(string $key) {}
+
+    public static function box_open(string $secret_key, string $prefix): self
+    {
+        return new self('');
+    }
+
+    public static function box512_open(string $secret_key, string $prefix): self
+    {
+        return new self('');
+    }
+
+    public static function passphrase_open(string $header, string $passphrase): self
+    {
+        return new self('');
+    }
 
     public function next_len(): int
     {
@@ -129,6 +159,11 @@ const DSTU_CORE_PWHASH_SENSITIVE = 2;
 
 function dstu_core_pwhash_hash_password(string $password, int $strength): string {}
 function dstu_core_pwhash_verify_password(string $password, string $hash): bool {}
+function dstu_core_pwhash_derive_key(string $password, string $salt, int $strength): string {}
+const DSTU_CORE_PWHASH_SALTBYTES = 16;
+const DSTU_CORE_PASSPHRASE_FILE_HEADER_BYTES = 28;
+const DSTU_CORE_BOX_OPEN_STREAM_PREFIX_BYTES = 129;
+const DSTU_CORE_BOX512_OPEN_STREAM_PREFIX_BYTES = 257;
 
 // --- crypto_auth ---
 function dstu_core_auth_keygen(): string {}
