@@ -70,6 +70,10 @@ inline void CheckStatus(DstuStatus status) {
       throw CryptoError("non-final chunk of the wrong length - the input is corrupted");
     case DSTU_ERR_TRAILING_DATA:
       throw CryptoError("trailing data after the secretstream's Final chunk");
+    case DSTU_ERR_UNSUPPORTED_PARAMS:
+      throw CryptoError("passphrase file names Argon2 parameters this build does not accept");
+    case DSTU_ERR_OUT_OF_MEMORY:
+      throw CryptoError("not enough memory for Argon2");
     case DSTU_ERR_INVALID_ARGUMENT:
       throw ArgumentError("an enum argument is outside its valid range (e.g. an unknown pwhash strength)");
     default:  // DSTU_ERR_BUFFER_TOO_SMALL, DSTU_ERR_NULL_POINTER, DSTU_ERR_INVALID_LENGTH, DSTU_ERR_PANIC

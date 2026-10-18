@@ -86,7 +86,11 @@ if(DSTU_CORE_CPP_BUILD_TESTS)
   target_link_libraries(dstu_core_cpp_tests PRIVATE dstu_core_cpp dstu_core_capi_shared)
   target_compile_definitions(dstu_core_cpp_tests PRIVATE DSTU_UACRYPT_EXE="${DSTU_UACRYPT_EXE}"
     DSTU_SECRETSTREAM_VECTORS="${CMAKE_CURRENT_SOURCE_DIR}/../../crates/dstu-core/tests/vectors/secretstream-file/v2.json"
-    DSTU_PWHASH_VERIFY_VECTORS="${CMAKE_CURRENT_SOURCE_DIR}/../../crates/dstu-core/tests/vectors/pwhash/verify.json")
+    DSTU_PWHASH_VERIFY_VECTORS="${CMAKE_CURRENT_SOURCE_DIR}/../../crates/dstu-core/tests/vectors/pwhash/verify.json"
+    DSTU_BOX_V3_VECTORS="${CMAKE_CURRENT_SOURCE_DIR}/../../crates/dstu-core/tests/vectors/box/v3.json"
+    DSTU_BOX_LEGACY_VECTORS="${CMAKE_CURRENT_SOURCE_DIR}/../../crates/dstu-core/tests/vectors/box/legacy_v2.json"
+    DSTU_PASSPHRASE_FILE_VECTORS="${CMAKE_CURRENT_SOURCE_DIR}/../../crates/dstu-core/tests/vectors/pwhash/passphrase_file.json"
+    DSTU_DERIVE_KEY_VECTORS="${CMAKE_CURRENT_SOURCE_DIR}/../../crates/dstu-core/tests/vectors/pwhash/derive_key.json")
   dstu_core_cpp_warnings(dstu_core_cpp_tests)
   dstu_core_cpp_copy_shared_lib(dstu_core_cpp_tests)
   add_test(NAME dstu_core_cpp_tests COMMAND dstu_core_cpp_tests)

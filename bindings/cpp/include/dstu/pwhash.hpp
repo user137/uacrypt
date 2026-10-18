@@ -28,6 +28,20 @@ inline bool VerifyPassword(ByteView password, const std::string &hash) {
   return dstu_pwhash_verify_password(password.data(), password.size(), hash.c_str());
 }
 
+/// Derives a DSTU_PWHASH_KEYBYTES-byte key from password and a DSTU_PWHASH_SALTBYTES-byte salt -
+/// libsodium's crypto_pwhash (Argon2id v1.3), byte for byte (T-269). Runs on the calling thread.
+/// Throws ArgumentError for a wrong-length salt or an unknown strength, CryptoError if Argon2
+/// cannot get its memory.
+inline std::vector<std::uint8_t> DeriveKey(ByteView password, ByteView salt, PwhashStrength strength) {
+  if (salt.size() != DSTU_PWHASH_SALTBYTES) {
+    throw ArgumentError("salt must be exactly DSTU_PWHASH_SALTBYTES bytes");
+  }
+  std::vector<std::uint8_t> key(DSTU_PWHASH_KEYBYTES);
+  CheckStatus(dstu_pwhash_derive_key(password.data(), password.size(), salt.data(),
+                                      static_cast<std::uint32_t>(strength), key.data()));
+  return key;
+}
+
 }  // namespace dstu
 
 #endif  // DSTU_CPP_PWHASH_HPP

@@ -59,16 +59,18 @@ class Box512SecretKey {
   /// fails (wrong key, or any tampered wire segment - deliberately not distinguished further, see
   /// dstu_core::crypto_box512::OpenError's own doc comment) or sealed is too short to be valid.
   std::vector<std::uint8_t> Open(ByteView sealed) const {
-    if (sealed.size() < kBox512OpenMinOverhead) {
-      throw CryptoError("input is shorter than the minimum valid length for this construction");
-    }
-    std::vector<std::uint8_t> plaintextOut(sealed.size() - kBox512OpenMinOverhead);
+    // The core checks the version byte before the length (T-269): a short 0.4-0.6 blob is
+    // reported as an unsupported version, not as too short.
+    std::vector<std::uint8_t> plaintextOut(sealed.size() > kBox512OpenMinOverhead ? sealed.size() - kBox512OpenMinOverhead : 0);
     std::size_t plaintextLen = 0;
     CheckStatus(dstu_box512_open(ptr_.get(), sealed.data(), sealed.size(), plaintextOut.data(),
                                   plaintextOut.size(), &plaintextLen));
     plaintextOut.resize(plaintextLen);
     return plaintextOut;
   }
+
+  /// The C ABI handle, for the streaming constructors in secretstream.hpp (T-269).
+  const DstuBox512SecretKey *native_handle() const { return ptr_.get(); }
 
  private:
   explicit Box512SecretKey(DstuBox512SecretKey *ptr) : ptr_(ptr, &dstu_box512_secretkey_free) {}
@@ -121,6 +123,9 @@ class Box512PublicKey {
   }
 
   friend class Box512SecretKey;
+
+  /// The C ABI handle, for the streaming constructors in secretstream.hpp (T-269).
+  const DstuBox512PublicKey *native_handle() const { return ptr_.get(); }
 
  private:
   explicit Box512PublicKey(DstuBox512PublicKey *ptr) : ptr_(ptr, &dstu_box512_publickey_free) {}

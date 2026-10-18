@@ -1,6 +1,8 @@
 #ifndef DSTU_CPP_SECRETSTREAM_HPP
 #define DSTU_CPP_SECRETSTREAM_HPP
 
+#include "box.hpp"
+#include "box512.hpp"
 #include "bytes.hpp"
 #include "constants.hpp"
 #include "dstu_core.h"
@@ -11,6 +13,7 @@
 #include <istream>
 #include <memory>
 #include <ostream>
+#include <string>
 #include <vector>
 
 namespace dstu {
@@ -83,14 +86,34 @@ class SecretStreamEncryptor {
  public:
   /// Starts a new stream under key, writing the version byte and header to out immediately.
   SecretStreamEncryptor(std::ostream &out, const SecretstreamKey &key)
-      : out_(&out), enc_(nullptr, &dstu_secretstream_file_encryptor_free) {
-    buffer_.resize(kSecretstreamChunkBytes);
-    record_.resize(DSTU_SECRETSTREAM_MAX_RECORD_BYTES);
-    std::vector<std::uint8_t> prefix(DSTU_SECRETSTREAM_FILE_PREFIX_BYTES);
-    DstuFileEncryptor *enc = nullptr;
-    CheckStatus(dstu_secretstream_file_encryptor_new(key.native_handle(), prefix.data(), &enc));
-    enc_.reset(enc);
-    WriteToStream(prefix.data(), prefix.size());
+      : SecretStreamEncryptor(out, StartWithKey(key)) {}
+
+  /// crypto_box sealed to recipient as a stream (format v3, T-265/T-269): the same bytes
+  /// BoxPublicKey::Seal returns, written chunk by chunk. Finish() rules as for a key stream.
+  static SecretStreamEncryptor ForBox(std::ostream &out, const BoxPublicKey &recipient) {
+    Started started{nullptr, std::vector<std::uint8_t>(DSTU_BOX_SEAL_STREAM_PREFIX_BYTES)};
+    CheckStatus(dstu_box_seal_stream(recipient.native_handle(), started.prefix.data(), &started.enc));
+    return SecretStreamEncryptor(out, started);
+  }
+
+  /// crypto_box512 counterpart of ForBox.
+  static SecretStreamEncryptor ForBox512(std::ostream &out, const Box512PublicKey &recipient) {
+    Started started{nullptr, std::vector<std::uint8_t>(DSTU_BOX512_SEAL_STREAM_PREFIX_BYTES)};
+    CheckStatus(dstu_box512_seal_stream(recipient.native_handle(), started.prefix.data(), &started.enc));
+    return SecretStreamEncryptor(out, started);
+  }
+
+  /// A passphrase file (D-219/D-240) - the bytes `uacrypt encrypt --passphrase` writes. Runs
+  /// Argon2id (256 MiB, t=3, about a second) on the calling thread before writing anything.
+  /// Throws ArgumentError for an empty passphrase.
+  static SecretStreamEncryptor ForPassphrase(std::ostream &out, ByteView passphrase) {
+    if (passphrase.size() == 0) {
+      throw ArgumentError("the passphrase is empty");
+    }
+    Started started{nullptr, std::vector<std::uint8_t>(DSTU_PASSPHRASE_FILE_SEAL_STREAM_PREFIX_BYTES)};
+    CheckStatus(dstu_passphrase_file_seal_stream(passphrase.data(), passphrase.size(), started.prefix.data(),
+                                                 &started.enc));
+    return SecretStreamEncryptor(out, started);
   }
 
   // Not movable, unlike this file's other RAII types: a defaulted move would move buffer_ but
@@ -151,6 +174,25 @@ class SecretStreamEncryptor {
   }
 
  private:
+  /// A native encryptor and the bytes to write before its first record.
+  struct Started {
+    DstuFileEncryptor *enc = nullptr;
+    std::vector<std::uint8_t> prefix;
+  };
+
+  static Started StartWithKey(const SecretstreamKey &key) {
+    Started started{nullptr, std::vector<std::uint8_t>(DSTU_SECRETSTREAM_FILE_PREFIX_BYTES)};
+    CheckStatus(dstu_secretstream_file_encryptor_new(key.native_handle(), started.prefix.data(), &started.enc));
+    return started;
+  }
+
+  SecretStreamEncryptor(std::ostream &out, const Started &started)
+      : out_(&out), enc_(started.enc, &dstu_secretstream_file_encryptor_free) {
+    buffer_.resize(kSecretstreamChunkBytes);
+    record_.resize(DSTU_SECRETSTREAM_MAX_RECORD_BYTES);
+    WriteToStream(started.prefix.data(), started.prefix.size());
+  }
+
   void SealChunk(const std::uint8_t *chunk) {
     CheckStatus(dstu_secretstream_file_encryptor_seal_chunk(enc_.get(), chunk, kSecretstreamChunkBytes,
                                                              record_.data(), record_.size()));
@@ -185,11 +227,35 @@ class SecretStreamDecryptor {
  public:
   /// Reads the version byte and the kSecretstreamHeaderBytes-byte header from in immediately.
   SecretStreamDecryptor(std::istream &in, const SecretstreamKey &key)
-      : in_(&in),
-        dec_(dstu_secretstream_file_decryptor_new(key.native_handle()), &dstu_secretstream_file_decryptor_free) {
-    plaintext_.resize(kSecretstreamChunkBytes);
-    Step();
-    Step();
+      : SecretStreamDecryptor(in, dstu_secretstream_file_decryptor_new(key.native_handle())) {}
+
+  /// Reads a crypto_box stream (or a BoxPublicKey::Seal blob) with bounded memory.
+  static SecretStreamDecryptor ForBox(std::istream &in, const BoxSecretKey &secret) {
+    const auto prefix = ReadPrefix(in, DSTU_BOX_OPEN_STREAM_PREFIX_BYTES, "sealed message");
+    DstuFileDecryptor *dec = nullptr;
+    CheckStatus(dstu_box_open_stream(secret.native_handle(), prefix.data(), &dec));
+    return SecretStreamDecryptor(in, dec);
+  }
+
+  /// crypto_box512 counterpart of ForBox.
+  static SecretStreamDecryptor ForBox512(std::istream &in, const Box512SecretKey &secret) {
+    const auto prefix = ReadPrefix(in, DSTU_BOX512_OPEN_STREAM_PREFIX_BYTES, "sealed message");
+    DstuFileDecryptor *dec = nullptr;
+    CheckStatus(dstu_box512_open_stream(secret.native_handle(), prefix.data(), &dec));
+    return SecretStreamDecryptor(in, dec);
+  }
+
+  /// Reads a passphrase file. The header is checked before Argon2 runs (on the calling thread);
+  /// a wrong passphrase throws CryptoError at the first record. Throws ArgumentError for an empty
+  /// passphrase.
+  static SecretStreamDecryptor ForPassphrase(std::istream &in, ByteView passphrase) {
+    if (passphrase.size() == 0) {
+      throw ArgumentError("the passphrase is empty");
+    }
+    const auto header = ReadPrefix(in, DSTU_PASSPHRASE_FILE_HEADER_BYTES, "passphrase file header");
+    DstuFileDecryptor *dec = nullptr;
+    CheckStatus(dstu_passphrase_file_open_stream(header.data(), passphrase.data(), passphrase.size(), &dec));
+    return SecretStreamDecryptor(in, dec);
   }
 
   // Not movable - same reasoning as SecretStreamEncryptor: a defaulted move would move
@@ -232,6 +298,23 @@ class SecretStreamDecryptor {
   }
 
  private:
+  SecretStreamDecryptor(std::istream &in, DstuFileDecryptor *dec)
+      : in_(&in), dec_(dec, &dstu_secretstream_file_decryptor_free) {
+    plaintext_.resize(kSecretstreamChunkBytes);
+    Step();
+    Step();
+  }
+
+  /// The bytes in front of the stream file; a shorter input cannot be opened at all.
+  static std::vector<std::uint8_t> ReadPrefix(std::istream &in, std::size_t size, const char *what) {
+    std::vector<std::uint8_t> prefix(size);
+    in.read(reinterpret_cast<char *>(prefix.data()), static_cast<std::streamsize>(size));
+    if (static_cast<std::size_t>(in.gcount()) < size) {
+      throw CryptoError(std::string("input too short to contain a ") + what);
+    }
+    return prefix;
+  }
+
   /// Feeds the codec one next_len read; returns how many plaintext bytes that released into
   /// plaintext_ (at end of input, the Final chunk's).
   std::size_t Step() {

@@ -20,6 +20,8 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <type_traits>
+#include <iterator>
 
 namespace {
 
@@ -868,6 +870,295 @@ void TestPwhashSharedVerifyVectors() {
   CHECK(cases == 22, "the shared pwhash verify file should hold 22 cases");
 }
 
+// ---- T-269: streaming crypto_box/crypto_box512, passphrase files, DeriveKey ----
+// Shared vectors: box/v3.json and legacy_v2.json (the 0.4-0.6 format must be an unsupported
+// version, not "too short" - the T-265 mislabel), pwhash/passphrase_file.json (written by the
+// released 0.6.0 uacrypt; only the Argon2 cases run Argon2, 256 MiB, t=3) and
+// pwhash/derive_key.json (libsodium's crypto_pwhash, the one oracle). Plaintext of a valid case is
+// (i*31+7) mod 256.
+
+std::string ReadText(const char *path) {
+  std::ifstream file(path);
+  std::stringstream all;
+  all << file.rdbuf();
+  return all.str();
+}
+
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+long JsonNumber(const std::string &text, const std::string &key) {
+  const std::string pattern = "\"" + key + "\": ";
+  const std::size_t start = text.find(pattern);
+  if (start == std::string::npos) {
+    return -1;
+  }
+  return std::strtol(text.c_str() + start + pattern.size(), nullptr, 10);
+}
+
+std::vector<std::uint8_t> Pattern(std::size_t n) {
+  std::vector<std::uint8_t> out(n);
+  for (std::size_t i = 0; i < n; i++) {
+    out[i] = static_cast<std::uint8_t>((i * 31 + 7) % 256);
+  }
+  return out;
+}
+
+/// One curve's operations behind a common shape, so each check runs on both.
+template <class Secret, class Public>
+struct BoxCurve {
+  Secret secret;
+
+  std::vector<std::uint8_t> OneShotOpen(const std::vector<std::uint8_t> &sealedMessage) const {
+    return secret.Open(sealedMessage);
+  }
+
+  std::vector<std::uint8_t> StreamOpen(const std::vector<std::uint8_t> &sealedMessage) const {
+    std::istringstream source(std::string(sealedMessage.begin(), sealedMessage.end()));
+    if constexpr (std::is_same_v<Secret, dstu::BoxSecretKey>) {
+      auto dec = dstu::SecretStreamDecryptor::ForBox(source, secret);
+      return dec.ReadAll();
+    } else {
+      auto dec = dstu::SecretStreamDecryptor::ForBox512(source, secret);
+      return dec.ReadAll();
+    }
+  }
+
+  std::string StreamSealPartial(const std::vector<std::uint8_t> &message, bool finish) const {
+    std::ostringstream sink;
+    const Public pk = secret.Public();
+    auto run = [&](dstu::SecretStreamEncryptor &enc) {
+      const std::size_t first = std::min<std::size_t>(7, message.size());
+      enc.Write(dstu::ByteView(message.data(), first));
+      enc.Write(dstu::ByteView(message.data() + first, message.size() - first));
+      if (finish) {
+        enc.Finish();
+      }
+    };
+    if constexpr (std::is_same_v<Secret, dstu::BoxSecretKey>) {
+      auto enc = dstu::SecretStreamEncryptor::ForBox(sink, pk);
+      run(enc);
+    } else {
+      auto enc = dstu::SecretStreamEncryptor::ForBox512(sink, pk);
+      run(enc);
+    }
+    return sink.str();
+  }
+
+  std::vector<std::uint8_t> StreamSeal(const std::vector<std::uint8_t> &message) const {
+    const std::string s = StreamSealPartial(message, true);
+    return std::vector<std::uint8_t>(s.begin(), s.end());
+  }
+};
+
+template <class Curve>
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+void CheckBoxStream(const Curve &curve, const Curve &other, const char *label) {
+  for (std::size_t size : {0u, 1u, 8192u, 8193u, 3u * 8192u + 5u}) {
+    const auto message = Pattern(size);
+    const auto sealedMessage = curve.StreamSeal(message);
+    CHECK(curve.StreamOpen(sealedMessage) == message, label);
+    CHECK(curve.OneShotOpen(sealedMessage) == message, label);
+  }
+  const auto sealedMessage = curve.StreamSeal(Pattern(100));
+  CHECK(Throws<dstu::CryptoError>([&] { other.StreamOpen(sealedMessage); }), "a wrong key should be refused");
+  for (std::size_t index : {std::size_t{1}, sealedMessage.size() / 2, sealedMessage.size() - 1}) {
+    auto bad = sealedMessage;
+    bad[index] ^= 1;
+    CHECK(Throws<dstu::CryptoError>([&] { curve.StreamOpen(bad); }), "a flipped byte should be refused");
+  }
+  auto trailing = sealedMessage;
+  trailing.push_back(0);
+  CHECK(Throws<dstu::CryptoError>([&] { curve.StreamOpen(trailing); }), "trailing data should be refused");
+  for (std::size_t cut : {std::size_t{0}, std::size_t{1}, std::size_t{50}}) {
+    std::string message;
+    try {
+      curve.StreamOpen(std::vector<std::uint8_t>(sealedMessage.begin(), sealedMessage.begin() + cut));
+    } catch (const dstu::CryptoError &e) {
+      message = e.what();
+    }
+    CHECK(message.find("too short") != std::string::npos, "a cut prefix should be too short");
+  }
+  const std::string unfinished = curve.StreamSealPartial(Pattern(std::size_t{3} * 8192), false);
+  CHECK(Throws<dstu::CryptoError>([&] { curve.StreamOpen(std::vector<std::uint8_t>(unfinished.begin(), unfinished.end())); }),
+        "an encryptor destroyed without Finish() should leave no Final record");
+}
+
+template <class Curve>
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+void CheckBoxVectors(const Curve &curve, long bits, const std::string &v3, const std::string &legacy) {
+  int seen = 0;
+  std::istringstream lines(v3);
+  for (std::string line; std::getline(lines, line);) {
+    if (line.find("\"curve\": " + std::to_string(bits)) == std::string::npos) {
+      continue;
+    }
+    const auto sealedMessage = FromHex(JsonField(line, "sealed_hex"));
+    const std::string name = JsonField(line, "name");
+    if (JsonField(line, "expect") == "ok") {
+      const auto expected = Pattern(static_cast<std::size_t>(JsonNumber(line, "plaintext_len")));
+      CHECK(curve.OneShotOpen(sealedMessage) == expected, name.c_str());
+      CHECK(curve.StreamOpen(sealedMessage) == expected, name.c_str());
+    } else {
+      CHECK(Throws<dstu::CryptoError>([&] { curve.OneShotOpen(sealedMessage); }), name.c_str());
+      CHECK(Throws<dstu::CryptoError>([&] { curve.StreamOpen(sealedMessage); }), name.c_str());
+    }
+    seen++;
+  }
+  CHECK(seen > 0, "the v3 vectors should hold cases for this curve");
+  std::istringstream legacyLines(legacy);
+  for (std::string line; std::getline(legacyLines, line);) {
+    if (line.find("\"curve\": " + std::to_string(bits)) == std::string::npos) {
+      continue;
+    }
+    const auto sealedMessage = FromHex(JsonField(line, "sealed_hex"));
+    for (int streaming = 0; streaming < 2; streaming++) {
+      std::string message;
+      try {
+        if (streaming == 0) {
+          curve.OneShotOpen(sealedMessage);
+        } else {
+          curve.StreamOpen(sealedMessage);
+        }
+      } catch (const dstu::CryptoError &e) {
+        message = e.what();
+      }
+      CHECK(message.find("version") != std::string::npos, "a 0.4-0.6 blob should be an unsupported version");
+    }
+  }
+}
+
+void TestBoxStream() {
+  const std::string v3 = ReadText(DSTU_BOX_V3_VECTORS);
+  const std::string legacy = ReadText(DSTU_BOX_LEGACY_VECTORS);
+  CHECK(!v3.empty() && !legacy.empty(), "the box vectors should be readable");
+  using Curve256 = BoxCurve<dstu::BoxSecretKey, dstu::BoxPublicKey>;
+  using Curve512 = BoxCurve<dstu::Box512SecretKey, dstu::Box512PublicKey>;
+  CheckBoxVectors(Curve256{dstu::BoxSecretKey::FromBytes(FromHex(JsonField(v3, "box256_secret_key_hex")))}, 256, v3,
+                  legacy);
+  CheckBoxVectors(Curve512{dstu::Box512SecretKey::FromBytes(FromHex(JsonField(v3, "box512_secret_key_hex")))}, 512,
+                  v3, legacy);
+  CheckBoxStream(Curve256{dstu::BoxSecretKey::Generate()}, Curve256{dstu::BoxSecretKey::Generate()}, "box256 stream");
+  CheckBoxStream(Curve512{dstu::Box512SecretKey::Generate()}, Curve512{dstu::Box512SecretKey::Generate()},
+                 "box512 stream");
+}
+
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+std::vector<std::uint8_t> OpenPassphraseFile(const std::vector<std::uint8_t> &passphrase,
+                                             const std::vector<std::uint8_t> &data) {
+  std::istringstream source(std::string(data.begin(), data.end()));
+  auto dec = dstu::SecretStreamDecryptor::ForPassphrase(source, passphrase);
+  return dec.ReadAll();
+}
+
+void TestPassphraseFile() {
+  const std::string text = ReadText(DSTU_PASSPHRASE_FILE_VECTORS);
+  CHECK(!text.empty(), "the passphrase-file vectors should be readable");
+  int header = 0;
+  int argon2 = 0;
+  std::istringstream lines(text);
+  for (std::string line; std::getline(lines, line);) {
+    if (line.find("{\"name\"") == std::string::npos) {
+      continue;
+    }
+    const std::string name = JsonField(line, "name");
+    const std::string expect = JsonField(line, "expect");
+    const auto passphrase = FromHex(JsonField(line, "passphrase_hex"));
+    const auto sealedFile = FromHex(JsonField(line, "sealed_hex"));
+    std::string message;
+    std::vector<std::uint8_t> plaintext;
+    try {
+      plaintext = OpenPassphraseFile(passphrase, sealedFile);
+    } catch (const dstu::CryptoError &e) {
+      message = e.what();
+    }
+    if (line.find("\"argon2\": false") != std::string::npos) {
+      header++;
+      // The C ABI reports statuses, not the core's messages: these are this binding's.
+      const char *wanted = expect == "unsupported_params" ? "Argon2 parameters"
+                           : expect == "truncated"         ? "too short"
+                                                           : "unsupported format version";
+      CHECK(message.find(wanted) != std::string::npos, name.c_str());
+    } else if (expect == "ok") {
+      argon2++;
+      CHECK(message.empty() && plaintext == Pattern(static_cast<std::size_t>(JsonNumber(line, "plaintext_len"))),
+            name.c_str());
+    } else {
+      argon2++;
+      CHECK(!message.empty(), name.c_str());
+    }
+  }
+  CHECK(header == 6 && argon2 == 4, "the passphrase-file vectors should hold 6 header and 4 Argon2 cases");
+  std::ostringstream sink;
+  CHECK(Throws<dstu::ArgumentError>([&] { dstu::SecretStreamEncryptor::ForPassphrase(sink, dstu::ByteView()); }),
+        "an empty passphrase should be refused when writing");
+  CHECK(Throws<dstu::ArgumentError>([&] { OpenPassphraseFile({}, Pattern(40)); }),
+        "an empty passphrase should be refused when reading");
+}
+
+void TestDeriveKey() {
+  const std::string text = ReadText(DSTU_DERIVE_KEY_VECTORS);
+  int cases = 0;
+  std::size_t pos = 0;
+  while ((pos = text.find("\"password_hex\"", pos)) != std::string::npos) {
+    const std::string block = text.substr(pos, text.find('}', pos) - pos);
+    const auto key = dstu::DeriveKey(FromHex(JsonField(block, "password_hex")), FromHex(JsonField(block, "salt_hex")),
+                                     dstu::PwhashStrength::kModerate);
+    CHECK(key == FromHex(JsonField(block, "key_hex")), "DeriveKey should equal libsodium's crypto_pwhash");
+    cases++;
+    pos += 1;
+  }
+  CHECK(cases == 3, "derive_key.json should hold 3 cases");
+  CHECK(Throws<dstu::ArgumentError>([] { dstu::DeriveKey(ToBytes("pw"), Pattern(15), dstu::PwhashStrength::kModerate); }),
+        "a 15-byte salt should be refused");
+}
+
+#ifdef DSTU_UACRYPT_EXE
+void TestPassphraseFileUacryptInterop() {
+  namespace fs = std::filesystem;
+  fs::path dir = fs::temp_directory_path() / "dstu_cpp_passphrase_interop";
+  std::error_code stale;
+  fs::remove_all(dir, stale);
+  fs::create_directories(dir);
+  const auto message = Pattern(8192 + 9);
+  const std::vector<std::uint8_t> passphrase = ToBytes("shared passphrase, C++ side");
+  const fs::path pw = dir / "pw.txt";
+  {
+    std::ofstream f(pw, std::ios::binary);
+    f.write(reinterpret_cast<const char *>(passphrase.data()), static_cast<std::streamsize>(passphrase.size()));
+  }
+  const fs::path ours = dir / "ours.uac";
+  {
+    std::ofstream out(ours, std::ios::binary);
+    auto enc = dstu::SecretStreamEncryptor::ForPassphrase(out, passphrase);
+    enc.Write(message);
+    enc.Finish();
+  }
+  const fs::path back = dir / "ours.back";
+  const std::string decrypt = "\"" DSTU_UACRYPT_EXE "\" decrypt --passphrase-file \"" + pw.string() + "\" --in \"" +
+                              ours.string() + "\" --out \"" + back.string() + "\"";
+  CHECK(RunCommand(decrypt) == 0, "uacrypt decrypt should open a C++ passphrase file");
+  {
+    std::ifstream in(back, std::ios::binary);
+    const std::vector<std::uint8_t> got((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    CHECK(got == message, "uacrypt decrypt should give back the C++ plaintext");
+  }
+  const fs::path plain = dir / "plain.bin";
+  {
+    std::ofstream f(plain, std::ios::binary);
+    f.write(reinterpret_cast<const char *>(message.data()), static_cast<std::streamsize>(message.size()));
+  }
+  const fs::path theirs = dir / "theirs.uac";
+  const std::string encrypt = "\"" DSTU_UACRYPT_EXE "\" encrypt --passphrase-file \"" + pw.string() + "\" --in \"" +
+                              plain.string() + "\" --out \"" + theirs.string() + "\"";
+  CHECK(RunCommand(encrypt) == 0, "uacrypt encrypt --passphrase-file should succeed");
+  {
+    std::ifstream in(theirs, std::ios::binary);
+    auto dec = dstu::SecretStreamDecryptor::ForPassphrase(in, passphrase);
+    CHECK(dec.ReadAll() == message, "a uacrypt passphrase file should open here");
+  }
+  fs::remove_all(dir, stale);
+}
+#endif
+
 }  // namespace
 
 // bugprone-exception-escape flags std::cout/cerr use reachable from main (ostream::operator<<'s
@@ -899,6 +1190,12 @@ int main() {
     TestThreadSafety();
     TestPwhash();
     TestPwhashSharedVerifyVectors();
+    TestBoxStream();
+    TestPassphraseFile();
+    TestDeriveKey();
+#ifdef DSTU_UACRYPT_EXE
+    TestPassphraseFileUacryptInterop();
+#endif
   } catch (const dstu::DstuException &e) {
     std::fprintf(stderr, "uncaught dstu::DstuException: %s\n", e.what());
     return 1;

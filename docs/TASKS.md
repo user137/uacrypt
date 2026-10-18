@@ -9354,6 +9354,12 @@ plan):
     `NewPassphraseEncryptWriter`/`DecryptReader` (shared start helpers), statuses 18/19, the same
     `Open` length-check fix, empty passphrase an `*ArgumentError`. Verified: `cargo xtask go` from
     PowerShell green; `go test -v` shows every new test PASS, interop included. Next: C++.
+  - C++ done 2026-10-19: `DeriveKey`, `SecretStreamEncryptor`/`Decryptor::ForBox`/`ForBox512`/
+    `ForPassphrase` (static factories returning the non-movable types by guaranteed elision),
+    `native_handle()` on the four box key types, statuses 18/19, the `Open` length-check fix.
+    Verified from PowerShell: `cargo xtask cpp` (ctest green, interop included), `cpp-tidy` and
+    `cpp-cppcheck` clean. Seen, not fixed (untouched code): GCC `-Warray-bounds` false positives
+    on `tampered.back() ^= 1` in the existing tests (lines ~164-710). Next: phase 4 (docs).
 - [ ] **T-263** Text output (A1), only if the owner wants it. **After 1.0 (owner 2026-10-09).**
 
 Release:
