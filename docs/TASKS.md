@@ -10132,6 +10132,31 @@ writer onto it. Superseded in detail by the plan below.
 **Outside the versions:** T-267 (site, right after 0.5.0), T-295 (winget, after the 0.6.0 release - owner 2026-10-11), T-247
 (upstream reports, owner go-ahead only).
 
+**0.7.0 detailed plan (owner-approved 2026-10-18; T-265 done, T-247 closed):**
+- Step 0, T-231 .NET: one 40000-iteration CI reading (iteration count from an env var, default
+  20000) via a draft PR - `bindings-dotnet.yml` runs only on `master` pushes and PRs. The native
+  remainder went 0.13-0.22 MB at n/2 -> 0.70-0.74 MB at n in 3 runs (16-18.10): linear growth to
+  ~1.7 MB = a native leak to find; a plateau = allocator, close T-231.
+- Step 1, T-269 (**owner 2026-10-18: the D-219 passphrase file moves into the core**): (1) core
+  codec from `crates/uacrypt/src/passphrase.rs`, `pwhash` feature, shaped like `crypto_box`'s
+  `seal_stream`/`open_stream`, D-219 rules unchanged, `uacrypt` switches to it (same bytes), new
+  D- entry, vectors `pwhash/passphrase_file.json` from 0.6.0 files; header-refusal tests stay under
+  Miri, Argon2-running tests `cfg_attr(miri, ignore)`; no passphrase files in the MemoryLeakTests
+  loops. (2) capi: `derive_key` + passphrase-file handles. (3) 8 bindings in T-284's order:
+  `derive_key`, streaming box/box512, passphrase file, runners for `box/v3.json`,
+  `box/legacy_v2.json`, `pwhash/*.json`; D-118 pitfalls; the T-265 C++/.NET/Go "too short" fix;
+  new capi statuses in the .NET/Go/C++ enums. (4) docs. Own plan mode + advisor first.
+- Step 2: T-286, T-287 (first check which bindings keep a `SecretKey` handle), T-293 (own plan).
+- Step 3: T-254 (2nd oracle: BC `DSTU7564Digest(384)`, else provisional; check whether it lands in
+  `crypto_generichash` -> binding gate), T-253 (own plan; BC `DSTU7624WrapEngine` if it pads;
+  constant-time unwrap check). **Owner decision open:** DSTU 9041 `l(p)=384` in 0.7.0 or later.
+- Step 4: T-264 (the parser is hand-written, no `clap`; no new dependency without the owner).
+- Step 5: T-249 + the T-223/T-225 fuzz additions.
+- Release: version bumps incl. every published binding's minor (v3 box, C ABI break), the D-238
+  `workflow_dispatch` dry run, green Miri on the tagged commit, winget 0.7.0 without VCRedist.
+- After 0.7.0 ("хвиля", Claude's reading, owner to correct): prepare the remaining T-164
+  registries (Packagist, NuGet, Maven Central, pkg.go.dev, vcpkg) - each publish owner-gated.
+
 **After 1.0 (owner 2026-10-09):** T-237 (BC harness), T-263 (text/armor output). **Closed:** T-250
 (no migration; the 0.3.x binaries stay available for decrypting old data).
 
