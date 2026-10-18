@@ -20,7 +20,8 @@ pub enum DstuStatus {
     /// Input shorter than the minimum possible valid output (e.g. below `crypto_secretbox`'s
     /// nonce+tag overhead).
     DSTU_ERR_TRUNCATED = 3,
-    /// An exact-match length requirement was violated (`crypto_secretstream` push/pull).
+    /// An exact-match length requirement was violated (`crypto_secretstream` push/pull), or a
+    /// required non-empty input was empty (a passphrase-file passphrase, T-269).
     DSTU_ERR_INVALID_LENGTH = 4,
     /// The caller-supplied output buffer's declared capacity is insufficient - checked before any
     /// crypto work runs, so a caller never gets a partial write.
@@ -55,4 +56,9 @@ pub enum DstuStatus {
     DSTU_ERR_BAD_CHUNK_LENGTH = 16,
     /// Stream file: bytes follow the `Final` record.
     DSTU_ERR_TRAILING_DATA = 17,
+    /// Passphrase file (T-269): the header names Argon2 costs other than the one preset the
+    /// format uses - refused before Argon2 runs.
+    DSTU_ERR_UNSUPPORTED_PARAMS = 18,
+    /// Argon2 could not allocate its memory (256 MiB for `DSTU_PWHASH_MODERATE`).
+    DSTU_ERR_OUT_OF_MEMORY = 19,
 }

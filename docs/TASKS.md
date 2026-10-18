@@ -9316,6 +9316,11 @@ plan):
     `crates/dstu-core/tests/gen_passphrase_file_vectors.py`). Verified: new<->0.6.0 files both
     ways, wrong passphrase exit 1 with no output, `--no-default-features --features pwhash`
     build, Miri 4 passed / 3 Argon2 tests ignored. Next: phase 2 (capi).
+  - Phase 2 done 2026-10-18: capi `dstu_pwhash_derive_key`, `dstu_passphrase_file_check_header`/
+    `_seal_stream`/`_open_stream` (existing codec handles), statuses `DSTU_ERR_UNSUPPORTED_PARAMS`
+    (18) / `DSTU_ERR_OUT_OF_MEMORY` (19), header regenerated. Verified: `ffi_passphrase_file`
+    8/8 (shared vectors, libsodium derive_key vectors, round trip, empty/null), all capi suites,
+    `cargo xtask capi` clean, Miri 5 passed / 3 ignored. Next: phase 3, Python first.
 - [ ] **T-263** Text output (A1), only if the owner wants it. **After 1.0 (owner 2026-10-09).**
 
 Release:

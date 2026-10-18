@@ -76,6 +76,32 @@
 #define DSTU_KDF_SUBKEY_BYTES 32
 
 /**
+ * Salt length for `dstu_pwhash_derive_key` - libsodium's `crypto_pwhash_SALTBYTES`.
+ */
+#define DSTU_PWHASH_SALTBYTES 16
+
+/**
+ * Output length of `dstu_pwhash_derive_key`.
+ */
+#define DSTU_PWHASH_KEYBYTES 32
+
+/**
+ * A passphrase file's first byte (a key-encrypted stream file starts with its version, 2).
+ */
+#define DSTU_PASSPHRASE_FILE_CONTAINER_TYPE 80
+
+/**
+ * The passphrase-file header in front of the stream file (D-240).
+ */
+#define DSTU_PASSPHRASE_FILE_HEADER_BYTES 28
+
+/**
+ * The bytes `dstu_passphrase_file_seal_stream` writes first: the header and the stream file's own
+ * prefix.
+ */
+#define DSTU_PASSPHRASE_FILE_SEAL_STREAM_PREFIX_BYTES 61
+
+/**
  * Fixed buffer size for a PHC string produced by `dstu_pwhash_hash_password` - matches
  * libsodium's own `crypto_pwhash_STRBYTES` value exactly (see `docs/DECISIONS.md` D-148 point 3
  * for the hand-counted worst-case-length justification).
@@ -159,7 +185,8 @@ typedef enum {
    */
   DSTU_ERR_TRUNCATED = 3,
   /**
-   * An exact-match length requirement was violated (`crypto_secretstream` push/pull).
+   * An exact-match length requirement was violated (`crypto_secretstream` push/pull), or a
+   * required non-empty input was empty (a passphrase-file passphrase, T-269).
    */
   DSTU_ERR_INVALID_LENGTH = 4,
   /**
@@ -221,6 +248,15 @@ typedef enum {
    * Stream file: bytes follow the `Final` record.
    */
   DSTU_ERR_TRAILING_DATA = 17,
+  /**
+   * Passphrase file (T-269): the header names Argon2 costs other than the one preset the
+   * format uses - refused before Argon2 runs.
+   */
+  DSTU_ERR_UNSUPPORTED_PARAMS = 18,
+  /**
+   * Argon2 could not allocate its memory (256 MiB for `DSTU_PWHASH_MODERATE`).
+   */
+  DSTU_ERR_OUT_OF_MEMORY = 19,
 } DstuStatus;
 
 /**
@@ -977,6 +1013,80 @@ DstuStatus dstu_pwhash_hash_password(const uint8_t *password,
  * `password_len > 0`; `hash`, when non-null, must point to a valid NUL-terminated C string.
  */
  bool dstu_pwhash_verify_password(const uint8_t *password, size_t password_len, const char *hash);
+
+/**
+ * Derives a `DSTU_PWHASH_KEYBYTES`-byte key from `password` and a `DSTU_PWHASH_SALTBYTES`-byte
+ * `salt` into `out` - libsodium's `crypto_pwhash` (Argon2id v1.3, one lane), byte for byte
+ * (D-219). Returns `DSTU_ERR_OUT_OF_MEMORY` if the preset's memory cannot be allocated,
+ * `DSTU_ERR_INVALID_ARGUMENT` for a `strength` outside `DSTU_PWHASH_*` or an `out` overlapping an
+ * input (both checked before Argon2 runs), or `DSTU_ERR_NULL_POINTER`; `out` is not written on
+ * failure.
+ *
+ * # Safety
+ *
+ * `password` must be valid for reads of `password_len` bytes when non-null and
+ * `password_len > 0`; `salt` must be NULL or valid for reads of `DSTU_PWHASH_SALTBYTES` bytes;
+ * `out` must be NULL or valid for writes of `DSTU_PWHASH_KEYBYTES` bytes.
+ */
+
+DstuStatus dstu_pwhash_derive_key(const uint8_t *password,
+                                  size_t password_len,
+                                  const uint8_t *salt,
+                                  uint32_t strength,
+                                  uint8_t *out);
+
+/**
+ * Checks a passphrase file's first `DSTU_PASSPHRASE_FILE_HEADER_BYTES` bytes without running
+ * Argon2, so a reader can refuse a wrong file before asking for a passphrase. Returns `DSTU_OK`,
+ * `DSTU_ERR_UNSUPPORTED_VERSION` (not a passphrase file, or another container version or KDF),
+ * `DSTU_ERR_UNSUPPORTED_PARAMS` (costs other than the one preset), or `DSTU_ERR_NULL_POINTER`.
+ *
+ * # Safety
+ *
+ * `header` must be NULL or valid for reads of `DSTU_PASSPHRASE_FILE_HEADER_BYTES` bytes.
+ */
+ DstuStatus dstu_passphrase_file_check_header(const uint8_t *header);
+
+/**
+ * Starts writing a passphrase file (D-240): draws a salt, runs Argon2 (256 MiB, t=3), writes the
+ * `DSTU_PASSPHRASE_FILE_SEAL_STREAM_PREFIX_BYTES`-byte prefix (write it first) to `prefix_out`
+ * and a stream-file encryptor to `*out` - drive it with `dstu_secretstream_file_encryptor_*` and
+ * free it with `dstu_secretstream_file_encryptor_free`. Returns `DSTU_ERR_INVALID_LENGTH` for an
+ * empty passphrase, `DSTU_ERR_RANDOM`, `DSTU_ERR_OUT_OF_MEMORY`, or `DSTU_ERR_NULL_POINTER`;
+ * nothing is written on failure.
+ *
+ * # Safety
+ *
+ * `passphrase` must be valid for reads of `passphrase_len` bytes when non-null and
+ * `passphrase_len > 0`; `prefix_out` must be NULL or valid for writes of
+ * `DSTU_PASSPHRASE_FILE_SEAL_STREAM_PREFIX_BYTES` bytes; `out` must be NULL or valid for a write.
+ */
+
+DstuStatus dstu_passphrase_file_seal_stream(const uint8_t *passphrase,
+                                            size_t passphrase_len,
+                                            uint8_t *prefix_out,
+                                            DstuFileEncryptor **out);
+
+/**
+ * Starts opening a passphrase file: `header` is its first `DSTU_PASSPHRASE_FILE_HEADER_BYTES`
+ * bytes, checked as `dstu_passphrase_file_check_header` does before Argon2 runs. On `DSTU_OK`,
+ * `*out` is a stream-file decryptor for everything after the header - drive it with
+ * `dstu_secretstream_file_decryptor_*` and free it with `dstu_secretstream_file_decryptor_free`.
+ * A wrong passphrase is reported by the decryptor (`DSTU_ERR_TAG_MISMATCH` at the first record).
+ * Returns the header statuses, `DSTU_ERR_INVALID_LENGTH` for an empty passphrase,
+ * `DSTU_ERR_OUT_OF_MEMORY`, or `DSTU_ERR_NULL_POINTER`; `*out` is not written on failure.
+ *
+ * # Safety
+ *
+ * `header` must be NULL or valid for reads of `DSTU_PASSPHRASE_FILE_HEADER_BYTES` bytes;
+ * `passphrase` must be valid for reads of `passphrase_len` bytes when non-null and
+ * `passphrase_len > 0`; `out` must be NULL or valid for a write.
+ */
+
+DstuStatus dstu_passphrase_file_open_stream(const uint8_t *header,
+                                            const uint8_t *passphrase,
+                                            size_t passphrase_len,
+                                            DstuFileDecryptor **out);
 
 /**
  * Fills `buf[0..len]` with cryptographically secure random bytes from the OS CSPRNG.
