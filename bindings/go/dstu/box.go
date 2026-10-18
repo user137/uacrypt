@@ -53,10 +53,9 @@ func (k *BoxSecretKey) PublicKey() *BoxPublicKey {
 // fails (wrong key, or any tampered wire segment - deliberately not distinguished further, see
 // dstu_core::crypto_box::OpenError's own doc comment) or sealed is too short to be valid.
 func (k *BoxSecretKey) Open(sealed []byte) ([]byte, error) {
-	if len(sealed) < BoxOpenMinOverhead {
-		return nil, &CryptoError{"input is shorter than the minimum valid length for this construction"}
-	}
-	outLen := len(sealed) - BoxOpenMinOverhead
+	// The core checks the version byte before the length (T-269): a short 0.4-0.6 blob is
+	// reported as an unsupported version, not as too short.
+	outLen := max(0, len(sealed)-BoxOpenMinOverhead)
 	plaintextOut := make([]byte, outLen)
 	sealedPtr, sealedLen := cBytes(sealed)
 	ptPtr, ptCap := cBytes(plaintextOut)

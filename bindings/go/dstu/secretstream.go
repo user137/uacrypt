@@ -98,6 +98,63 @@ func NewSecretStreamEncryptWriter(inner io.Writer, key *SecretstreamKey, leaveOp
 	if err := statusError(C.dstu_secretstream_file_encryptor_new(key.ptr, prefixPtr, &enc)); err != nil {
 		return nil, err
 	}
+	return startEncryptWriter(inner, enc, prefix, leaveOpen)
+}
+
+// The bytes in front of a box stream file (D-239) and the passphrase-file header (D-240) - the C
+// ABI's DSTU_BOX*_SEAL/OPEN_STREAM_PREFIX_BYTES and DSTU_PASSPHRASE_FILE_*_BYTES. The C side
+// reads or writes exactly this many bytes.
+const (
+	boxSealStreamPrefixBytes            = C.DSTU_BOX_SEAL_STREAM_PREFIX_BYTES
+	boxOpenStreamPrefixBytes            = C.DSTU_BOX_OPEN_STREAM_PREFIX_BYTES
+	box512SealStreamPrefixBytes         = C.DSTU_BOX512_SEAL_STREAM_PREFIX_BYTES
+	box512OpenStreamPrefixBytes         = C.DSTU_BOX512_OPEN_STREAM_PREFIX_BYTES
+	passphraseFileHeaderBytes           = C.DSTU_PASSPHRASE_FILE_HEADER_BYTES
+	passphraseFileSealStreamPrefixBytes = C.DSTU_PASSPHRASE_FILE_SEAL_STREAM_PREFIX_BYTES
+)
+
+// NewBoxEncryptWriter seals to recipient as a crypto_box stream (format v3, T-265/T-269): the
+// same bytes BoxPublicKey.Seal returns, written chunk by chunk. Complete/Close rules as for
+// NewSecretStreamEncryptWriter.
+func NewBoxEncryptWriter(inner io.Writer, recipient *BoxPublicKey, leaveOpen bool) (*SecretStreamEncryptWriter, error) {
+	prefix := make([]byte, boxSealStreamPrefixBytes)
+	prefixPtr, _ := cBytes(prefix)
+	var enc *C.DstuFileEncryptor
+	if err := statusError(C.dstu_box_seal_stream(recipient.ptr, prefixPtr, &enc)); err != nil {
+		return nil, err
+	}
+	return startEncryptWriter(inner, enc, prefix, leaveOpen)
+}
+
+// NewBox512EncryptWriter is the crypto_box512 counterpart of NewBoxEncryptWriter.
+func NewBox512EncryptWriter(inner io.Writer, recipient *Box512PublicKey, leaveOpen bool) (*SecretStreamEncryptWriter, error) {
+	prefix := make([]byte, box512SealStreamPrefixBytes)
+	prefixPtr, _ := cBytes(prefix)
+	var enc *C.DstuFileEncryptor
+	if err := statusError(C.dstu_box512_seal_stream(recipient.ptr, prefixPtr, &enc)); err != nil {
+		return nil, err
+	}
+	return startEncryptWriter(inner, enc, prefix, leaveOpen)
+}
+
+// NewPassphraseEncryptWriter writes a passphrase file (D-219/D-240) - the bytes uacrypt encrypt
+// --passphrase writes. Runs Argon2id (256 MiB, t=3, about a second) on the calling goroutine
+// before writing anything. An empty passphrase is an *ArgumentError.
+func NewPassphraseEncryptWriter(inner io.Writer, passphrase []byte, leaveOpen bool) (*SecretStreamEncryptWriter, error) {
+	if len(passphrase) == 0 {
+		return nil, &ArgumentError{"the passphrase is empty"}
+	}
+	prefix := make([]byte, passphraseFileSealStreamPrefixBytes)
+	prefixPtr, _ := cBytes(prefix)
+	pwPtr, pwLen := cBytes(passphrase)
+	var enc *C.DstuFileEncryptor
+	if err := statusError(C.dstu_passphrase_file_seal_stream(pwPtr, pwLen, prefixPtr, &enc)); err != nil {
+		return nil, err
+	}
+	return startEncryptWriter(inner, enc, prefix, leaveOpen)
+}
+
+func startEncryptWriter(inner io.Writer, enc *C.DstuFileEncryptor, prefix []byte, leaveOpen bool) (*SecretStreamEncryptWriter, error) {
 	if _, err := inner.Write(prefix); err != nil {
 		C.dstu_secretstream_file_encryptor_free(enc)
 		return nil, err
@@ -205,7 +262,71 @@ type SecretStreamDecryptReader struct {
 // NewSecretStreamDecryptReader reads the version byte and the 32-byte header from inner
 // immediately. If inner implements io.Closer, Close closes it too unless leaveOpen is true.
 func NewSecretStreamDecryptReader(inner io.Reader, key *SecretstreamKey, leaveOpen bool) (*SecretStreamDecryptReader, error) {
-	r := &SecretStreamDecryptReader{inner: inner, dec: C.dstu_secretstream_file_decryptor_new(key.ptr)}
+	return startDecryptReader(inner, C.dstu_secretstream_file_decryptor_new(key.ptr), leaveOpen)
+}
+
+// readPrefix reads the bytes in front of the stream file; a shorter input cannot be opened.
+func readPrefix(inner io.Reader, size int, what string) ([]byte, error) {
+	prefix := make([]byte, size)
+	if _, err := io.ReadFull(inner, prefix); err != nil {
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			return nil, &CryptoError{"input too short to contain a " + what}
+		}
+		return nil, err
+	}
+	return prefix, nil
+}
+
+// NewBoxDecryptReader reads a crypto_box stream (or a BoxPublicKey.Seal blob) with bounded
+// memory.
+func NewBoxDecryptReader(inner io.Reader, secret *BoxSecretKey, leaveOpen bool) (*SecretStreamDecryptReader, error) {
+	prefix, err := readPrefix(inner, boxOpenStreamPrefixBytes, "sealed message")
+	if err != nil {
+		return nil, err
+	}
+	prefixPtr, _ := cBytes(prefix)
+	var dec *C.DstuFileDecryptor
+	if err := statusError(C.dstu_box_open_stream(secret.ptr, prefixPtr, &dec)); err != nil {
+		return nil, err
+	}
+	return startDecryptReader(inner, dec, leaveOpen)
+}
+
+// NewBox512DecryptReader is the crypto_box512 counterpart of NewBoxDecryptReader.
+func NewBox512DecryptReader(inner io.Reader, secret *Box512SecretKey, leaveOpen bool) (*SecretStreamDecryptReader, error) {
+	prefix, err := readPrefix(inner, box512OpenStreamPrefixBytes, "sealed message")
+	if err != nil {
+		return nil, err
+	}
+	prefixPtr, _ := cBytes(prefix)
+	var dec *C.DstuFileDecryptor
+	if err := statusError(C.dstu_box512_open_stream(secret.ptr, prefixPtr, &dec)); err != nil {
+		return nil, err
+	}
+	return startDecryptReader(inner, dec, leaveOpen)
+}
+
+// NewPassphraseDecryptReader reads a passphrase file. The header is checked before Argon2 runs
+// (on the calling goroutine); a wrong passphrase is a *CryptoError at the first record.
+func NewPassphraseDecryptReader(inner io.Reader, passphrase []byte, leaveOpen bool) (*SecretStreamDecryptReader, error) {
+	if len(passphrase) == 0 {
+		return nil, &ArgumentError{"the passphrase is empty"}
+	}
+	header, err := readPrefix(inner, passphraseFileHeaderBytes, "passphrase file header")
+	if err != nil {
+		return nil, err
+	}
+	headerPtr, _ := cBytes(header)
+	pwPtr, pwLen := cBytes(passphrase)
+	var dec *C.DstuFileDecryptor
+	if err := statusError(C.dstu_passphrase_file_open_stream(headerPtr, pwPtr, pwLen, &dec)); err != nil {
+		return nil, err
+	}
+	return startDecryptReader(inner, dec, leaveOpen)
+}
+
+func startDecryptReader(inner io.Reader, dec *C.DstuFileDecryptor, leaveOpen bool) (*SecretStreamDecryptReader, error) {
+	r := &SecretStreamDecryptReader{inner: inner, dec: dec}
 	for i := 0; i < 2; i++ {
 		if _, err := r.step(); err != nil {
 			C.dstu_secretstream_file_decryptor_free(r.dec)

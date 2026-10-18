@@ -22,7 +22,10 @@ const (
 	KdfContextBytes       = int(C.DSTU_KDF_CONTEXT_BYTES)
 	KdfSubkeyBytes        = int(C.DSTU_KDF_SUBKEY_BYTES)
 	// PwhashStrBytes is the fixed buffer size for a PHC string produced by HashPassword.
-	PwhashStrBytes    = int(C.DSTU_PWHASH_STRBYTES)
+	PwhashStrBytes = int(C.DSTU_PWHASH_STRBYTES)
+	// PwhashSaltBytes / PwhashKeyBytes are DeriveKey's salt and key lengths.
+	PwhashSaltBytes   = int(C.DSTU_PWHASH_SALTBYTES)
+	PwhashKeyBytes    = int(C.DSTU_PWHASH_KEYBYTES)
 	SecretboxKeyBytes = int(C.DSTU_SECRETBOX_KEY_BYTES)
 	// SecretboxOverhead is the 32-byte nonce + 16-byte tag added by Seal.
 	SecretboxOverhead       = int(C.DSTU_SECRETBOX_OVERHEAD)

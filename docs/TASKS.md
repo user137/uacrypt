@@ -9350,6 +9350,10 @@ plan):
     `DstuStatus`/`NativeStatus`; `Box*.Open` no longer pre-checks the length (a short v2 blob is now
     an unsupported version, the T-265 mislabel); an empty passphrase is an `ArgumentException`
     before the C call. Verified: `cargo xtask dotnet` - 203 passed, 0 skipped. Next: Go.
+  - Go done 2026-10-19: `DeriveKey`, `NewBox(512)EncryptWriter`/`NewBox(512)DecryptReader`,
+    `NewPassphraseEncryptWriter`/`DecryptReader` (shared start helpers), statuses 18/19, the same
+    `Open` length-check fix, empty passphrase an `*ArgumentError`. Verified: `cargo xtask go` from
+    PowerShell green; `go test -v` shows every new test PASS, interop included. Next: C++.
 - [ ] **T-263** Text output (A1), only if the owner wants it. **After 1.0 (owner 2026-10-09).**
 
 Release:

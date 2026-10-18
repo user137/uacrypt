@@ -1,6 +1,7 @@
 package dstu
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -75,5 +76,46 @@ func TestPwhashSharedVerifyVectors(t *testing.T) {
 				t.Fatal("a wrong password verified")
 			}
 		})
+	}
+}
+
+// T-269: DeriveKey equals libsodium crypto_pwhash (the vectors' oracle, D-219).
+func TestDeriveKeyMatchesTheLibsodiumVectors(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "crates", "dstu-core", "tests", "vectors", "pwhash", "derive_key.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vectors struct {
+		Cases []struct {
+			Name        string `json:"name"`
+			PasswordHex string `json:"password_hex"`
+			SaltHex     string `json:"salt_hex"`
+			KeyHex      string `json:"key_hex"`
+		} `json:"cases"`
+	}
+	if err := json.Unmarshal(raw, &vectors); err != nil {
+		t.Fatal(err)
+	}
+	if len(vectors.Cases) != 3 {
+		t.Fatalf("got %d cases, want 3", len(vectors.Cases))
+	}
+	for _, c := range vectors.Cases {
+		key, err := DeriveKey(mustHex(t, c.PasswordHex), mustHex(t, c.SaltHex), PwhashModerate)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := hex.EncodeToString(key); got != c.KeyHex {
+			t.Fatalf("%s: key %s, want %s", c.Name, got, c.KeyHex)
+		}
+	}
+}
+
+func TestDeriveKeyRefusesAWrongLengthSaltAndAnUnknownStrength(t *testing.T) {
+	var argErr *ArgumentError
+	if _, err := DeriveKey([]byte("pw"), make([]byte, 15), PwhashModerate); !errors.As(err, &argErr) {
+		t.Fatalf("15-byte salt: %v, want *ArgumentError", err)
+	}
+	if _, err := DeriveKey([]byte("pw"), make([]byte, 16), PwhashStrength(255)); !errors.As(err, &argErr) {
+		t.Fatalf("strength 255: %v, want *ArgumentError", err)
 	}
 }
