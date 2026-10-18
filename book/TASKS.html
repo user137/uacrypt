@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5499e9ca.js";
+            window.path_to_searchindex_js = "searchindex-5d9ff98a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -8917,7 +8917,12 @@ entry recording the non-injectivity and the BC divergence, don’t rewrite D-56)
 <code>CLAUDE.md</code>’s “cross-checked against real Bouncy Castle” wording scoped to block-aligned input for
 GCM/GMAC (from T-237 - pair the addition with a deletion). Also move the 2026-09-23 “Standards
 baseline” table into <code>docs/SECURITY.md</code> (policy belongs there; TASKS.md keeps a pointer).</li>
-<li><input disabled="" type="checkbox"> <strong>T-247</strong> (<strong>owner-gated, outward-facing</strong>) Upstream reports: (a) an issue on
+<li><input disabled="" type="checkbox" checked=""> <strong>T-247</strong> <strong>Superseded 2026-10-18, nothing posted:</strong> the private GHSAs (T-233) already reached
+UAPKI, which fixed GCM/GMAC/CCM (<code>deffe4a</code>, 2.0.3) and empty CMAC (<code>62a1bdf</code>, 2026-10-06);
+re-run of <code>tests/oracle-harness/uapki-kalyna-modes/</code> on <code>37039b1</code>: 78/93, CMAC(empty) = <code>ERR 27</code>.
+Left: (b) BC - annex В.8.1.3 is the partial-block GMAC vector BC says doesn’t exist (#287 closed
+2026-05-30); check a post-1.85 BC first, comment only on owner go-ahead.
+Original scope: (<strong>owner-gated, outward-facing</strong>) Upstream reports: (a) an issue on
 specinfo-ua/UAPKI describing the GCM/GMAC padded-length non-injectivity and the CMAC empty-message
 collision, with V1/V3/V4 (D-91 precedent for conventions: <code>MODULE: short description</code>, mixed
 UA/EN); (b) a comment on bc-java github #287 with V1/V4 as a concrete UAPKI-vs-BC divergence data

@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5499e9ca.js";
+            window.path_to_searchindex_js = "searchindex-5d9ff98a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -14095,7 +14095,9 @@ differences are CCM with an empty AAD: same ciphertext, different tag, because U
 “B = G1” literally where we read <code>T(G1)</code> (D-205 (b), which BC 1.85 shares). The 21 non-empty-AAD
 CCM edge cases are now marked “std transcription + UAPKI 2.0.3”. All GCM/GMAC partial-block vectors
 (D-204) and both CMAC paths match too. Empty CMAC input is rejected by us and accepted by UAPKI, so
-no vector covers it. <code>dstu7624_self_test</code> passes on that build (annex examples, incl. XTS/KW).</p>
+no vector covers it. <code>dstu7624_self_test</code> passes on that build (annex examples, incl. XTS/KW).
+Update 2026-10-18: re-run on UAPKI <code>37039b1</code> gives the same 78/93; empty CMAC is now rejected
+there too (<code>62a1bdf</code>, <code>ERR 27</code>).</p>
 <p><strong>Independence.</strong> Partial. UAPKI’s rewrite came after our report, which described only the empty
 GCM/GMAC input and empty CMAC, not CCM and not the padding/length rules. Our fixed code was never
 public (embargo), so it could not have been copied. Its comments cite the standard’s own formulas.

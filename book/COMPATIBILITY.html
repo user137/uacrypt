@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5499e9ca.js";
+            window.path_to_searchindex_js = "searchindex-5d9ff98a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -192,7 +192,8 @@ from <code>dstu-core</code> ≤ 0.3, a line-by-line port of that file, run on th
 change. That is uapkic 2.0.2, the version in every tagged UAPKI release up to v2.0.17.</li>
 <li><strong>UAPKI 2.0.3</strong>: uapkic as rewritten on 2026-09-29 (<code>deffe4a</code>, “Fix Kalyna GCM, GMAC and CCM
 modes”), not yet in a tagged release. Built from <code>master</code> <code>0bf2b68</code> and run directly against
-<code>dstu-core</code> on Kalyna-128/128 only (2026-10-03); <code>dstu7624_self_test</code> passes.</li>
+<code>dstu-core</code> on Kalyna-128/128 only (2026-10-03); <code>dstu7624_self_test</code> passes. Re-run on <code>master</code>
+<code>37039b1</code> (2026-10-18): same results, except that an empty CMAC message is now rejected (<code>62a1bdf</code>).</li>
 <li><strong>Bouncy Castle</strong>: <code>bcprov-jdk18on</code> 1.85 (<code>KGCMBlockCipher</code>, <code>KGMac</code>, <code>KCCMBlockCipher</code>,
 <code>DSTU7624Mac</code>), run directly.</li>
 <li><strong>Standard</strong>: DSTU 7624:2014 (draft edition), DSTU 7564:2014 (draft edition), DSTU 4145-2002.</li>
@@ -218,7 +219,7 @@ modes”), not yet in a tagged release. Built from <code>master</code> <code>0bf
 <tr><td>CCM</td><td>AAD not block-aligned, otherwise</td><td>standard</td><td>same</td><td>same</td><td>differs (<code>len‖AAD‖0</code>, not <code>len‖0‖AAD</code>)</td></tr>
 <tr><td>CCM</td><td>empty plaintext</td><td>rejected (outside §13.1’s domain)</td><td>accepted</td><td>rejected</td><td>accepted</td></tr>
 <tr><td>CMAC</td><td>message not block-aligned (annex В.5.2)</td><td>standard</td><td>same</td><td>same</td><td>throws</td></tr>
-<tr><td>CMAC</td><td>empty message</td><td>rejected (outside §9’s domain)</td><td><code>MAC(ε) = MAC(0^l)</code></td><td><code>MAC(ε) = MAC(0^l)</code> (unchanged)</td><td><code>MAC(ε) = MAC(0^l)</code></td></tr>
+<tr><td>CMAC</td><td>empty message</td><td>rejected (outside §9’s domain)</td><td><code>MAC(ε) = MAC(0^l)</code></td><td>rejected (<code>62a1bdf</code>, 2026-10-06)</td><td><code>MAC(ε) = MAC(0^l)</code></td></tr>
 </tbody>
 </table>
 </div>
