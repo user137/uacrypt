@@ -9364,7 +9364,10 @@ plan):
     on `tampered.back() ^= 1` in the existing tests (lines ~164-710). Next: phase 4 (docs).
   - Phase 4 done 2026-10-19: CHANGELOG `[Unreleased]`, CLAUDE.md status, `docs/bindings-strategy.md`
     step 2, `docs/ORACLES.md`, `docs/dstu-crypto-project.md` mapping, `docs/CLI.md` note, 8 binding
-    READMEs. Not pushed. After the owner's push: check every workflow, incl. `miri.yml`'s time.
+    READMEs. Final checks: here `cargo clippy --workspace --all-features --all-targets -D
+    warnings`, fmt, `cargo xtask test` (162 suites, 0 failed, the new doctest compiled); Pi aarch64
+    clippy + `dstu-core --all-features`/capi/uacrypt tests (81 suites, 0 failed). Not pushed. After
+    the owner's push: check every workflow, incl. Linux clang-tidy and `miri.yml`'s time.
 - [ ] **T-263** Text output (A1), only if the owner wants it. **After 1.0 (owner 2026-10-09).**
 
 Release:
