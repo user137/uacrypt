@@ -11,7 +11,7 @@ use crate::util::{to_array, IntoDstuError};
 use dstu_core::crypto_box::{open, seal, PublicKey, SecretKey};
 use magnus::{Error, RString, Ruby};
 
-fn secret_key_from_bytes(ruby: &Ruby, bytes: &[u8]) -> Result<SecretKey, Error> {
+pub(crate) fn secret_key_from_bytes(ruby: &Ruby, bytes: &[u8]) -> Result<SecretKey, Error> {
     let e = to_array::<32>(ruby, bytes, "secret_key")?;
     SecretKey::from_bytes(&e).ok_or_else(|| {
         Error::new(
@@ -21,7 +21,7 @@ fn secret_key_from_bytes(ruby: &Ruby, bytes: &[u8]) -> Result<SecretKey, Error> 
     })
 }
 
-fn public_key_from_bytes(ruby: &Ruby, bytes: &[u8]) -> Result<PublicKey, Error> {
+pub(crate) fn public_key_from_bytes(ruby: &Ruby, bytes: &[u8]) -> Result<PublicKey, Error> {
     let x = to_array::<32>(ruby, bytes, "public_key")?;
     PublicKey::from_bytes(&x).ok_or_else(|| {
         Error::new(

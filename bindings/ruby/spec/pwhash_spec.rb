@@ -33,4 +33,21 @@ RSpec.describe "DstuCore pwhash" do
       expect(DstuCore.pwhash_verify_password("#{c['password']}x", c["hash"])).to be(false)
     end
   end
+
+  # T-269: pwhash_derive_key equals libsodium crypto_pwhash (the vectors' oracle, D-219).
+  derive_vectors = File.expand_path("../../../crates/dstu-core/tests/vectors/pwhash/derive_key.json", __dir__)
+
+  it "derives the libsodium crypto_pwhash keys" do
+    cases = JSON.parse(File.read(derive_vectors, encoding: "UTF-8"))["cases"]
+    expect(cases.size).to eq(3)
+    cases.each do |c|
+      key = DstuCore.pwhash_derive_key([c["password_hex"]].pack("H*"), [c["salt_hex"]].pack("H*"), DstuCore::PWHASH_MODERATE)
+      expect(key.unpack1("H*")).to eq(c["key_hex"])
+    end
+  end
+
+  it "refuses a wrong-length salt and an unknown strength" do
+    expect { DstuCore.pwhash_derive_key("pw", "\x00".b * 15, DstuCore::PWHASH_MODERATE) }.to raise_error(ArgumentError, /salt/)
+    expect { DstuCore.pwhash_derive_key("pw", "\x00".b * 16, 255) }.to raise_error(ArgumentError, /strength/)
+  end
 end

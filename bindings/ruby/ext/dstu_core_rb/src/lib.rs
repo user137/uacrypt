@@ -89,6 +89,8 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
         "pwhash_verify_password",
         function!(pwhash::pwhash_verify_password, 2),
     )?;
+    module.define_singleton_method("pwhash_derive_key", function!(pwhash::pwhash_derive_key, 3))?;
+    module.const_set("PWHASH_SALTBYTES", dstu_core::crypto_pwhash::SALT_BYTES)?;
     module.const_set("PWHASH_INTERACTIVE", 0u8)?;
     module.const_set("PWHASH_MODERATE", 1u8)?;
     module.const_set("PWHASH_SENSITIVE", 2u8)?;

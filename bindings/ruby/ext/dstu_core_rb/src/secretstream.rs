@@ -12,10 +12,11 @@
 use std::cell::RefCell;
 
 use crate::util::{to_array, IntoDstuError};
+use dstu_core::crypto_pwhash::passphrase_file::{self, Header, HEADER_BYTES};
 use dstu_core::crypto_secretstream::{
-    FileDecryptor, FileEncryptor, Key, PullState, PushState, Tag, CHUNK_BYTES, FILE_PREFIX_BYTES,
-    MAX_RECORD_BYTES,
+    FileDecryptor, FileEncryptor, Key, PullState, PushState, Tag, CHUNK_BYTES, MAX_RECORD_BYTES,
 };
+use dstu_core::{crypto_box, crypto_box512};
 use magnus::{wrap, Error, RArray, RString, Ruby};
 
 fn tag_from_byte(ruby: &Ruby, byte: u8) -> Result<Tag, Error> {
@@ -114,18 +115,41 @@ impl SecretStreamPullState {
 }
 
 /// Stream-file writer (T-284): the D-208 framing from the core codec. `secretstream.rb`'s
-/// `SecretStreamWriter` drives it and does only I/O.
+/// `SecretStreamWriter` drives it and does only I/O. `new` takes a stream key; `box_seal`/
+/// `box512_seal`/`passphrase_seal` (T-269) start the same codec under a `crypto_box` KEM prefix or
+/// a passphrase-file header, and `prefix` then includes it.
 #[wrap(class = "DstuCore::SecretStreamFileEncryptor")]
-pub struct SecretStreamFileEncryptor(RefCell<FileEncryptor>, [u8; FILE_PREFIX_BYTES]);
+pub struct SecretStreamFileEncryptor(RefCell<FileEncryptor>, Vec<u8>);
 
 impl SecretStreamFileEncryptor {
     fn new(ruby: &Ruby, key: RString) -> Result<Self, Error> {
         let key = Key::from_bytes(to_array::<32>(ruby, &key.to_bytes(), "key")?);
         let (inner, prefix) = FileEncryptor::init(&key).dstu(ruby)?;
-        Ok(Self(RefCell::new(inner), prefix))
+        Ok(Self(RefCell::new(inner), prefix.to_vec()))
     }
 
-    /// The format version byte and header - write these first.
+    /// Starts a `crypto_box` (format v3) stream to `public_key`.
+    fn box_seal(ruby: &Ruby, public_key: RString) -> Result<Self, Error> {
+        let recipient = crate::crypto_box::public_key_from_bytes(ruby, &public_key.to_bytes())?;
+        let (inner, prefix) = crypto_box::seal_stream(&recipient).dstu(ruby)?;
+        Ok(Self(RefCell::new(inner), prefix.to_vec()))
+    }
+
+    /// Starts a `crypto_box512` (format v3) stream to `public_key`.
+    fn box512_seal(ruby: &Ruby, public_key: RString) -> Result<Self, Error> {
+        let recipient = crate::box512::public_key_from_bytes(ruby, &public_key.to_bytes())?;
+        let (inner, prefix) = crypto_box512::seal_stream(&recipient).dstu(ruby)?;
+        Ok(Self(RefCell::new(inner), prefix.to_vec()))
+    }
+
+    /// Starts a passphrase file (D-219/D-240); runs Argon2 (256 MiB, t=3) holding the GVL, as
+    /// `pwhash_hash_password` does.
+    fn passphrase_seal(ruby: &Ruby, passphrase: RString) -> Result<Self, Error> {
+        let (inner, prefix) = passphrase_file::seal_stream(&passphrase.to_bytes()).dstu(ruby)?;
+        Ok(Self(RefCell::new(inner), prefix.to_vec()))
+    }
+
+    /// Everything to write before the first record.
     fn prefix(&self) -> RString {
         Ruby::get()
             .expect("must run on a Ruby thread")
@@ -167,6 +191,41 @@ impl SecretStreamFileDecryptor {
     fn new(ruby: &Ruby, key: RString) -> Result<Self, Error> {
         let key = Key::from_bytes(to_array::<32>(ruby, &key.to_bytes(), "key")?);
         Ok(Self(RefCell::new(FileDecryptor::new(&key))))
+    }
+
+    /// Opens a `crypto_box` stream: `prefix` is its first `BOX_OPEN_STREAM_PREFIX_BYTES` bytes.
+    fn box_open(ruby: &Ruby, secret_key: RString, prefix: RString) -> Result<Self, Error> {
+        let secret = crate::crypto_box::secret_key_from_bytes(ruby, &secret_key.to_bytes())?;
+        let prefix = to_array::<{ crypto_box::OPEN_STREAM_PREFIX_BYTES }>(
+            ruby,
+            &prefix.to_bytes(),
+            "prefix",
+        )?;
+        let inner = crypto_box::open_stream(&prefix, &secret).dstu(ruby)?;
+        Ok(Self(RefCell::new(inner)))
+    }
+
+    /// Opens a `crypto_box512` stream: `prefix` is its first `BOX512_OPEN_STREAM_PREFIX_BYTES`
+    /// bytes.
+    fn box512_open(ruby: &Ruby, secret_key: RString, prefix: RString) -> Result<Self, Error> {
+        let secret = crate::box512::secret_key_from_bytes(ruby, &secret_key.to_bytes())?;
+        let prefix = to_array::<{ crypto_box512::OPEN_STREAM_PREFIX_BYTES }>(
+            ruby,
+            &prefix.to_bytes(),
+            "prefix",
+        )?;
+        let inner = crypto_box512::open_stream(&prefix, &secret).dstu(ruby)?;
+        Ok(Self(RefCell::new(inner)))
+    }
+
+    /// Opens a passphrase file: `header` is its first `PASSPHRASE_FILE_HEADER_BYTES` bytes,
+    /// checked before Argon2 runs. A wrong passphrase fails at the first record.
+    fn passphrase_open(ruby: &Ruby, header: RString, passphrase: RString) -> Result<Self, Error> {
+        let header = to_array::<HEADER_BYTES>(ruby, &header.to_bytes(), "header")?;
+        let inner = Header::parse(&header)
+            .and_then(|h| h.open_stream(&passphrase.to_bytes()))
+            .dstu(ruby)?;
+        Ok(Self(RefCell::new(inner)))
     }
 
     fn next_len(&self) -> usize {
@@ -219,6 +278,18 @@ pub fn init(ruby: &Ruby, module: magnus::RModule) -> Result<(), Error> {
 
     let file_enc = module.define_class("SecretStreamFileEncryptor", ruby.class_object())?;
     file_enc.define_singleton_method("new", function!(SecretStreamFileEncryptor::new, 1))?;
+    file_enc.define_singleton_method(
+        "box_seal",
+        function!(SecretStreamFileEncryptor::box_seal, 1),
+    )?;
+    file_enc.define_singleton_method(
+        "box512_seal",
+        function!(SecretStreamFileEncryptor::box512_seal, 1),
+    )?;
+    file_enc.define_singleton_method(
+        "passphrase_seal",
+        function!(SecretStreamFileEncryptor::passphrase_seal, 1),
+    )?;
     file_enc.define_method("prefix", method!(SecretStreamFileEncryptor::prefix, 0))?;
     file_enc.define_method(
         "seal_chunk",
@@ -231,6 +302,27 @@ pub fn init(ruby: &Ruby, module: magnus::RModule) -> Result<(), Error> {
 
     let file_dec = module.define_class("SecretStreamFileDecryptor", ruby.class_object())?;
     file_dec.define_singleton_method("new", function!(SecretStreamFileDecryptor::new, 1))?;
+    file_dec.define_singleton_method(
+        "box_open",
+        function!(SecretStreamFileDecryptor::box_open, 2),
+    )?;
+    file_dec.define_singleton_method(
+        "box512_open",
+        function!(SecretStreamFileDecryptor::box512_open, 2),
+    )?;
+    file_dec.define_singleton_method(
+        "passphrase_open",
+        function!(SecretStreamFileDecryptor::passphrase_open, 2),
+    )?;
+    module.const_set(
+        "BOX_OPEN_STREAM_PREFIX_BYTES",
+        crypto_box::OPEN_STREAM_PREFIX_BYTES,
+    )?;
+    module.const_set(
+        "BOX512_OPEN_STREAM_PREFIX_BYTES",
+        crypto_box512::OPEN_STREAM_PREFIX_BYTES,
+    )?;
+    module.const_set("PASSPHRASE_FILE_HEADER_BYTES", HEADER_BYTES)?;
     file_dec.define_method("next_len", method!(SecretStreamFileDecryptor::next_len, 0))?;
     file_dec.define_method("feed", method!(SecretStreamFileDecryptor::feed, 1))?;
     file_dec.define_method("finish", method!(SecretStreamFileDecryptor::finish, 0))?;

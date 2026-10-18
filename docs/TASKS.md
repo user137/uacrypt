@@ -9330,6 +9330,10 @@ plan):
     `Passphrase*` (`stream.Transform` subclasses; napi factories on the native codec classes;
     decryptors collect their prefix before opening). Verified: `npm test` 146 passed, 0 skipped
     (incl. a destroyed writer emitting no Final, D-118), eslint, clippy. Next: Ruby.
+  - Ruby done 2026-10-19: `pwhash_derive_key`, `BoxWriter`/`BoxReader`, `Box512*`,
+    `Passphrase*` (subclasses of `SecretStreamWriter`/`Reader` over new singleton constructors on
+    the native codec classes). Verified: `cargo xtask ruby` from PowerShell - 160 examples, 0
+    failures, rubocop clean, clippy/fmt. Next: PHP (CI or the Pi).
 - [ ] **T-263** Text output (A1), only if the owner wants it. **After 1.0 (owner 2026-10-09).**
 
 Release:

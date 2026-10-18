@@ -39,12 +39,7 @@ module DstuCore
   #   end
   class SecretStreamWriter
     def initialize(key, out)
-      @out = out
-      @out.binmode if @out.respond_to?(:binmode)
-      @enc = SecretStreamFileEncryptor.new(key)
-      @out.write(@enc.prefix)
-      @buf = +""
-      @closed = false
+      start(SecretStreamFileEncryptor.new(key), out)
     end
 
     # Block form: yields a writer, then closes it - **only on the success path**. The D-118
@@ -97,6 +92,15 @@ module DstuCore
 
     private
 
+    def start(enc, out)
+      @out = out
+      @out.binmode if @out.respond_to?(:binmode)
+      @enc = enc
+      @buf = +""
+      @closed = false
+      @out.write(@enc.prefix)
+    end
+
     # Adds `data` to the held-back chunk if it all fits; otherwise tops that chunk up to a full one
     # and seals it, since more data follows. Returns how many bytes of `data` it consumed.
     def top_up_buffer(data)
@@ -128,12 +132,8 @@ module DstuCore
     include Enumerable
 
     def initialize(key, inp)
-      @inp = inp
-      @inp.binmode if @inp.respond_to?(:binmode)
-      @dec = SecretStreamFileDecryptor.new(key)
-      @done = false
-      # The version byte and header, read now so a wrong version fails at construction.
-      2.times { step }
+      bind(inp)
+      start(SecretStreamFileDecryptor.new(key))
     end
 
     def self.open(key, inp)
@@ -159,6 +159,27 @@ module DstuCore
 
     private
 
+    def bind(inp)
+      @inp = inp
+      @inp.binmode if @inp.respond_to?(:binmode)
+    end
+
+    def start(dec)
+      @dec = dec
+      @done = false
+      # The version byte and header, read now so a wrong version fails at construction.
+      2.times { step }
+    end
+
+    # The bytes in front of the stream file (a box prefix, a passphrase-file header); a shorter
+    # input cannot be opened at all.
+    def read_prefix(size, what)
+      prefix = read_up_to(size)
+      raise Error, "input too short to contain a #{what}" if prefix.bytesize < size
+
+      prefix
+    end
+
     # Feeds the codec one `next_len` read: the plaintext that read released (possibly empty), or
     # at end of input the Final chunk's (after which the stream is done).
     def step
@@ -183,6 +204,55 @@ module DstuCore
         remaining -= piece.bytesize
       end
       pieces.join.b
+    end
+  end
+
+  # crypto_box sealed to `public_key` as a stream (format v3, T-265/T-269): the same bytes
+  # `box_seal` returns, written chunk by chunk; `box_open`/BoxReader read them.
+  class BoxWriter < SecretStreamWriter
+    def initialize(public_key, out) # rubocop:disable Lint/MissingSuper
+      start(SecretStreamFileEncryptor.box_seal(public_key), out)
+    end
+  end
+
+  # Reads a crypto_box stream (or a `box_seal` blob) with bounded memory.
+  class BoxReader < SecretStreamReader
+    def initialize(secret_key, inp) # rubocop:disable Lint/MissingSuper
+      bind(inp)
+      start(SecretStreamFileDecryptor.box_open(secret_key, read_prefix(BOX_OPEN_STREAM_PREFIX_BYTES, "sealed message")))
+    end
+  end
+
+  # crypto_box512 counterpart of BoxWriter.
+  class Box512Writer < SecretStreamWriter
+    def initialize(public_key, out) # rubocop:disable Lint/MissingSuper
+      start(SecretStreamFileEncryptor.box512_seal(public_key), out)
+    end
+  end
+
+  # crypto_box512 counterpart of BoxReader.
+  class Box512Reader < SecretStreamReader
+    def initialize(secret_key, inp) # rubocop:disable Lint/MissingSuper
+      bind(inp)
+      start(SecretStreamFileDecryptor.box512_open(secret_key, read_prefix(BOX512_OPEN_STREAM_PREFIX_BYTES, "sealed message")))
+    end
+  end
+
+  # A passphrase file (D-219/D-240) - the bytes `uacrypt encrypt --passphrase` writes. `new` runs
+  # Argon2id (256 MiB, t=3, about a second) before writing anything.
+  class PassphraseWriter < SecretStreamWriter
+    def initialize(passphrase, out) # rubocop:disable Lint/MissingSuper
+      start(SecretStreamFileEncryptor.passphrase_seal(passphrase), out)
+    end
+  end
+
+  # Reads a passphrase file. The header is checked before Argon2 runs; a wrong passphrase raises
+  # DstuCore::Error at the first record.
+  class PassphraseReader < SecretStreamReader
+    def initialize(passphrase, inp) # rubocop:disable Lint/MissingSuper
+      bind(inp)
+      header = read_prefix(PASSPHRASE_FILE_HEADER_BYTES, "passphrase file header")
+      start(SecretStreamFileDecryptor.passphrase_open(header, passphrase))
     end
   end
 end
