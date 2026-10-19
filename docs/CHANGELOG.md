@@ -42,6 +42,8 @@ All notable changes to this project are documented in this file. Format follows
   minus that constant, not exact. C++/.NET/Go constants renamed accordingly.
 - **C++/.NET/Go `Box*.Open`** report a 0.4-0.6 blob shorter than a v3 one as an unsupported version,
   not as too short (T-269).
+- **`uacrypt` buffers file input and output** (T-286): `encrypt`/`decrypt` about 11% faster on
+  Windows, 2-3% on Linux/aarch64.
 
 - **Windows release binary links the C runtime statically** (T-295, `docs/DECISIONS.md` D-238):
   `uacrypt.exe` no longer needs the Visual C++ redistributable (`VCRUNTIME140.dll`).

@@ -2074,6 +2074,9 @@ const SECRETSTREAM_TAG_LEN: usize = 16;
 /// (T-284). It also bounds peak memory on both sides, independent of `--in`'s size (D-42).
 const SECRETSTREAM_CHUNK_BYTES: usize = dstu_core::crypto_secretstream::CHUNK_BYTES;
 
+/// Buffer size for `encrypt`/`decrypt` file I/O (T-286), matching the stdout writer.
+const IO_BUFFER_BYTES: usize = 64 * 1024;
+
 /// What `encrypt`/`decrypt` derive the stream key from (T-262, `docs/DECISIONS.md` D-219).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Credential {
@@ -2408,7 +2411,10 @@ impl Source {
                     .ok()
                     .filter(std::fs::Metadata::is_file)
                     .map(|m| m.len());
-                Ok((Box::new(file), total))
+                Ok((
+                    Box::new(std::io::BufReader::with_capacity(IO_BUFFER_BYTES, file)),
+                    total,
+                ))
             }
         }
     }
@@ -2500,7 +2506,7 @@ fn refuse_binary_to_terminal(stdout_is_terminal: bool) -> Result<(), CliError> {
 /// marks an error after the first byte as [`CliError::StdoutIncomplete`]; `decrypt` writes only
 /// chunks whose tag verified, so what was printed is authentic but not the whole message.
 enum Output {
-    File(OutputFile, std::fs::File),
+    File(OutputFile, std::io::BufWriter<std::fs::File>),
     Stdout {
         writer: std::io::BufWriter<std::io::StdoutLock<'static>>,
         written: bool,
@@ -2527,7 +2533,10 @@ impl Output {
             }
             Sink::File(path) => {
                 let (output, file) = OutputFile::create(path, input.path(), force)?;
-                Ok(Output::File(output, file))
+                Ok(Output::File(
+                    output,
+                    std::io::BufWriter::with_capacity(IO_BUFFER_BYTES, file),
+                ))
             }
         }
     }
@@ -2566,7 +2575,13 @@ impl Output {
     fn finish(self, result: Result<(), CliError>) -> Result<(), CliError> {
         use std::io::Write;
         match self {
-            Output::File(output, file) => result.and_then(|()| output.commit(file)),
+            Output::File(output, writer) => result.and_then(|()| {
+                let file = writer.into_inner().map_err(|e| CliError::Io {
+                    path: output.tmp_path().to_path_buf(),
+                    message: e.error().to_string(),
+                })?;
+                output.commit(file)
+            }),
             Output::Stdout {
                 mut writer,
                 written,
@@ -2766,8 +2781,8 @@ fn write_stream_records(
     let mut record = vec![0u8; MAX_RECORD_BYTES];
     let mut cur = vec![0u8; CHUNK_BYTES];
     let mut cur_len = read_chunk(&mut cur)?;
+    let mut next = vec![0u8; CHUNK_BYTES];
     loop {
-        let mut next = vec![0u8; CHUNK_BYTES];
         let next_len = read_chunk(&mut next)?;
         if next_len == 0 {
             let n = enc.seal_final(&cur[..cur_len], &mut record)?;
@@ -2782,7 +2797,7 @@ fn write_stream_records(
         };
         enc.seal_chunk(chunk, full_record)?;
         out.write_all(&record)?;
-        cur = next;
+        std::mem::swap(&mut cur, &mut next);
         cur_len = next_len;
     }
 }
@@ -5816,6 +5831,31 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    /// T-286: a buffered write that fails only when `finish` flushes it is still an error, and
+    /// leaves no output. The temp file is reopened read-only so the flush fails on every OS.
+    #[test]
+    fn output_flush_failure_at_finish_leaves_no_output() {
+        let dir = TempDir::new("output_flush_failure");
+        let path = dir.file("out.bin");
+        let (output, file) = OutputFile::create(&path, None, false).unwrap();
+        drop(file);
+        let read_only = std::fs::File::open(output.tmp_path()).unwrap();
+        let tmp_path = output.tmp_path().to_path_buf();
+        let mut out = Output::File(
+            output,
+            std::io::BufWriter::with_capacity(IO_BUFFER_BYTES, read_only),
+        );
+        out.write_all(b"buffered, not yet written").unwrap();
+
+        let err = out.finish(Ok(())).unwrap_err();
+        assert!(
+            matches!(&err, CliError::Io { path: p, .. } if *p == tmp_path),
+            "{err:?}"
+        );
+        assert!(!path.exists());
+        assert!(!tmp_path.exists());
     }
 
     /// A small, obviously-valid signing-key candidate (`n`'s top byte is `0x04` - see

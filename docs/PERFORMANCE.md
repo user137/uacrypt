@@ -2437,3 +2437,21 @@ target/release/uacrypt keygen --out sym.key
 target/release/uacrypt encrypt --key sym.key --in payload.bin --out payload.enc
 target/release/uacrypt decrypt --key sym.key --in payload.enc --out payload.dec
 ```
+
+### `uacrypt encrypt`/`decrypt` buffered file I/O — T-286 (2026-10-19)
+
+Since T-284 the records are written whole (one `write` per 8 KiB record, not four), so T-286's
+original +20% in-process estimate no longer applied; re-measured as the built binary before
+changing anything (D-34). Change: a 64 KiB `BufWriter` in the file `--out` (flushed and checked in
+`Output::finish` before `sync_all`), a 64 KiB `BufReader` under every file `--in`, and the
+read-ahead chunk buffer reused instead of allocated per record. 256 MiB random input, key file,
+file `--in`/`--out`, MB/s, base and buffered binaries interleaved (2 x 4 rounds each).
+
+| Machine | encrypt base | encrypt buffered | decrypt base | decrypt buffered |
+|---|---|---|---|---|
+| Windows 11, Ryzen (dev machine) | 80-94 (median ~91) | 89.8-103.3 (median ~101) | 85-107 (median ~105) | 112.5-117.8 (median ~117) |
+| Raspberry Pi 5, Debian 12 aarch64 | 44.7-54.0 (median ~53.5) | 54.2-55.1 (median ~54.8) | 52.8-53.6 (median ~53.4) | 54.6-55.5 (median ~55.0) |
+
+About +11% on Windows (every buffered round beat every base round of its pair), +2-3% on the Pi,
+where the cipher, not the syscall count, is the limit. Windows numbers move a lot between rounds
+(`sync_all` and the on-access scanner); read the ranges, not single rounds.

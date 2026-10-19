@@ -10036,8 +10036,12 @@ points at the machine state rather than a GCM-specific regression, but that is n
 
 ### Performance (after the test-gap and arch batches)
 
-- [ ] **T-286** (Low, perf, **Plausible** - pattern measured, binary not A/B'd; depends: none,
-  sequence with T-265) `uacrypt encrypt`/`decrypt` do
+- [x] **T-286** (Low, perf, **Plausible** - pattern measured, binary not A/B'd; depends: none,
+  sequence with T-265) **Done 2026-10-19:** re-measured as the binary first (T-284 had already cut
+  the writes to one per record): 64 KiB `BufWriter` on a file `--out` (flushed in `Output::finish`),
+  64 KiB `BufReader` on a file `--in`, reused read-ahead buffer; +11% encrypt/decrypt on Windows,
+  +2-3% on the Pi (`docs/PERFORMANCE.md`); unit test `output_flush_failure_at_finish_leaves_no_output`.
+  Original finding: `uacrypt encrypt`/`decrypt` do
   unbuffered file I/O.
   - `Output::File` (`crates/uacrypt/src/lib.rs:2481`) wraps a bare `std::fs::File`, so
     `write_secretstream_file` (`:2717`) issues 4 `write`
