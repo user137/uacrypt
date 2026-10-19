@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-53ab0959.js";
+            window.path_to_searchindex_js = "searchindex-1f28d178.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -2748,6 +2748,47 @@ target/release/uacrypt keygen --out sym.key
 target/release/uacrypt encrypt --key sym.key --in payload.bin --out payload.enc
 target/release/uacrypt decrypt --key sym.key --in payload.enc --out payload.dec
 </code></pre>
+<h3 id="uacrypt-encryptdecrypt-buffered-file-io--t-286-2026-10-19"><a class="header" href="#uacrypt-encryptdecrypt-buffered-file-io--t-286-2026-10-19"><code>uacrypt encrypt</code>/<code>decrypt</code> buffered file I/O — T-286 (2026-10-19)</a></h3>
+<p>Since T-284 the records are written whole (one <code>write</code> per 8 KiB record, not four), so T-286’s
+original +20% in-process estimate no longer applied; re-measured as the built binary before
+changing anything (D-34). Change: a 64 KiB <code>BufWriter</code> in the file <code>--out</code> (flushed and checked in
+<code>Output::finish</code> before <code>sync_all</code>), a 64 KiB <code>BufReader</code> under every file <code>--in</code>, and the
+read-ahead chunk buffer reused instead of allocated per record. 256 MiB random input, key file,
+file <code>--in</code>/<code>--out</code>, MB/s, base and buffered binaries interleaved (2 x 4 rounds each).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Machine</th><th>encrypt base</th><th>encrypt buffered</th><th>decrypt base</th><th>decrypt buffered</th></tr>
+</thead>
+<tbody>
+<tr><td>Windows 11, Ryzen (dev machine)</td><td>80-94 (median ~91)</td><td>89.8-103.3 (median ~101)</td><td>85-107 (median ~105)</td><td>112.5-117.8 (median ~117)</td></tr>
+<tr><td>Raspberry Pi 5, Debian 12 aarch64</td><td>44.7-54.0 (median ~53.5)</td><td>54.2-55.1 (median ~54.8)</td><td>52.8-53.6 (median ~53.4)</td><td>54.6-55.5 (median ~55.0)</td></tr>
+</tbody>
+</table>
+</div>
+<p>About +11% on Windows (every buffered round beat every base round of its pair), +2-3% on the Pi,
+where the cipher, not the syscall count, is the limit. Windows numbers move a lot between rounds
+(<code>sync_all</code> and the on-access scanner); read the ranges, not single rounds.</p>
+<h3 id="crypto_boxcrypto_box512-open-with-the-public-key-cached-in-secretkey--t-287-2026-10-19"><a class="header" href="#crypto_boxcrypto_box512-open-with-the-public-key-cached-in-secretkey--t-287-2026-10-19"><code>crypto_box</code>/<code>crypto_box512</code> <code>open</code> with the public key cached in <code>SecretKey</code> — T-287 (2026-10-19)</a></h3>
+<p><code>SecretKey</code> now computes <code>e * P</code> once (<code>from_bytes</code>/<code>generate</code>) instead of on every <code>open</code>
+(the D-201 KDF binds it), and <code>point_from_x</code> uses a precomputed <code>a * d^-1</code> instead of one
+<code>invert</code> per call. <code>uacrypt box-open --iterations</code> (key loaded once, 1 KiB message), Windows dev
+machine, release binary, 3 rounds each:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Curve</th><th>before (ms/op)</th><th>after (ms/op)</th><th>ops/s before -&gt; after</th></tr>
+</thead>
+<tbody>
+<tr><td>E256/1 (<code>crypto_box</code>)</td><td>1.63-1.73</td><td>1.12-1.19</td><td>578-612 -&gt; 837-896</td></tr>
+<tr><td>E512/1 (<code>crypto_box512</code>)</td><td>9.64-10.53</td><td>6.59-6.99</td><td>95-104 -&gt; 143-152</td></tr>
+</tbody>
+</table>
+</div>
+<p>About a third off <code>open</code> on both curves. <code>from_bytes</code>/<code>generate</code> are one ladder slower; that is a
+wash for a caller that rebuilds the key for every call (the Python, Node.js, Ruby, PHP and Java
+bindings take the secret key as bytes per call), and a gain for one that keeps it (the C ABI
+handle, so .NET, Go and C++).</p>
 
                     </main>
 

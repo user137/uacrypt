@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-53ab0959.js";
+            window.path_to_searchindex_js = "searchindex-1f28d178.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -228,6 +228,15 @@ minus that constant, not exact. C++/.NET/Go constants renamed accordingly.</p>
 <li>
 <p><strong>C++/.NET/Go <code>Box*.Open</code></strong> report a 0.4-0.6 blob shorter than a v3 one as an unsupported version,
 not as too short (T-269).</p>
+</li>
+<li>
+<p><strong><code>uacrypt</code> buffers file input and output</strong> (T-286): <code>encrypt</code>/<code>decrypt</code> about 11% faster on
+Windows, 2-3% on Linux/aarch64.</p>
+</li>
+<li>
+<p><strong><code>crypto_box</code>/<code>crypto_box512</code> <code>open</code> about a third faster</strong> (T-287): <code>SecretKey</code> computes its
+public key once, when it is built, instead of on every <code>open</code>; <code>SecretKey::from_bytes</code> and
+<code>generate</code> are slower by the same amount.</p>
 </li>
 <li>
 <p><strong>Windows release binary links the C runtime statically</strong> (T-295, <code>docs/DECISIONS.md</code> D-238):

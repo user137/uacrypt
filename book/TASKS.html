@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-53ab0959.js";
+            window.path_to_searchindex_js = "searchindex-1f28d178.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -10391,7 +10391,13 @@ nor <code>rust.yml</code> passed <code>--all-targets</code>, so test code was ne
 <code>#[cfg(test)]</code> modules too. Fix: root <code>clippy.toml</code> (<code>allow-unwrap-in-tests</code>,
 <code>allow-expect-in-tests</code>), the remaining 49 fixed in the code, and <code>--all-targets</code> on the default,
 <code>small-tables</code> and <code>--all-features</code> clippy runs (xtask and <code>rust.yml</code>).</li>
-<li><input disabled="" type="checkbox"> <strong>T-293</strong> (Low, perf; depends: T-290) A register-only barrier in place of <code>black_box</code>
+<li><input disabled="" type="checkbox" checked=""> <strong>T-293</strong> (<strong>closed 2026-10-19 as won’t do - owner: no complexity without a real gain</strong>)
+Spike: an empty <code>asm!</code> barrier on the <code>fp256</code>/<code>fp512</code> mask sites only, <code>black_box</code> fallback
+under Miri; <code>asm-check</code> green, barrier markers present on all four targets. <code>box-seal</code>/
+<code>box-open --iterations</code> against <code>1351614</code>: Windows no difference beyond the round spread; Pi
+aarch64 open256 1.88 -&gt; 1.80 ms, open512 10.87 -&gt; 10.65 ms, seal256 1.64 -&gt; 1.55 ms (2-5%).
+D-225’s 1.57x no longer holds after D-227 and T-287; not worth the crate’s first inline asm.
+Spike discarded. Original item: (Low, perf; depends: T-290) A register-only barrier in place of <code>black_box</code>
 (<code>core::arch::asm!("", inout(reg) x, options(pure, nomem, nostack))</code> per supported arch, with
 <code>black_box</code> as the fallback) to win back <code>crypto_box</code>’s 1.57x (D-225). It adds <code>unsafe</code> and
 per-arch code, so it needs its own plan, an asm re-check on all four targets, and a Miri note
@@ -10460,8 +10466,12 @@ are refused at parse; verify stays correct. Binary-level before/after with <code
 </ul>
 <h3 id="performance-after-the-test-gap-and-arch-batches"><a class="header" href="#performance-after-the-test-gap-and-arch-batches">Performance (after the test-gap and arch batches)</a></h3>
 <ul>
-<li><input disabled="" type="checkbox"> <strong>T-286</strong> (Low, perf, <strong>Plausible</strong> - pattern measured, binary not A/B’d; depends: none,
-sequence with T-265) <code>uacrypt encrypt</code>/<code>decrypt</code> do
+<li><input disabled="" type="checkbox" checked=""> <strong>T-286</strong> (Low, perf, <strong>Plausible</strong> - pattern measured, binary not A/B’d; depends: none,
+sequence with T-265) <strong>Done 2026-10-19:</strong> re-measured as the binary first (T-284 had already cut
+the writes to one per record): 64 KiB <code>BufWriter</code> on a file <code>--out</code> (flushed in <code>Output::finish</code>),
+64 KiB <code>BufReader</code> on a file <code>--in</code>, reused read-ahead buffer; +11% encrypt/decrypt on Windows,
++2-3% on the Pi (<code>docs/PERFORMANCE.md</code>); unit test <code>output_flush_failure_at_finish_leaves_no_output</code>.
+Original finding: <code>uacrypt encrypt</code>/<code>decrypt</code> do
 unbuffered file I/O.
 <ul>
 <li><code>Output::File</code> (<code>crates/uacrypt/src/lib.rs:2481</code>) wraps a bare <code>std::fs::File</code>, so
@@ -10483,8 +10493,21 @@ D-34), and record the numbers in <code>docs/PERFORMANCE.md</code>.</li>
 <li>Effort S-M. Do it next to T-265 (same I/O layer).</li>
 </ul>
 </li>
-<li><input disabled="" type="checkbox"> <strong>T-287</strong> (Low, perf, <strong>Plausible</strong> - cost split measured; depends: none, sequence with
-T-265) <code>crypto_box::open</code>/<code>crypto_box512::open</code> recompute the recipient public key
+<li><input disabled="" type="checkbox" checked=""> <strong>T-287</strong> (Low, perf, <strong>Plausible</strong> - cost split measured; depends: none, sequence with
+T-265) <strong>Done 2026-10-19:</strong> <code>SecretKey</code> carries its <code>PublicKey</code> (computed in <code>from_bytes</code>/
+<code>generate</code>), <code>point_from_x</code> uses a precomputed <code>A_DIV_D</code> (unit-tested against <code>a * d^-1</code>);
+<code>box-open</code> about a third faster on both curves (<code>docs/PERFORMANCE.md</code>). Binding check: the C ABI
+keeps a <code>SecretKey</code> handle (so .NET/Go/C++ gain); Python/Node.js/Ruby/PHP/Java rebuild the key
+from bytes per call, so the ladder only moves from <code>open</code> to <code>from_bytes</code> there - no gain, no
+loss; a key object in those bindings would be an API change, not taken here.
+Miri follow-up (same day): building a valid key now costs a ladder, so tests that only
+round-trip or generate keys got slow under Miri (local Windows Miri: one E256/1 ladder ~250 s,
+capi <code>box512_secretkey_from_bytes_round_trips_and_rejects_invalid_scalar</code> 1210 s). The capi
+box/box512 tests are split (the invalid-scalar refusal stays live) and the round trip plus
+<code>crypto_box512</code>’s <code>truncated_input_is_rejected_not_a_panic</code>, <code>uacrypt</code>’s
+<code>run_box_open_command_truncated_input_is_rejected</code>/<code>run_box_keygen_command_produces_ distinct_keys_each_call</code> are <code>cfg_attr(miri, ignore)</code>, about 50 Miri-minutes in all. Confirm on
+the next CI run (baseline 40d7d2b: uacrypt 51.4 min, capi 25.3 min).
+Original finding: <code>crypto_box::open</code>/<code>crypto_box512::open</code> recompute the recipient public key
 (<code>secret.public_key()</code>, one full ladder; <code>crypto_box.rs:364</code>, <code>crypto_box512.rs:329</code>) on every
 call for the T-248 KDF binding.
 <ul>
