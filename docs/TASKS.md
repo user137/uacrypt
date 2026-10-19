@@ -9975,7 +9975,13 @@ points at the machine state rather than a GCM-specific regression, but that is n
   `#[cfg(test)]` modules too. Fix: root `clippy.toml` (`allow-unwrap-in-tests`,
   `allow-expect-in-tests`), the remaining 49 fixed in the code, and `--all-targets` on the default,
   `small-tables` and `--all-features` clippy runs (xtask and `rust.yml`).
-- [ ] **T-293** (Low, perf; depends: T-290) A register-only barrier in place of `black_box`
+- [x] **T-293** (**closed 2026-10-19 as won't do - owner: no complexity without a real gain**)
+  Spike: an empty `asm!` barrier on the `fp256`/`fp512` mask sites only, `black_box` fallback
+  under Miri; `asm-check` green, barrier markers present on all four targets. `box-seal`/
+  `box-open --iterations` against `1351614`: Windows no difference beyond the round spread; Pi
+  aarch64 open256 1.88 -> 1.80 ms, open512 10.87 -> 10.65 ms, seal256 1.64 -> 1.55 ms (2-5%).
+  D-225's 1.57x no longer holds after D-227 and T-287; not worth the crate's first inline asm.
+  Spike discarded. Original item: (Low, perf; depends: T-290) A register-only barrier in place of `black_box`
   (`core::arch::asm!("", inout(reg) x, options(pure, nomem, nostack))` per supported arch, with
   `black_box` as the fallback) to win back `crypto_box`'s 1.57x (D-225). It adds `unsafe` and
   per-arch code, so it needs its own plan, an asm re-check on all four targets, and a Miri note
