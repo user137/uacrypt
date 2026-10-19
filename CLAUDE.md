@@ -124,12 +124,10 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     `hazmat::dstu9041` (`l(p)=256`), hybrid via KDF (a random seed sealed asymmetrically,
     keyed into `Kupyna256Kmac` over `kem_ct||recipient_pk` (D-201), then a D-208 stream file -
     format v3, `seal_stream`/`open_stream` bounded, v2 only via `open_v2_legacy`, T-265/D-239);
-    `PublicKey` is 32 bytes, the curve point's `x`-coordinate only (T-178/D-169). `crypto_box512`
-    is the direct `l(p)=512` (E512/1) sibling (T-193, 2026-08-08, D-182) — same shape, `PublicKey`/
-    `SecretKey` at 64 bytes, seed deliberately fixed at 32 bytes/256 bits (not `l(p)=512`'s full
-    424-bit KEM capacity, D-182). **Wired into all eight language bindings plus `dstu-core-capi` as
-    of T-204 (2026-08-09/10)**, same shape/naming per binding as `crypto_box` itself, a distinct
-    type everywhere (not interchangeable with `crypto_box`).
+    `PublicKey` is 32 bytes, the curve point's `x`-coordinate only (T-178/D-169). `crypto_box384`
+    (T-297, D-245, keys 48 bytes, v3 only - no `open_v2_legacy`) and `crypto_box512` (T-193, D-182,
+    keys 64 bytes) are the `l(p)=384`/`512` siblings, same shape, seed fixed at 32 bytes. Each is a
+    distinct type in capi and every binding (512: T-204; 384: T-297).
   - `randombytes::randombytes_buf` — `std`-gated `getrandom` wrapper (T-72/D-48).
 - `selftest` — `std`-gated (`selftest` feature, off by default) runtime KAT self-check: `run()`
   re-verifies one official vector per primitive (Kalyna-128/128, Kupyna-256, Strumok-256, DSTU

@@ -107,7 +107,7 @@ fn sign_and_sign_pubkey_follow_the_key_curve_and_match_the_library() {
 fn box_commands_follow_the_key_curve_and_match_the_library() {
     let dir = TempDir::new("curve_box");
     let msg = dir.file("msg");
-    let message = b"T-257: one box-seal command, two curves";
+    let message = b"T-257: one box-seal command, every curve size";
     write_bytes(&msg, message);
 
     for (keygen, secret_prefix, public_prefix, key_len, overhead) in [
@@ -117,6 +117,13 @@ fn box_commands_follow_the_key_curve_and_match_the_library() {
             "uacrypt-box256-public",
             32,
             183,
+        ),
+        (
+            "box-keygen384",
+            "UACRYPT-SECRET-BOX384",
+            "uacrypt-box384-public",
+            48,
+            231,
         ),
         (
             "box-keygen512",
@@ -134,6 +141,12 @@ fn box_commands_follow_the_key_curve_and_match_the_library() {
         let raw = assert_key_line(&sk, secret_prefix, key_len);
         let lib_pk = if key_len == 32 {
             dstu_core::crypto_box::SecretKey::from_bytes(&raw.clone().try_into().unwrap())
+                .unwrap()
+                .public_key()
+                .to_bytes()
+                .to_vec()
+        } else if key_len == 48 {
+            dstu_core::crypto_box384::SecretKey::from_bytes(&raw.clone().try_into().unwrap())
                 .unwrap()
                 .public_key()
                 .to_bytes()
@@ -169,6 +182,12 @@ fn box_commands_follow_the_key_curve_and_match_the_library() {
                 &dstu_core::crypto_box::SecretKey::from_bytes(&raw.try_into().unwrap()).unwrap(),
             )
             .unwrap()
+        } else if key_len == 48 {
+            dstu_core::crypto_box384::open(
+                &sealed_bytes,
+                &dstu_core::crypto_box384::SecretKey::from_bytes(&raw.try_into().unwrap()).unwrap(),
+            )
+            .unwrap()
         } else {
             dstu_core::crypto_box512::open(
                 &sealed_bytes,
@@ -201,6 +220,8 @@ fn a_file_sealed_to_one_curve_is_rejected_by_the_other_curves_key() {
     write_bytes(&msg, b"sealed to one curve, opened with the other");
     let k256 = dir.file("k256.key");
     let p256 = dir.file("k256.pub");
+    let k384 = dir.file("k384.key");
+    let p384 = dir.file("k384.pub");
     let k512 = dir.file("k512.key");
     let p512 = dir.file("k512.pub");
     ok(&uacrypt(["box-keygen", "--out", p(&k256)]));
@@ -211,6 +232,14 @@ fn a_file_sealed_to_one_curve_is_rejected_by_the_other_curves_key() {
         "--out",
         p(&p256),
     ]));
+    ok(&uacrypt(["box-keygen384", "--out", p(&k384)]));
+    ok(&uacrypt([
+        "box-pubkey",
+        "--key",
+        p(&k384),
+        "--out",
+        p(&p384),
+    ]));
     ok(&uacrypt(["box-keygen512", "--out", p(&k512)]));
     ok(&uacrypt([
         "box-pubkey",
@@ -220,7 +249,14 @@ fn a_file_sealed_to_one_curve_is_rejected_by_the_other_curves_key() {
         p(&p512),
     ]));
 
-    for (public, wrong_secret, curve) in [(&p256, &k512, "l(p)=512"), (&p512, &k256, "l(p)=256")] {
+    for (public, wrong_secret, curve) in [
+        (&p256, &k512, "l(p)=512"),
+        (&p512, &k256, "l(p)=256"),
+        (&p384, &k256, "l(p)=256"),
+        (&p256, &k384, "l(p)=384"),
+        (&p384, &k512, "l(p)=512"),
+        (&p512, &k384, "l(p)=384"),
+    ] {
         let sealed = dir.file("sealed");
         let out = dir.file("out");
         ok(&uacrypt([

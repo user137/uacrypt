@@ -238,11 +238,12 @@ curve point's `x`-coordinate only) from it, safe to share or publish. Both are t
 into memory - and any `--in` starting with byte `02` (for instance an `encrypt` output passed by
 mistake) takes that path, so it is read whole before it fails. 0.6 cannot open 0.7 output.
 
-For DSTU 9041's `l(p)=512` curve (E512/1, `docs/TASKS.md` T-193, `docs/DECISIONS.md` D-182),
-generate the key with `box-keygen512` instead; `box-pubkey`, `box-seal` and `box-open` read the
-curve from the key (T-257, D-213). Keys are 64 bytes instead of 32, and a sealed file has 305
-bytes of overhead instead of 177. A file sealed to one curve's key is refused by the other
-curve's key like any other wrong key:
+For DSTU 9041's `l(p)=384` or `l(p)=512` curve (E384/1, T-297, `docs/DECISIONS.md` D-245; E512/1,
+T-193, D-182), generate the key with `box-keygen384` or `box-keygen512` instead; `box-pubkey`,
+`box-seal` and `box-open` read the curve from the key (T-257, D-213). Keys are 48 or 64 bytes
+instead of 32, and a sealed file under 8 KiB has 231 or 311 bytes of overhead instead of 183. A
+file sealed to one curve's key is refused by another curve's key like any other wrong key. There
+are no 0.4-0.6 files at `l(p)=384`: a version-2 file with a 384 key is an unsupported version.
 
 ```
 uacrypt box-keygen512 --out box512.key
@@ -388,8 +389,8 @@ was not yet so.
 | `keygen` | symmetric key | a key line, see [Key files](#key-files) |
 | `encrypt` | encrypted file | `version (1) \|\| header (32)`, then one or more records, each `chunk tag (1) \|\| ciphertext length (4) \|\| ciphertext \|\| auth tag (16)` |
 | `encrypt --passphrase` / `--passphrase-file` | encrypted file | `0x50 \|\| 0x01 \|\| 0x01 \|\| m_cost KiB (4) \|\| t_cost (4) \|\| p_cost (1) \|\| salt (16)`, then the `encrypt` layout above |
-| `box-keygen` / `box-keygen512` / `box-pubkey` | secret / public key | a key line each (the public key is the curve point's `x`-coordinate) |
-| `box-seal` | sealed file | `version (1, = 3) \|\| KEM ciphertext (128, or 256 for an l(p)=512 key) \|\| <the encrypt stream format>`: 183 or 311 bytes for an input under 8 KiB, plus 21 per further started 8 KiB (D-239; 0.4-0.6 wrote version 2, one chunk, still read by `box-open`) |
+| `box-keygen` / `box-keygen384` / `box-keygen512` / `box-pubkey` | secret / public key | a key line each (the public key is the curve point's `x`-coordinate) |
+| `box-seal` | sealed file | `version (1, = 3) \|\| KEM ciphertext (128, or 176/256 for an l(p)=384/512 key) \|\| <the encrypt stream format>`: 183, 231 or 311 bytes for an input under 8 KiB, plus 21 per further started 8 KiB (D-239; 0.4-0.6 wrote version 2, one chunk, at 256/512 only, still read by `box-open`) |
 | `sign-keygen` / `sign-keygen257` | signing key | a key line (the scalar `d`, big-endian) |
 | `sign-pubkey` | verifying key | a key line (`x \|\| y`) of the signing key's curve |
 | `sign` | signature | 42 raw bytes for an m=163 key, 66 for m=257; `verify` picks the curve from the verifying key's kind |
@@ -438,6 +439,7 @@ spaces, no second line, no byte-order mark, no upper-case hex. The prefix names 
 | `sign163-secret` / `sign163-public` | `UACRYPT-SECRET-SIGN163` / `uacrypt-sign163-public` | 21 / 42 | `sign-keygen` / `sign-pubkey` |
 | `sign257-secret` / `sign257-public` | `UACRYPT-SECRET-SIGN257` / `uacrypt-sign257-public` | 33 / 66 | `sign-keygen257` / `sign-pubkey` |
 | `box256-secret` / `box256-public` | `UACRYPT-SECRET-BOX256` / `uacrypt-box256-public` | 32 / 32 | `box-keygen` / `box-pubkey` |
+| `box384-secret` / `box384-public` | `UACRYPT-SECRET-BOX384` / `uacrypt-box384-public` | 48 / 48 | `box-keygen384` / `box-pubkey` |
 | `box512-secret` / `box512-public` | `UACRYPT-SECRET-BOX512` / `uacrypt-box512-public` | 64 / 64 | `box-keygen512` / `box-pubkey` |
 
 Secret keys have an upper-case prefix so they are hard to mistake for something to share; public

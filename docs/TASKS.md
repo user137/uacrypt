@@ -8734,6 +8734,8 @@ Moved to `docs/SECURITY.md` "Standards baseline" (T-246, 2026-10-11): policy liv
   `hazmat::dstu9041` E384/1 (`fp384`/`curve384`/`message384`/`encryption384`), `crypto_box384`,
   `uacrypt box-keygen384` + `KeyKind::Box384*`, capi `box384`, all eight bindings, docs. Sources and
   the Г.2 `t` divergence: D-241. Phase plan: the 0.7.0 detailed plan, step 3.
+  Progress 2026-10-19: hazmat done (5c02fed, D-244); `crypto_box384` + CLI done (D-245); next capi,
+  then the eight bindings (each runner must accept `curve: 384` in `box/v3.json`).
 - [x] **T-252** (**done locally 2026-09-24, not yet run in CI** - `release.yml`: `cargo auditable
   build --locked`, a CycloneDX SBOM job, `assemble-release-assets` with provenance attestations and a
   Sigstore keyless-signed `SHA256SUMS`, every publish job gated to a `v*` tag push, and

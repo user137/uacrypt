@@ -32,11 +32,13 @@ pub enum KeyKind {
     Sign257Public,
     Box256Secret,
     Box256Public,
+    Box384Secret,
+    Box384Public,
     Box512Secret,
     Box512Public,
 }
 
-const ALL_KINDS: [KeyKind; 9] = [
+const ALL_KINDS: [KeyKind; 11] = [
     KeyKind::Symmetric,
     KeyKind::Sign163Secret,
     KeyKind::Sign163Public,
@@ -44,6 +46,8 @@ const ALL_KINDS: [KeyKind; 9] = [
     KeyKind::Sign257Public,
     KeyKind::Box256Secret,
     KeyKind::Box256Public,
+    KeyKind::Box384Secret,
+    KeyKind::Box384Public,
     KeyKind::Box512Secret,
     KeyKind::Box512Public,
 ];
@@ -61,6 +65,8 @@ impl KeyKind {
             KeyKind::Sign257Public => "uacrypt-sign257-public",
             KeyKind::Box256Secret => "UACRYPT-SECRET-BOX256",
             KeyKind::Box256Public => "uacrypt-box256-public",
+            KeyKind::Box384Secret => "UACRYPT-SECRET-BOX384",
+            KeyKind::Box384Public => "uacrypt-box384-public",
             KeyKind::Box512Secret => "UACRYPT-SECRET-BOX512",
             KeyKind::Box512Public => "uacrypt-box512-public",
         }
@@ -73,6 +79,7 @@ impl KeyKind {
             KeyKind::Symmetric | KeyKind::Box256Secret | KeyKind::Box256Public => 32,
             KeyKind::Sign257Secret => 33,
             KeyKind::Sign163Public => 42,
+            KeyKind::Box384Secret | KeyKind::Box384Public => 48,
             KeyKind::Sign257Public => 66,
             KeyKind::Box512Secret | KeyKind::Box512Public => 64,
         }
@@ -86,6 +93,7 @@ impl KeyKind {
                 | KeyKind::Sign163Secret
                 | KeyKind::Sign257Secret
                 | KeyKind::Box256Secret
+                | KeyKind::Box384Secret
                 | KeyKind::Box512Secret
         )
     }
@@ -101,6 +109,8 @@ impl KeyKind {
             KeyKind::Sign257Public => "sign257-public",
             KeyKind::Box256Secret => "box256-secret",
             KeyKind::Box256Public => "box256-public",
+            KeyKind::Box384Secret => "box384-secret",
+            KeyKind::Box384Public => "box384-public",
             KeyKind::Box512Secret => "box512-secret",
             KeyKind::Box512Public => "box512-public",
         }
@@ -117,6 +127,8 @@ impl KeyKind {
             KeyKind::Sign257Public => "verifying key (DSTU 4145, m=257)",
             KeyKind::Box256Secret => "box secret key (DSTU 9041, l(p)=256)",
             KeyKind::Box256Public => "box public key (DSTU 9041, l(p)=256)",
+            KeyKind::Box384Secret => "box secret key (DSTU 9041, l(p)=384)",
+            KeyKind::Box384Public => "box public key (DSTU 9041, l(p)=384)",
             KeyKind::Box512Secret => "box secret key (DSTU 9041, l(p)=512)",
             KeyKind::Box512Public => "box public key (DSTU 9041, l(p)=512)",
         }
@@ -131,8 +143,11 @@ impl KeyKind {
             KeyKind::Sign257Secret => "uacrypt sign-keygen257",
             KeyKind::Sign163Public | KeyKind::Sign257Public => "uacrypt sign-pubkey",
             KeyKind::Box256Secret => "uacrypt box-keygen",
+            KeyKind::Box384Secret => "uacrypt box-keygen384",
             KeyKind::Box512Secret => "uacrypt box-keygen512",
-            KeyKind::Box256Public | KeyKind::Box512Public => "uacrypt box-pubkey",
+            KeyKind::Box256Public | KeyKind::Box384Public | KeyKind::Box512Public => {
+                "uacrypt box-pubkey"
+            }
         }
     }
 
@@ -347,7 +362,7 @@ mod tests {
 
     /// Computed outside this module (Python builds the check preimage, `uacrypt kupyna-digest`
     /// hashes it), key bytes `00 01 02 ...`, 2026-09-24. Pins the format.
-    const GOLDEN: [(KeyKind, &str); 9] = [
+    const GOLDEN: [(KeyKind, &str); 11] = [
         (KeyKind::Symmetric, "UACRYPT-SECRET-SYMMETRIC:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f:02348388"),
         (KeyKind::Sign163Secret, "UACRYPT-SECRET-SIGN163:000102030405060708090a0b0c0d0e0f1011121314:d78b26f3"),
         (KeyKind::Sign163Public, "uacrypt-sign163-public:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20212223242526272829:59ff77a2"),
@@ -355,6 +370,9 @@ mod tests {
         (KeyKind::Sign257Public, "uacrypt-sign257-public:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f4041:1ef4eb6f"),
         (KeyKind::Box256Secret, "UACRYPT-SECRET-BOX256:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f:789b33a5"),
         (KeyKind::Box256Public, "uacrypt-box256-public:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f:4614d28c"),
+        // T-297, 2026-10-19, the same way (Python preimage, `uacrypt kupyna-digest` digest).
+        (KeyKind::Box384Secret, "UACRYPT-SECRET-BOX384:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f:f68a0bc1"),
+        (KeyKind::Box384Public, "uacrypt-box384-public:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f:c0e3f38c"),
         (KeyKind::Box512Secret, "UACRYPT-SECRET-BOX512:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f:52b7ab4d"),
         (KeyKind::Box512Public, "uacrypt-box512-public:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f:89fd9e66"),
     ];
@@ -408,7 +426,7 @@ mod tests {
             }
         }
         let lens: Vec<usize> = ALL_KINDS.iter().map(|k| k.key_len()).collect();
-        assert_eq!(lens, [32, 21, 42, 33, 66, 32, 32, 64, 64]);
+        assert_eq!(lens, [32, 21, 42, 33, 66, 32, 32, 48, 48, 64, 64]);
     }
 
     #[test]

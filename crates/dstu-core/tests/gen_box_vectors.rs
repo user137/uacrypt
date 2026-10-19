@@ -1,6 +1,6 @@
-//! Generator for `tests/vectors/box/v3.json` (T-265, D-239), the shared `crypto_box`/`crypto_box512`
-//! vectors every reader (`uacrypt box-open` and the 8 language bindings) is tested against. Run
-//! once, by hand; the JSON is committed data:
+//! Generator for `tests/vectors/box/v3.json` (T-265, D-239), the shared `crypto_box`/
+//! `crypto_box384`/`crypto_box512` vectors every reader (`uacrypt box-open` and the 8 language
+//! bindings) is tested against. Run once, by hand; the JSON is committed data:
 //!
 //! ```text
 //! cargo test -p dstu-core --test gen_box_vectors -- --ignored
@@ -67,21 +67,31 @@ fn cases(curve: u32, seal: impl Fn(&[u8]) -> Vec<u8>) -> Vec<String> {
 #[ignore = "generator - run by hand, see the module doc"]
 fn generate() {
     let sk256 = dstu_core::crypto_box::SecretKey::from_bytes(&counting_key::<32>()).unwrap();
+    let sk384 = dstu_core::crypto_box384::SecretKey::from_bytes(&counting_key::<48>()).unwrap();
     let sk512 = dstu_core::crypto_box512::SecretKey::from_bytes(&counting_key::<64>()).unwrap();
     let pk256 = sk256.public_key();
+    let pk384 = sk384.public_key();
     let pk512 = sk512.public_key();
     let mut rows = cases(256, |m| dstu_core::crypto_box::seal(m, &pk256).unwrap());
+    rows.extend(cases(384, |m| {
+        dstu_core::crypto_box384::seal(m, &pk384).unwrap()
+    }));
     rows.extend(cases(512, |m| {
         dstu_core::crypto_box512::seal(m, &pk512).unwrap()
     }));
 
     let mut out = String::new();
-    out.push_str("{\n  \"source\": \"Self-generated interop pin, not an oracle (D-68, D-239). Written by crates/dstu-core/tests/gen_box_vectors.rs over crypto_box{,512}::seal (format v3, T-265). Secret keys are the counting bytes 01 02 ..; plaintext of a valid case is (i*31+7) mod 256 of plaintext_len bytes. expect: ok | invalid_ciphertext | truncated | unsupported_version. The 0.4-0.6 format is in legacy_v2.json, read only by open_v2_legacy / uacrypt box-open; a binding's open refuses it as unsupported_version.\",\n");
+    out.push_str("{\n  \"source\": \"Self-generated interop pin, not an oracle (D-68, D-239). Written by crates/dstu-core/tests/gen_box_vectors.rs over crypto_box{,384,512}::seal (format v3, T-265; 384 added T-297). Secret keys are the counting bytes 01 02 ..; plaintext of a valid case is (i*31+7) mod 256 of plaintext_len bytes. expect: ok | invalid_ciphertext | truncated | unsupported_version. The 0.4-0.6 format is in legacy_v2.json, read only by open_v2_legacy / uacrypt box-open; a binding's open refuses it as unsupported_version. There is no 384 legacy file.\",\n");
     let _ = writeln!(out, "  \"format_version\": 3,");
     let _ = writeln!(
         out,
         "  \"box256_secret_key_hex\": \"{}\",",
         hex(&sk256.to_bytes())
+    );
+    let _ = writeln!(
+        out,
+        "  \"box384_secret_key_hex\": \"{}\",",
+        hex(&sk384.to_bytes())
     );
     let _ = writeln!(
         out,

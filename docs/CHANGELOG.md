@@ -18,6 +18,10 @@ All notable changes to this project are documented in this file. Format follows
   `hazmat::dstu9041::{fp384, curve384, message384, encryption384}` over the recommended curve
   E384/1. Its key-wrap step follows DSTU 7624; the standard's worked example Г.2 prints a different
   ciphertext, so the example's `C` is not accepted (everything before the key wrap matches it).
+- **`dstu-core`: `crypto_box384`** (T-297, `docs/DECISIONS.md` D-245): public-key encryption over
+  E384/1, the `crypto_box`/`crypto_box512` shape with 48-byte keys, format v3 only.
+- **`uacrypt box-keygen384`** (T-297): a key for the `l(p)=384` curve; `box-pubkey`, `box-seal`
+  and `box-open` take it like the other two curves. New key kinds `box384-secret`/`box384-public`.
 - **`dstu-core`: streaming `crypto_box`/`crypto_box512`** (T-265, `docs/DECISIONS.md` D-239):
   `seal_stream`/`open_stream` hand out the stream-file codec's `FileEncryptor`/`FileDecryptor`,
   plus `sealed_len`, `SEAL_STREAM_PREFIX_BYTES`/`OPEN_STREAM_PREFIX_BYTES`, `FORMAT_VERSION`.

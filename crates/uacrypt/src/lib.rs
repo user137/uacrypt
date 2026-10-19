@@ -71,6 +71,8 @@ pub enum LengthOf {
     VerifyingKey,
     BoxSecretKey,
     BoxPublicKey,
+    Box384SecretKey,
+    Box384PublicKey,
     Box512SecretKey,
     Box512PublicKey,
     InputBlock,
@@ -89,6 +91,8 @@ impl fmt::Display for LengthOf {
             LengthOf::VerifyingKey => "verifying key",
             LengthOf::BoxSecretKey => "box secret key",
             LengthOf::BoxPublicKey => "box public key",
+            LengthOf::Box384SecretKey => "box384 secret key",
+            LengthOf::Box384PublicKey => "box384 public key",
             LengthOf::Box512SecretKey => "box512 secret key",
             LengthOf::Box512PublicKey => "box512 public key",
             LengthOf::InputBlock => "input block",
@@ -693,6 +697,8 @@ impl CliError {
                 | LengthOf::VerifyingKey
                 | LengthOf::BoxSecretKey
                 | LengthOf::BoxPublicKey
+                | LengthOf::Box384SecretKey
+                | LengthOf::Box384PublicKey
                 | LengthOf::Box512SecretKey
                 | LengthOf::Box512PublicKey => FILE_OR_KEY,
                 LengthOf::InputBlock | LengthOf::Signature | LengthOf::Tag => REJECTED,
@@ -3459,6 +3465,8 @@ fn raw_key_layout(kind: KeyKind) -> (LengthOf, usize, Option<u8>) {
         ),
         KeyKind::Box256Secret => (LengthOf::BoxSecretKey, 32, None),
         KeyKind::Box256Public => (LengthOf::BoxPublicKey, 32, None),
+        KeyKind::Box384Secret => (LengthOf::Box384SecretKey, 48, None),
+        KeyKind::Box384Public => (LengthOf::Box384PublicKey, 48, None),
         KeyKind::Box512Secret => (LengthOf::Box512SecretKey, 64, None),
         KeyKind::Box512Public => (LengthOf::Box512PublicKey, 64, None),
     }
@@ -3497,6 +3505,19 @@ fn validate_imported_key(kind: KeyKind, key: &[u8]) -> Result<Option<String>, Cl
         }
         KeyKind::Box256Public => {
             dstu_core::crypto_box::PublicKey::from_bytes(&key_array::<32>(key))
+                .ok_or(CliError::BoxKeyInvalid)?;
+            None
+        }
+        KeyKind::Box384Secret => {
+            let sk = dstu_core::crypto_box384::SecretKey::from_bytes(&key_array::<48>(key))
+                .ok_or(CliError::BoxKeyInvalid)?;
+            Some(keyfile::check_hex(
+                KeyKind::Box384Public,
+                &sk.public_key().to_bytes(),
+            ))
+        }
+        KeyKind::Box384Public => {
+            dstu_core::crypto_box384::PublicKey::from_bytes(&key_array::<48>(key))
                 .ok_or(CliError::BoxKeyInvalid)?;
             None
         }
@@ -3962,13 +3983,14 @@ pub fn run_verify_command(args: &VerifyArgs) -> Result<(), CliError> {
     }
 }
 
-/// A `crypto_box` secret key of either curve; the key file's kind decides which (T-257, D-213).
+/// A `crypto_box` secret key of any curve size; the key file's kind decides which (T-257, D-213).
 enum AnyBoxSecret {
     L256(dstu_core::crypto_box::SecretKey),
+    L384(dstu_core::crypto_box384::SecretKey),
     L512(dstu_core::crypto_box512::SecretKey),
 }
 
-/// Maps a `crypto_box`/`crypto_box512` `OpenError` to `box-open`'s error for `curve`.
+/// Maps a `crypto_box`/`crypto_box384`/`crypto_box512` `OpenError` to `box-open`'s error for `curve`.
 macro_rules! box_open_error {
     ($module:ident, $curve:expr) => {
         |e| match e {
@@ -3981,9 +4003,10 @@ macro_rules! box_open_error {
     };
 }
 
-/// A `crypto_box` public key of either curve; the key file's kind decides which (T-257, D-213).
+/// A `crypto_box` public key of any curve size; the key file's kind decides which (T-257, D-213).
 enum AnyBoxPublic {
     L256(dstu_core::crypto_box::PublicKey),
+    L384(dstu_core::crypto_box384::PublicKey),
     L512(dstu_core::crypto_box512::PublicKey),
 }
 
@@ -3991,6 +4014,7 @@ impl AnyBoxSecret {
     fn curve_label(&self) -> &'static str {
         match self {
             AnyBoxSecret::L256(_) => "l(p)=256",
+            AnyBoxSecret::L384(_) => "l(p)=384",
             AnyBoxSecret::L512(_) => "l(p)=512",
         }
     }
@@ -4000,13 +4024,17 @@ impl AnyBoxSecret {
             AnyBoxSecret::L256(k) => {
                 keyfile::encode(KeyKind::Box256Public, &k.public_key().to_bytes())
             }
+            AnyBoxSecret::L384(k) => {
+                keyfile::encode(KeyKind::Box384Public, &k.public_key().to_bytes())
+            }
             AnyBoxSecret::L512(k) => {
                 keyfile::encode(KeyKind::Box512Public, &k.public_key().to_bytes())
             }
         }
     }
 
-    /// `open` (v3, the `--iterations` benchmark path) and `open_v2_legacy` (0.4-0.6 files).
+    /// `open` (v3, the `--iterations` benchmark path) and `open_v2_legacy` (0.4-0.6 files; none
+    /// exist at l(p)=384, so a legacy file is an unsupported version there).
     fn open(&self, sealed: &[u8], legacy: bool) -> Result<Vec<u8>, CliError> {
         let curve = self.curve_label();
         match self {
@@ -4016,6 +4044,9 @@ impl AnyBoxSecret {
                 dstu_core::crypto_box::open(sealed, k)
             }
             .map_err(box_open_error!(crypto_box, curve)),
+            AnyBoxSecret::L384(_) if legacy => Err(CliError::BoxOpenUnsupportedVersion),
+            AnyBoxSecret::L384(k) => dstu_core::crypto_box384::open(sealed, k)
+                .map_err(box_open_error!(crypto_box384, curve)),
             AnyBoxSecret::L512(k) => if legacy {
                 dstu_core::crypto_box512::open_v2_legacy(sealed, k)
             } else {
@@ -4029,6 +4060,7 @@ impl AnyBoxSecret {
     fn open_stream_prefix_len(&self) -> usize {
         match self {
             AnyBoxSecret::L256(_) => dstu_core::crypto_box::OPEN_STREAM_PREFIX_BYTES,
+            AnyBoxSecret::L384(_) => dstu_core::crypto_box384::OPEN_STREAM_PREFIX_BYTES,
             AnyBoxSecret::L512(_) => dstu_core::crypto_box512::OPEN_STREAM_PREFIX_BYTES,
         }
     }
@@ -4043,6 +4075,8 @@ impl AnyBoxSecret {
         match self {
             AnyBoxSecret::L256(k) => dstu_core::crypto_box::open_stream(&key_array(prefix), k)
                 .map_err(box_open_error!(crypto_box, curve)),
+            AnyBoxSecret::L384(k) => dstu_core::crypto_box384::open_stream(&key_array(prefix), k)
+                .map_err(box_open_error!(crypto_box384, curve)),
             AnyBoxSecret::L512(k) => dstu_core::crypto_box512::open_stream(&key_array(prefix), k)
                 .map_err(box_open_error!(crypto_box512, curve)),
         }
@@ -4071,6 +4105,8 @@ impl AnyBoxPublic {
             AnyBoxPublic::L256(k) => {
                 dstu_core::crypto_box::seal(message, k).map_err(|e| CliError::Random(e.to_string()))
             }
+            AnyBoxPublic::L384(k) => dstu_core::crypto_box384::seal(message, k)
+                .map_err(|e| CliError::Random(e.to_string())),
             AnyBoxPublic::L512(k) => dstu_core::crypto_box512::seal(message, k)
                 .map_err(|e| CliError::Random(e.to_string())),
         }
@@ -4084,6 +4120,9 @@ impl AnyBoxPublic {
             AnyBoxPublic::L256(k) => dstu_core::crypto_box::seal_stream(k)
                 .map(|(enc, prefix)| (enc, prefix.to_vec()))
                 .map_err(|e| CliError::Random(e.to_string())),
+            AnyBoxPublic::L384(k) => dstu_core::crypto_box384::seal_stream(k)
+                .map(|(enc, prefix)| (enc, prefix.to_vec()))
+                .map_err(|e| CliError::Random(e.to_string())),
             AnyBoxPublic::L512(k) => dstu_core::crypto_box512::seal_stream(k)
                 .map(|(enc, prefix)| (enc, prefix.to_vec()))
                 .map_err(|e| CliError::Random(e.to_string())),
@@ -4091,7 +4130,7 @@ impl AnyBoxPublic {
     }
 }
 
-/// Reads a `crypto_box` secret key of either curve and validates it with that curve's
+/// Reads a `crypto_box` secret key of any curve size and validates it with that curve's
 /// `SecretKey::from_bytes`.
 fn read_box_secret_key(
     path: &std::path::Path,
@@ -4100,19 +4139,28 @@ fn read_box_secret_key(
     let (kind, bytes) = keyfile::read_key(
         path,
         command,
-        &[KeyKind::Box256Secret, KeyKind::Box512Secret],
+        &[
+            KeyKind::Box256Secret,
+            KeyKind::Box384Secret,
+            KeyKind::Box512Secret,
+        ],
     )?;
-    let key = if kind == KeyKind::Box256Secret {
-        dstu_core::crypto_box::SecretKey::from_bytes(&key_array::<32>(&bytes))
-            .map(AnyBoxSecret::L256)
-    } else {
-        dstu_core::crypto_box512::SecretKey::from_bytes(&key_array::<64>(&bytes))
-            .map(AnyBoxSecret::L512)
+    let key = match kind {
+        KeyKind::Box256Secret => {
+            dstu_core::crypto_box::SecretKey::from_bytes(&key_array::<32>(&bytes))
+                .map(AnyBoxSecret::L256)
+        }
+        KeyKind::Box384Secret => {
+            dstu_core::crypto_box384::SecretKey::from_bytes(&key_array::<48>(&bytes))
+                .map(AnyBoxSecret::L384)
+        }
+        _ => dstu_core::crypto_box512::SecretKey::from_bytes(&key_array::<64>(&bytes))
+            .map(AnyBoxSecret::L512),
     };
     key.ok_or(CliError::BoxKeyInvalid)
 }
 
-/// Reads a `crypto_box` public key of either curve and validates it with that curve's
+/// Reads a `crypto_box` public key of any curve size and validates it with that curve's
 /// `PublicKey::from_bytes`.
 fn read_box_public_key(
     path: &std::path::Path,
@@ -4121,14 +4169,23 @@ fn read_box_public_key(
     let (kind, bytes) = keyfile::read_key(
         path,
         command,
-        &[KeyKind::Box256Public, KeyKind::Box512Public],
+        &[
+            KeyKind::Box256Public,
+            KeyKind::Box384Public,
+            KeyKind::Box512Public,
+        ],
     )?;
-    let key = if kind == KeyKind::Box256Public {
-        dstu_core::crypto_box::PublicKey::from_bytes(&key_array::<32>(&bytes))
-            .map(AnyBoxPublic::L256)
-    } else {
-        dstu_core::crypto_box512::PublicKey::from_bytes(&key_array::<64>(&bytes))
-            .map(AnyBoxPublic::L512)
+    let key = match kind {
+        KeyKind::Box256Public => {
+            dstu_core::crypto_box::PublicKey::from_bytes(&key_array::<32>(&bytes))
+                .map(AnyBoxPublic::L256)
+        }
+        KeyKind::Box384Public => {
+            dstu_core::crypto_box384::PublicKey::from_bytes(&key_array::<48>(&bytes))
+                .map(AnyBoxPublic::L384)
+        }
+        _ => dstu_core::crypto_box512::PublicKey::from_bytes(&key_array::<64>(&bytes))
+            .map(AnyBoxPublic::L512),
     };
     key.ok_or(CliError::BoxKeyInvalid)
 }
@@ -4375,6 +4432,9 @@ pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
         return Err(CliError::BoxOpenTruncated(secret.curve_label()));
     }
     if prefix[0] == dstu_core::crypto_box::LEGACY_FORMAT_VERSION {
+        if matches!(secret, AnyBoxSecret::L384(_)) {
+            return Err(CliError::BoxOpenUnsupportedVersion);
+        }
         return run_box_open_legacy(&secret, prefix[0], raw, args);
     }
     if prefix[0] != dstu_core::crypto_box::FORMAT_VERSION {
@@ -4429,6 +4489,23 @@ fn run_box_open_benchmark(secret: &AnyBoxSecret, args: &BoxOpenArgs) -> Result<(
     out.finish(written)?;
     report_iterations(args.iterations, elapsed);
     Ok(())
+}
+
+/// Runs `box-keygen384`: draws a fresh `crypto_box384` secret key
+/// ([`dstu_core::crypto_box384::SecretKey::generate`], `docs/TASKS.md` T-297) and writes it to
+/// `--out` as a typed key file - the `box-keygen512` shape at l(p)=384 (E384/1).
+///
+/// # Errors
+///
+/// Returns [`CliError::Random`] if the OS CSPRNG fails, or [`CliError::Io`] if `--out` can't be
+/// written.
+pub fn run_box384_keygen_command(args: &BoxKeygenArgs) -> Result<(), CliError> {
+    let key = dstu_core::crypto_box384::SecretKey::generate()
+        .map_err(|e| CliError::Random(e.to_string()))?;
+    write_new_key_file(
+        &args.out_path,
+        &keyfile::encode(KeyKind::Box384Secret, &key.to_bytes()),
+    )
 }
 
 /// Runs `box-keygen512`: draws a fresh `crypto_box512` secret key via rejection sampling
@@ -5038,7 +5115,7 @@ Notes:
 const BOX_PUBKEY_HELP: &str = "\
 uacrypt box-pubkey - derive the matching public key from a crypto_box secret key.
 
-Reads --key (a `box-keygen` or `box-keygen512` output) and writes the matching public key, of the
+Reads --key (a `box-keygen`, `box-keygen384` or `box-keygen512` output) and writes the matching public key, of the
 same curve, that `box-seal` needs to --out as a typed key file - safe to share, unlike the secret
 key itself.
 Never replaces an existing --out, which could be the secret key itself.
@@ -5047,7 +5124,8 @@ USAGE:
     uacrypt box-pubkey --key <path> --out <path>
 
 FLAGS:
-    --key <path>    a crypto_box secret key (from `uacrypt box-keygen` or `box-keygen512`)
+    --key <path>    a crypto_box secret key (from `uacrypt box-keygen`, `box-keygen384` or
+                    `box-keygen512`)
     --out <path>    where to write the public key, or - to print it
 
 EXAMPLE:
@@ -5059,21 +5137,22 @@ uacrypt box-seal - encrypt a file to a recipient's public key (DSTU 9041, hybrid
 
 Unlike `encrypt` (which needs a shared symmetric key both sides already have), box-seal only needs
 the recipient's public key - anyone can seal a message only the matching secret key can open. Wraps
-a fresh random seed asymmetrically (dstu_core::crypto_box or crypto_box512, whichever curve --key
-is), derives a symmetric key from it, and encrypts --in with that key.
+a fresh random seed asymmetrically (dstu_core::crypto_box, crypto_box384 or crypto_box512, whichever
+curve --key is), derives a symmetric key from it, and encrypts --in with that key.
 
 Streamed in bounded memory chunks like `encrypt`, whatever --in's size.
 
 OUTPUT FORMAT:
-    version (1, currently 3) || KEM ciphertext (128 for an l(p)=256 key, 256 for l(p)=512) ||
-    the `encrypt` stream format (version, header, then 21 bytes of framing per started 8 KiB of
-    --in) - 183 or 311 bytes for an --in under 8 KiB. See docs/CLI.md 'File formats'.
+    version (1, currently 3) || KEM ciphertext (128 for an l(p)=256 key, 176 for l(p)=384, 256
+    for l(p)=512) || the `encrypt` stream format (version, header, then 21 bytes of framing per
+    started 8 KiB of --in) - 183, 231 or 311 bytes for an --in under 8 KiB.
+    See docs/CLI.md 'File formats'.
 
 USAGE:
     uacrypt box-seal --key <path> --in <path> --out <path> [--force]
 
 FLAGS:
-    --key <path>        the recipient's public key (from `uacrypt box-pubkey`, either curve)
+    --key <path>        the recipient's public key (from `uacrypt box-pubkey`, any curve size)
     --in <path>         file to encrypt, or - for stdin
     --out <path>        where to write the sealed output, or - for stdout (not a terminal)
     --force             replace --out if it already exists (without it: refused; never a key file)
@@ -5088,13 +5167,14 @@ uacrypt box-open - decrypt a file produced by `box-seal`, using the matching sec
 Streamed in bounded memory chunks and authenticated: a wrong key (including one of the other
 curve) or a tampered/truncated file is rejected with an error before anything is written to an
 --out file, rather than producing wrong plaintext. Files sealed by uacrypt 0.4-0.6 still open, but
-are read whole into memory.
+are read whole into memory (l(p)=256/512 only - those versions had no l(p)=384).
 
 USAGE:
     uacrypt box-open --key <path> --in <path> --out <path> [--force]
 
 FLAGS:
-    --key <path>        the recipient's secret key (from `uacrypt box-keygen` or `box-keygen512`)
+    --key <path>        the recipient's secret key (from `uacrypt box-keygen`, `box-keygen384` or
+                        `box-keygen512`)
     --in <path>         the sealed file (must be real `box-seal` output), or - for stdin
     --out <path>        where to write the decrypted output, or - for stdout (not a terminal)
     --force             replace --out if it already exists (without it: refused; never a key file)
@@ -5119,12 +5199,35 @@ USAGE:
 
 FLAGS:
     --kind <kind>   symmetric (a `keygen` key), sign163-secret, sign163-public, sign257-secret,
-                    sign257-public, box256-secret, box256-public, box512-secret, box512-public
+                    sign257-public, box256-secret, box256-public, box384-secret, box384-public,
+                    box512-secret, box512-public
     --in <path>     the raw key file
     --out <path>    where to write the typed key file; - prints a public key (never a secret one)
 
 EXAMPLE:
     uacrypt key-import --kind box256-secret --in box.key --out box.key.txt
+";
+
+const BOX_KEYGEN384_HELP: &str = "\
+uacrypt box-keygen384 - generate a fresh crypto_box secret key over DSTU 9041's l(p)=384 curve.
+
+Same shape as `box-keygen`, over DSTU 9041's l(p)=384 curve (E384/1) instead of l(p)=256. The
+curve is chosen here, once, and recorded in the key: `box-pubkey`, `box-seal` and `box-open` read
+it from there. Draws from the OS CSPRNG via rejection sampling and writes it to --out as a typed
+key file.
+
+USAGE:
+    uacrypt box-keygen384 --out <path>
+
+FLAGS:
+    --out <path>    where to write the secret key
+
+EXAMPLE:
+    uacrypt box-keygen384 --out box384.key
+
+Notes:
+    - Keep this file secret - anyone who has it can decrypt messages sealed to it.
+    - Derive the matching public key with `uacrypt box-pubkey`.
 ";
 
 const BOX_KEYGEN512_HELP: &str = "\
@@ -5391,6 +5494,7 @@ const COMMANDS: &[(&str, &str)] = &[
     ("box-pubkey", BOX_PUBKEY_HELP),
     ("box-seal", BOX_SEAL_HELP),
     ("box-open", BOX_OPEN_HELP),
+    ("box-keygen384", BOX_KEYGEN384_HELP),
     ("box-keygen512", BOX_KEYGEN512_HELP),
     ("key-import", KEY_IMPORT_HELP),
     ("kalyna-block", KALYNA_BLOCK_HELP),
@@ -5523,6 +5627,7 @@ fn dispatch_box_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
     }
     match cmd {
         "box-keygen" => run_box_keygen_command(&parse_box_keygen_args(rest)?),
+        "box-keygen384" => run_box384_keygen_command(&parse_box_keygen_args(rest)?),
         "box-keygen512" => run_box512_keygen_command(&parse_box_keygen_args(rest)?),
         "box-pubkey" => run_box_pubkey_command(&parse_box_pubkey_args(rest)?),
         "box-seal" => run_box_seal_command(&parse_box_seal_args(rest)?),
@@ -5680,6 +5785,7 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
         Some(cmd @ ("sign-keygen" | "sign-keygen257" | "sign-pubkey" | "sign" | "verify")) => {
             dispatch_sign_command(cmd, &args[1..])
         }
+        Some(cmd @ "box-keygen384") => dispatch_box_command(cmd, &args[1..]),
         Some(cmd @ ("box-keygen" | "box-keygen512" | "box-pubkey" | "box-seal" | "box-open")) => {
             dispatch_box_command(cmd, &args[1..])
         }
@@ -9469,6 +9575,95 @@ mod tests {
 
         let opened = std::fs::read(dir.file("msg.out")).expect("read opened output");
         assert_eq!(opened, b"dispatch me 512");
+    }
+
+    #[cfg_attr(
+        miri,
+        ignore = "dstu9041's 384-iteration scalar-multiply ladders are too slow to interpret under Miri - see docs/TASKS.md T-100/T-177/T-297"
+    )]
+    #[test]
+    fn box384_dispatch_through_top_level_run() {
+        let dir = TempDir::new("box384_dispatch");
+        let path = |p: &std::path::Path| p.to_str().expect("valid utf-8 path").to_string();
+
+        let keygen: Vec<String> = ["box-keygen384", "--out", &path(&dir.file("box.key"))]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        run(&keygen).expect("box-keygen384 dispatch should succeed");
+
+        let pubkey: Vec<String> = [
+            "box-pubkey",
+            "--key",
+            &path(&dir.file("box.key")),
+            "--out",
+            &path(&dir.file("box.pub")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&pubkey).expect("box-pubkey dispatch should succeed on the other curve's key");
+
+        std::fs::write(dir.file("msg.txt"), b"dispatch me 384").expect("write message");
+        let seal: Vec<String> = [
+            "box-seal",
+            "--key",
+            &path(&dir.file("box.pub")),
+            "--in",
+            &path(&dir.file("msg.txt")),
+            "--out",
+            &path(&dir.file("msg.box")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&seal).expect("box-seal dispatch should succeed on the other curve's key");
+
+        let open: Vec<String> = [
+            "box-open",
+            "--key",
+            &path(&dir.file("box.key")),
+            "--in",
+            &path(&dir.file("msg.box")),
+            "--out",
+            &path(&dir.file("msg.out")),
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        run(&open).expect("box-open dispatch should succeed on the other curve's key");
+
+        let opened = std::fs::read(dir.file("msg.out")).expect("read opened output");
+        assert_eq!(opened, b"dispatch me 384");
+    }
+
+    /// T-297: no 0.4-0.6 file exists at l(p)=384, so a format-2 byte with a 384 key is an
+    /// unsupported version - refused from the first byte, not read whole first.
+    #[cfg_attr(
+        miri,
+        ignore = "box-keygen384 and the key load cost a full scalar multiplication since T-287"
+    )]
+    #[test]
+    fn box_open_of_a_format_2_file_with_a_384_key_is_unsupported() {
+        let dir = TempDir::new("box384_legacy_byte");
+        run_box384_keygen_command(&BoxKeygenArgs {
+            out_path: dir.file("box.key"),
+        })
+        .expect("box-keygen384");
+        let mut file = vec![dstu_core::crypto_box::LEGACY_FORMAT_VERSION];
+        file.extend_from_slice(&[0xAA; 400]);
+        std::fs::write(dir.file("msg.box"), &file).expect("write");
+        assert_eq!(
+            run_box_open_command(&BoxOpenArgs {
+                key_path: dir.file("box.key"),
+                in_path: Source::File(dir.file("msg.box")),
+                out_path: Sink::File(dir.file("msg.out")),
+                iterations: 1,
+                force: false,
+            }),
+            Err(CliError::BoxOpenUnsupportedVersion)
+        );
+        assert!(!dir.file("msg.out").exists(), "no output");
     }
 
     #[cfg_attr(

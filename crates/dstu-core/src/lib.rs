@@ -21,6 +21,8 @@ pub mod crypto_auth;
 #[cfg(feature = "std")]
 pub mod crypto_box;
 #[cfg(feature = "std")]
+pub mod crypto_box384;
+#[cfg(feature = "std")]
 pub mod crypto_box512;
 pub mod crypto_generichash;
 pub mod crypto_kdf;

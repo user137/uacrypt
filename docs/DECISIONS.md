@@ -15712,3 +15712,32 @@ refused (the D-241 divergence, pinned). Field ops against Python big integers, b
 `dstu9041_encryption_384` three ways up front (a 384 ladder is ~0.4x a 512 one; 512 needed 6);
 `sonar.cpd.exclusions` gains the four new files (D-181's prediction). Kani harnesses are
 auto-discovered, so the `fp384` proofs run in the existing job.
+
+## D-245: `crypto_box384` and `uacrypt box-keygen384` (T-297 phase 4, 2026-10-19)
+
+**Shape.** `crypto_box384` is `crypto_box512` at E384/1's widths (generated from it by script):
+`SecretKey`/`PublicKey` 48 bytes (the public key is `x` only - the compression argument is the
+curve family's, so it holds; `kappa` taking the low 256 bits of `x` changes nothing in it), KEM
+ciphertext 176 bytes, a 32-byte seed wrapped at `message_bits = 256` with exactly that length
+required back (D-182's reasoning: `L_MAX_P = 296` bits > 256), the D-201 stream-key binding under
+its own label `cryptbx3`, the T-287 cached public key, wire format v3 only:
+`3 || kem (176) || <D-208 stream file>`, 231 bytes for an empty message.
+
+**Forks decided here:**
+- **No format v2 / no `open_v2_legacy`.** Nothing was ever sealed at 384, so there is nothing to
+  keep readable. `uacrypt box-open` refuses a version-2 file with a 384 key as an unsupported
+  version from the first byte, before reading the file whole (256/512 still take the legacy path).
+- **One new command only** (D-212/D-213): `box-keygen384`; `box-pubkey`/`box-seal`/`box-open`
+  pick the curve from the key's kind, `KeyKind::Box384Secret`/`Box384Public` (prefixes
+  `UACRYPT-SECRET-BOX384`/`uacrypt-box384-public`, `key-import` names `box384-secret`/
+  `box384-public`). Their golden key lines were computed outside the crate (Python preimage,
+  `uacrypt kupyna-digest`) and match both `keyfile`'s encoder and the smoke tests' independent one.
+- **Shared vectors.** `tests/vectors/box/v3.json` gains eight `curve: 384` cases and a
+  `box384_secret_key_hex`; regenerating it re-sealed the 256/512 cases too (random seals, a pin,
+  not an oracle). Every binding's runner must handle the new curve value (phase 6).
+
+**Evidence.** `tests/crypto_box384.rs` (the 512 suite less its v2 tests: round trips, tamper per
+region, truncation, reordering, wrong key, other-curve blobs from both `crypto_box` and
+`crypto_box512`, degenerate public keys, key ranges, the shared vectors) plus the stream-key
+binding unit tests; `uacrypt` smoke tests cover every curve size in the keygen/pubkey/seal/open,
+typed-key and cross-curve tables.

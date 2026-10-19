@@ -353,7 +353,8 @@ fn sign_help_claims_signature_length_follows_the_key_curve() {
     }
 }
 
-/// `BOX_SEAL_HELP` (T-257, T-265): "183 or 311 bytes for an --in under 8 KiB", by the curve of --key.
+/// `BOX_SEAL_HELP` (T-257, T-265, T-297): "183, 231 or 311 bytes for an --in under 8 KiB", by the
+/// curve of --key.
 #[test]
 #[cfg_attr(
     miri,
@@ -364,7 +365,7 @@ fn box_seal_help_claims_overhead_follows_the_key_curve() {
     ok(&help);
     assert!(
         help.stdout
-            .contains("183 or 311 bytes for an --in under 8 KiB"),
+            .contains("183, 231 or 311 bytes for an --in under 8 KiB"),
         "{}",
         help.stdout
     );
@@ -373,7 +374,11 @@ fn box_seal_help_claims_overhead_follows_the_key_curve() {
     let msg = dir.file("msg");
     let message = b"help claim, box-seal overhead";
     write_bytes(&msg, message);
-    for (keygen, overhead) in [("box-keygen", 183), ("box-keygen512", 311)] {
+    for (keygen, overhead) in [
+        ("box-keygen", 183),
+        ("box-keygen384", 231),
+        ("box-keygen512", 311),
+    ] {
         let key = dir.file(&format!("{keygen}.key"));
         let public = dir.file(&format!("{keygen}.pub"));
         let sealed = dir.file(&format!("{keygen}.box"));

@@ -9,7 +9,7 @@ use support::{assert_key_line, typed_key_line, uacrypt, write_bytes, write_key, 
 
 /// Same key bytes (`00 01 02 ...`) and lines as `keyfile`'s unit tests: the support encoder is an
 /// independent second implementation, so both must produce these.
-const GOLDEN: [(&str, usize, &str); 9] = [
+const GOLDEN: [(&str, usize, &str); 11] = [
     ("UACRYPT-SECRET-SYMMETRIC", 32, "02348388"),
     ("UACRYPT-SECRET-SIGN163", 21, "d78b26f3"),
     ("uacrypt-sign163-public", 42, "59ff77a2"),
@@ -17,6 +17,8 @@ const GOLDEN: [(&str, usize, &str); 9] = [
     ("uacrypt-sign257-public", 66, "1ef4eb6f"),
     ("UACRYPT-SECRET-BOX256", 32, "789b33a5"),
     ("uacrypt-box256-public", 32, "4614d28c"),
+    ("UACRYPT-SECRET-BOX384", 48, "f68a0bc1"),
+    ("uacrypt-box384-public", 48, "c0e3f38c"),
     ("UACRYPT-SECRET-BOX512", 64, "52b7ab4d"),
     ("uacrypt-box512-public", 64, "89fd9e66"),
 ];
@@ -29,7 +31,7 @@ struct Kind {
     key_len: usize,
 }
 
-const KINDS: [Kind; 9] = [
+const KINDS: [Kind; 11] = [
     Kind {
         prefix: "UACRYPT-SECRET-SYMMETRIC",
         file: "sym.key",
@@ -73,6 +75,18 @@ const KINDS: [Kind; 9] = [
         key_len: 32,
     },
     Kind {
+        prefix: "UACRYPT-SECRET-BOX384",
+        file: "box384.key",
+        kind_name: "box384-secret",
+        key_len: 48,
+    },
+    Kind {
+        prefix: "uacrypt-box384-public",
+        file: "box384.pub",
+        kind_name: "box384-public",
+        key_len: 48,
+    },
+    Kind {
         prefix: "UACRYPT-SECRET-BOX512",
         file: "box512.key",
         kind_name: "box512-secret",
@@ -101,6 +115,7 @@ fn make_all_keys(dir: &TempDir) {
         ("sign-keygen", "sign163.key"),
         ("sign-keygen257", "sign257.key"),
         ("box-keygen", "box256.key"),
+        ("box-keygen384", "box384.key"),
         ("box-keygen512", "box512.key"),
     ] {
         ok(&uacrypt([cmd, "--out", &path(dir, out)]));
@@ -109,6 +124,7 @@ fn make_all_keys(dir: &TempDir) {
         ("sign-pubkey", "sign163.key", "sign163.pub"),
         ("sign-pubkey", "sign257.key", "sign257.pub"),
         ("box-pubkey", "box256.key", "box256.pub"),
+        ("box-pubkey", "box384.key", "box384.pub"),
         ("box-pubkey", "box512.key", "box512.pub"),
     ] {
         ok(&uacrypt([
@@ -140,9 +156,9 @@ const CONSUMERS: [(&str, &[&str]); 8] = [
     ("sign", &["sign163.key", "sign257.key"]),
     ("sign-pubkey", &["sign163.key", "sign257.key"]),
     ("verify", &["sign163.pub", "sign257.pub"]),
-    ("box-pubkey", &["box256.key", "box512.key"]),
-    ("box-seal", &["box256.pub", "box512.pub"]),
-    ("box-open", &["box256.key", "box512.key"]),
+    ("box-pubkey", &["box256.key", "box384.key", "box512.key"]),
+    ("box-seal", &["box256.pub", "box384.pub", "box512.pub"]),
+    ("box-open", &["box256.key", "box384.key", "box512.key"]),
 ];
 
 #[test]
