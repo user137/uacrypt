@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f9bf4739.js";
+            window.path_to_searchindex_js = "searchindex-53ab0959.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -677,7 +677,9 @@ checked against RFC 9106’s Appendix A Argon2id vector (<code>src/crypto_pwhash
 <code>MEMLIMIT_MODERATE</code>, 32-byte output) through PyNaCl 1.6.2’s bundled libsodium, installed in a
 throwaway venv (T-262, D-219). The three cases (ASCII, Ukrainian UTF-8, empty password) are in
 <code>crates/dstu-core/tests/vectors/pwhash/derive_key.json</code>, with the generator’s source named in the
-file; they are also the shared cross-language vectors for T-269.</p>
+file; they are also the shared cross-language vectors for T-269. Its sibling
+<code>pwhash/passphrase_file.json</code> is a compat pin, not an oracle: files written by the released 0.6.0
+<code>uacrypt</code> plus byte edits, for the D-219 header, which is this project’s own format (D-240).</p>
 <p><code>verify_password</code>‘s accept/reject cases (T-272, D-222) are in
 <code>crates/dstu-core/tests/vectors/pwhash/verify.json</code>: accepted hashes come from libsodium
 (PyNaCl 1.6.2, <code>crypto_pwhash_str</code> for argon2id and argon2i) and from the reference C

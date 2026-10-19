@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f9bf4739.js";
+            window.path_to_searchindex_js = "searchindex-53ab0959.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -423,7 +423,8 @@ uacrypt encrypt --passphrase-file pass.txt --in report.pdf --out report.pdf.enc 
 <p><code>decrypt</code> tells a passphrase file from a key-encrypted one by its first byte and says which one
 it needs when given the other. The passphrase goes through Argon2id (<code>dstu_core::crypto_pwhash:: derive_key</code>, libsodium’s <code>crypto_pwhash</code> with its <code>MODERATE</code> limits: 256 MiB of memory, t=3), so
 each <code>encrypt</code> or <code>decrypt</code> with a passphrase takes about a second and 256 MiB on purpose; the
-streaming itself stays bounded as above. The prompt appears only when stderr is a terminal; with
+streaming itself stays bounded as above. Since 0.7.0 every language binding reads and writes the
+same passphrase files (<code>dstu_core::crypto_pwhash::passphrase_file</code>, D-240). The prompt appears only when stderr is a terminal; with
 stderr redirected, pass <code>--passphrase-file</code>. In Git Bash’s mintty window the prompt is refused
 (it would go to a hidden console): use <code>winpty uacrypt ...</code>, cmd, PowerShell or Windows Terminal,
 or <code>--passphrase-file</code>. A passphrase file holds one line; a trailing newline (<code>\n</code> or <code>\r\n</code>) and a
@@ -8588,8 +8589,13 @@ happened, per the gate-at-both-ends rule) - see D-199’s own closing paragraph 
 and the follow-up fixes.</p>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-231</strong> (2026-09-17, corrected 2026-09-18) <strong>Investigate recurring VmRSS-threshold failure
+<p><input disabled="" type="checkbox" checked=""> <strong>T-231</strong> (2026-09-17, corrected 2026-09-18) <strong>Investigate recurring VmRSS-threshold failure
 in <code>bindings-dotnet</code>’s <code>MemoryLeakTests.SecretstreamAndBoxLoopDoesNotLeak</code> (T-213).</strong>
+<strong>Done 2026-10-18 (0.7.0 step 0): retention, not a leak.</strong> Draft PR #13 (<code>t231-dotnet-40k</code>,
+never merged), run <code>39163312871</code>, 40000 iterations: VmRSS +3.87 MB (3.72-3.75 MB at 20000 on
+<code>master</code>, 16-18.10), native remainder (VmRSS minus managed committed) 0.52 MB at 20000 -&gt;
+0.86 MB at 40000 - a per-iteration leak of the ~50 B the 20000-run midpoints suggested would
+reach ~2 MB. The growth levels off; threshold and test unchanged. No failure since 2026-09-17.
 <strong>2026-10-11, Java half done (D-234):</strong> the same test in <code>bindings-java</code> started failing after
 0.5.0; measured on the Pi it is JVM heap growth, not a leak, and the old 8 MiB test could not
 see a real leak either. Fixed: fixed pre-touched heap for the Java test fork, threshold 1 MiB
@@ -10223,7 +10229,9 @@ clippy clean, <code>cargo test -p dstu-core --all-features</code> 760/760. The <
 done (its reason was wrong; owner decides).</li>
 <li><input disabled="" type="checkbox"> <strong>T-264</strong> Shell completions (<code>uacrypt completions bash|zsh|fish|powershell</code>) and a man page,
 generated from the same command table the parser uses.</li>
-<li><input disabled="" type="checkbox"> <strong>T-265</strong> Bounded-memory <code>box-seal</code>/<code>box-open</code> (today they read <code>--in</code> whole). Needs a
+<li><input disabled="" type="checkbox" checked=""> <strong>T-265</strong> (<strong>done 2026-10-19</strong>: pushed on <code>1fa8634</code>, every workflow green incl.
+<code>bindings-php</code> and <code>miri.yml</code> (~60 min); the binding gate and the C++/.NET/Go “too short” fix
+closed in T-269) Bounded-memory <code>box-seal</code>/<code>box-open</code> (today they read <code>--in</code> whole). Needs a
 multi-chunk <code>crypto_box</code> stream API in <code>dstu-core</code> -&gt; the new-primitive binding gate applies.
 <strong>Plan approved 2026-10-15 (plan mode + advisor; D-239 to write):</strong> format v3 = <code>0x03 || kem_ct || &lt;D-208 stream file&gt;</code> (the D-219 container shape; KDF version byte 3), one written
 format: <code>seal</code>/<code>open</code> write/read v3 only in the core, capi and all 8 bindings; <code>open_v2_legacy</code>
@@ -10246,9 +10254,68 @@ T-269:</strong> C++/.NET/Go <code>Open</code> keep their own <code>size &lt; MIN
 177-byte legacy blob says “too short” instead of unsupported-version - fix with the vector
 runners. After the push: check <code>bindings-php</code> (not run here) and <code>miri.yml</code> times for the box
 files (<code>crypto_box512</code> was ~50 min vs T-296’s ~60-min target).</li>
-<li><input disabled="" type="checkbox"> <strong>T-269</strong> Binding gate for T-262 and T-265, one pass: wire <code>crypto_pwhash::derive_key</code>
+<li><input disabled="" type="checkbox" checked=""> <strong>T-269</strong> (<strong>done 2026-10-19</strong>) Binding gate for T-262 and T-265, one pass: wire <code>crypto_pwhash::derive_key</code>
 and T-265’s streaming <code>crypto_box</code> API into the 8 bindings and <code>dstu-core-capi</code> (shared vectors <code>crates/dstu-core/tests/vectors/pwhash/derive_key.json</code>), and
-decide whether the bindings also read/write the passphrase file format (D-219).</li>
+decide whether the bindings also read/write the passphrase file format (D-219).
+<strong>Owner 2026-10-18: yes, through the core (D-240).</strong> State log (plan: the 0.7.0 section):
+<ul>
+<li>Phase 1 done 2026-10-18: <code>crypto_pwhash::passphrase_file</code> (<code>seal_stream</code>, <code>Header::parse</code>/
+<code>open_stream</code>), <code>uacrypt</code> switched (all suites green, unchanged messages), vectors
+<code>pwhash/passphrase_file.json</code> from the 0.6.0 binary (generator
+<code>crates/dstu-core/tests/gen_passphrase_file_vectors.py</code>). Verified: new&lt;-&gt;0.6.0 files both
+ways, wrong passphrase exit 1 with no output, <code>--no-default-features --features pwhash</code>
+build, Miri 4 passed / 3 Argon2 tests ignored. Next: phase 2 (capi).</li>
+<li>Phase 2 done 2026-10-18: capi <code>dstu_pwhash_derive_key</code>, <code>dstu_passphrase_file_check_header</code>/
+<code>_seal_stream</code>/<code>_open_stream</code> (existing codec handles), statuses <code>DSTU_ERR_UNSUPPORTED_PARAMS</code>
+(18) / <code>DSTU_ERR_OUT_OF_MEMORY</code> (19), header regenerated. Verified: <code>ffi_passphrase_file</code>
+8/8 (shared vectors, libsodium derive_key vectors, round trip, empty/null), all capi suites,
+<code>cargo xtask capi</code> clean, Miri 5 passed / 3 ignored. Next: phase 3, Python first.</li>
+<li>Python done 2026-10-18: <code>pwhash_derive_key</code>, <code>BoxEncryptor</code>/<code>BoxDecryptor</code>,
+<code>Box512Encryptor</code>/<code>Box512Decryptor</code>, <code>PassphraseEncryptor</code>/<code>PassphraseDecryptor</code> (subclasses of
+the secretstream file wrappers over new static constructors on the native codec classes; Argon2
+holds the GIL like <code>hash_password</code>). Verified: pytest 160 passed, 0 skipped (v3/legacy_v2/
+passphrase_file/derive_key vectors, uacrypt interop both ways), ruff, clippy. Next: Node.js.</li>
+<li>Node.js done 2026-10-18: <code>pwhashDeriveKey</code>, <code>BoxEncryptor</code>/<code>BoxDecryptor</code>, <code>Box512*</code>,
+<code>Passphrase*</code> (<code>stream.Transform</code> subclasses; napi factories on the native codec classes;
+decryptors collect their prefix before opening). Verified: <code>npm test</code> 146 passed, 0 skipped
+(incl. a destroyed writer emitting no Final, D-118), eslint, clippy. Next: Ruby.</li>
+<li>Ruby done 2026-10-19: <code>pwhash_derive_key</code>, <code>BoxWriter</code>/<code>BoxReader</code>, <code>Box512*</code>,
+<code>Passphrase*</code> (subclasses of <code>SecretStreamWriter</code>/<code>Reader</code> over new singleton constructors on
+the native codec classes). Verified: <code>cargo xtask ruby</code> from PowerShell - 160 examples, 0
+failures, rubocop clean, clippy/fmt. Next: PHP (CI or the Pi).</li>
+<li>PHP done 2026-10-19: <code>dstu_core_pwhash_derive_key</code>, <code>DstuCoreSecretStreamWriter</code>/<code>Reader</code>
+<code>::forBox</code>/<code>forBox512</code>/<code>forPassphrase</code> (the constructors also take a started codec), static
+native constructors. The digit-rename pitfall hit a <code>php_const</code> too
+(<code>DSTU_CORE_BOX_512_...</code>), fixed with <code>#[php(name)]</code>. Verified on the Pi (<code>cargo xtask php</code>):
+158 tests, 0 skipped, phpstan clean; <code>method_exists</code>/<code>function_exists</code> for the 512 names.
+Next: Java.</li>
+<li>Java done 2026-10-19: <code>Pwhash.deriveKey</code>, <code>SecretStreamEncryptor</code>/<code>Decryptor</code>
+<code>.forBox</code>/<code>forBox512</code>/<code>forPassphrase</code> (private constructors over a started native handle; the
+native side refuses a prefix buffer of the wrong size). Verified: <code>cargo xtask java</code> - 155
+tests, 0 failures, 1 skipped (the Linux-only <code>MemoryLeakTest</code>, as before), SpotBugs/clippy in
+<code>mvn verify</code>. Next: .NET (capi).</li>
+<li>.NET done 2026-10-19: <code>Pwhash.DeriveKey</code>, <code>SecretStreamEncryptStream</code>/<code>DecryptStream</code>
+<code>.ForBox</code>/<code>ForBox512</code>/<code>ForPassphrase</code> over the capi stream functions, statuses 18/19 in
+<code>DstuStatus</code>/<code>NativeStatus</code>; <code>Box*.Open</code> no longer pre-checks the length (a short v2 blob is now
+an unsupported version, the T-265 mislabel); an empty passphrase is an <code>ArgumentException</code>
+before the C call. Verified: <code>cargo xtask dotnet</code> - 203 passed, 0 skipped. Next: Go.</li>
+<li>Go done 2026-10-19: <code>DeriveKey</code>, <code>NewBox(512)EncryptWriter</code>/<code>NewBox(512)DecryptReader</code>,
+<code>NewPassphraseEncryptWriter</code>/<code>DecryptReader</code> (shared start helpers), statuses 18/19, the same
+<code>Open</code> length-check fix, empty passphrase an <code>*ArgumentError</code>. Verified: <code>cargo xtask go</code> from
+PowerShell green; <code>go test -v</code> shows every new test PASS, interop included. Next: C++.</li>
+<li>C++ done 2026-10-19: <code>DeriveKey</code>, <code>SecretStreamEncryptor</code>/<code>Decryptor::ForBox</code>/<code>ForBox512</code>/
+<code>ForPassphrase</code> (static factories returning the non-movable types by guaranteed elision),
+<code>native_handle()</code> on the four box key types, statuses 18/19, the <code>Open</code> length-check fix.
+Verified from PowerShell: <code>cargo xtask cpp</code> (ctest green, interop included), <code>cpp-tidy</code> and
+<code>cpp-cppcheck</code> clean. Seen, not fixed (untouched code): GCC <code>-Warray-bounds</code> false positives
+on <code>tampered.back() ^= 1</code> in the existing tests (lines ~164-710). Next: phase 4 (docs).</li>
+<li>Phase 4 done 2026-10-19: CHANGELOG <code>[Unreleased]</code>, CLAUDE.md status, <code>docs/bindings-strategy.md</code>
+step 2, <code>docs/ORACLES.md</code>, <code>docs/dstu-crypto-project.md</code> mapping, <code>docs/CLI.md</code> note, 8 binding
+READMEs. Final checks: here <code>cargo clippy --workspace --all-features --all-targets -D warnings</code>, fmt, <code>cargo xtask test</code> (162 suites, 0 failed, the new doctest compiled); Pi aarch64
+clippy + <code>dstu-core --all-features</code>/capi/uacrypt tests (81 suites, 0 failed). Not pushed. After
+the owner’s push: check every workflow, incl. Linux clang-tidy and <code>miri.yml</code>’s time.</li>
+</ul>
+</li>
 <li><input disabled="" type="checkbox"> <strong>T-263</strong> Text output (A1), only if the owner wants it. <strong>After 1.0 (owner 2026-10-09).</strong></li>
 </ul>
 <p>Release:</p>
@@ -11670,7 +11737,7 @@ need <code>std</code> unconditionally, same reason <code>crypto_secretbox</code>
 <tr><td><code>crypto_kdf</code></td><td><code>dstu_core::crypto_kdf</code> (<code>MasterKey::derive_subkey</code>, over <code>hazmat::kupyna_kdf::Kupyna256Kdf</code> only) + <code>hazmat::kupyna_kdf</code> (<code>Kupyna256Kdf</code>/<code>Kupyna384Kdf</code>/<code>Kupyna512Kdf</code>, all three sizes)</td><td><strong>Implemented</strong> — modeled after libsodium’s <code>crypto_kdf_derive_from_key</code> shape over <code>hazmat::kupyna_kmac</code>, not full RFC 5869 HKDF. No DSTU standard or reference implementation exists for this construction, so unlike the rest of this table’s “provisional” rows, there is no oracle vector at all, ever. High-level wrapper added <code>docs/TASKS.md</code> T-105/<code>docs/DECISIONS.md</code> D-66, same “delete the knob” / opaque <code>Zeroize</code>-on-drop key shape as <code>crypto_auth</code> above. See D-45/D-66 in <code>docs/DECISIONS.md</code>.</td></tr>
 <tr><td><code>crypto_kx</code></td><td><em>(future construction over <code>hazmat::dstu4145</code>/<code>dstu9041</code>)</em></td><td>Both curve implementations now exist (<code>l(p)=256</code>/163-bit only) — this construction itself still not designed or started.</td></tr>
 <tr><td><code>crypto_secretstream</code></td><td><code>dstu_core::crypto_secretstream</code> (<code>PushState</code>/<code>PullState</code>/<code>Key</code>/<code>Tag</code>), over <code>hazmat::kalyna_gcm::Kalyna256_256Gcm</code> + <code>hazmat::kupyna_kmac::Kupyna256Kmac</code></td><td><strong>Implemented, provisional</strong> (<code>docs/TASKS.md</code> T-40/T-70, <code>docs/DECISIONS.md</code> D-68) — a from-scratch tag-per-chunk framing (full <code>MESSAGE</code>/<code>PUSH</code>/<code>REKEY</code>/<code>FINAL</code> set, libsodium’s <code>crypto_secretstream_xchacha20poly1305</code> shape per D-47’s tie-breaker since no DSTU streaming-AEAD standard exists), not the Strumok/Kalyna-CTR sketch this table originally guessed. Caller-buffer, <code>no_std</code>-capable API (per-item <code>std</code> gating). No oracle vector exists for this construction, ever (same posture as <code>crypto_kdf</code>, D-45) — verified by property/tamper/misuse tests only. Inherits <code>hazmat::kalyna_gcm</code>’s D-56 not-primary-confirmed status. <code>uacrypt encrypt</code>/<code>decrypt</code> rewired onto it the same session, a breaking wire-format change from the prior <code>crypto_secretbox</code>-backed blob format. The stream-file format (D-208) is one codec, <code>FileEncryptor</code>/<code>FileDecryptor</code> (<code>next_len</code>/<code>feed</code>/<code>finish</code>, <code>FileError</code>), also in the C ABI, that uacrypt and all 8 bindings drive (T-284, D-235).</td></tr>
-<tr><td><code>crypto_pwhash</code></td><td><code>dstu_core::crypto_pwhash</code> (<code>hash_password</code>/<code>verify_password</code>/<code>Strength</code>)</td><td><strong>Done</strong> (T-71, D-49/D-50) — not DSTU, plain Argon2id over the <code>argon2</code> crate, dedicated <code>pwhash</code> feature (off by default). <code>Strength::{Interactive,Moderate,Sensitive}</code> mirror libsodium’s own <code>OPSLIMIT</code>/<code>MEMLIMIT_*</code> presets exactly, cited to its C source. <code>derive_key</code> (libsodium’s <code>crypto_pwhash</code> key derivation, byte-identical to it) backs <code>uacrypt encrypt --passphrase</code> (T-262, D-219). <code>verify_password</code> accepts only argon2id/argon2i v=19 within the Sensitive preset’s memory and work, checked before any allocation (T-272, D-222).</td></tr>
+<tr><td><code>crypto_pwhash</code></td><td><code>dstu_core::crypto_pwhash</code> (<code>hash_password</code>/<code>verify_password</code>/<code>Strength</code>)</td><td><strong>Done</strong> (T-71, D-49/D-50) — not DSTU, plain Argon2id over the <code>argon2</code> crate, dedicated <code>pwhash</code> feature (off by default). <code>Strength::{Interactive,Moderate,Sensitive}</code> mirror libsodium’s own <code>OPSLIMIT</code>/<code>MEMLIMIT_*</code> presets exactly, cited to its C source. <code>derive_key</code> (libsodium’s <code>crypto_pwhash</code> key derivation, byte-identical to it) backs <code>uacrypt encrypt --passphrase</code> (T-262, D-219); <code>crypto_pwhash::passphrase_file</code> (<code>seal_stream</code>, <code>Header::parse</code>/<code>open_stream</code>) is that file format, shared by <code>uacrypt</code>, the C ABI and all 8 bindings (T-269, D-240). <code>verify_password</code> accepts only argon2id/argon2i v=19 within the Sensitive preset’s memory and work, checked before any allocation (T-272, D-222).</td></tr>
 <tr><td><code>randombytes</code></td><td><code>dstu_core::randombytes::randombytes_buf</code></td><td><strong>Done</strong> (T-72, D-48) — <code>std</code>-gated over an optional <code>getrandom</code> dependency, absent from <code>no_std</code>/<code>alloc</code>/<code>small-tables</code> builds.</td></tr>
 </tbody>
 </table>
@@ -12887,8 +12954,9 @@ it and weren’t retroactively re-run for it at the time; D-151’s own pass cov
 retroactively the same day it was added, see that entry.)</p>
 <ol>
 <li><input disabled="" type="checkbox"> Scaffold the binding crate/project, wired into the Cargo workspace where applicable.</li>
-<li><input disabled="" type="checkbox"> Wrap the full <code>crypto_*</code> surface (since T-262 that includes <code>crypto_pwhash::derive_key</code>,
-not yet in any binding - T-269), zero-config (D-116), including a <code>selftest()</code> wrapper
+<li><input disabled="" type="checkbox"> Wrap the full <code>crypto_*</code> surface (since T-269 that includes <code>crypto_pwhash::derive_key</code>,
+the streaming <code>crypto_box</code>/<code>crypto_box512</code> and the passphrase file, D-240 - all 8 bindings
+have them, through their existing stream type), zero-config (D-116), including a <code>selftest()</code> wrapper
 around T-161.</li>
 <li><input disabled="" type="checkbox"> Wrap <code>crypto_secretstream</code> in the language’s idiomatic stream/pipe primitive (D-118).
 <strong>Two pitfalls found by advisor review while building T-49’s own wrapper — check both
@@ -13591,7 +13659,8 @@ own idiomatic error-return shape — exception, <code>Result</code>, <code>(valu
 already surfaces <code>crypto_secretbox</code>’s <code>open</code> failure). No new streaming primitive — <code>seal</code>/<code>open</code>
 already documented as not memory-bounded at the Rust/C-ABI layer (D-169/D-171), the binding inherits
 that limitation, document it in the same place <code>crypto_secretbox</code>’s own binding wrapper already
-notes its own non-streaming nature.</p>
+notes its own non-streaming nature. (Since T-265/T-269 every binding also has the streaming form,
+over its existing stream type.)</p>
 <p><strong>Test-vector note</strong>: no DSTU vector oracle exists for this composite construction (D-169’s own
 “Provenance” section — same as <code>crypto_secretstream</code>, D-68) — every binding’s local test suite
 verifies round-trip/rejection/misuse only, not a shared fixed-vector JSON the way Kalyna/Kupyna/DSTU
@@ -14408,7 +14477,9 @@ checked against RFC 9106’s Appendix A Argon2id vector (<code>src/crypto_pwhash
 <code>MEMLIMIT_MODERATE</code>, 32-byte output) through PyNaCl 1.6.2’s bundled libsodium, installed in a
 throwaway venv (T-262, D-219). The three cases (ASCII, Ukrainian UTF-8, empty password) are in
 <code>crates/dstu-core/tests/vectors/pwhash/derive_key.json</code>, with the generator’s source named in the
-file; they are also the shared cross-language vectors for T-269.</p>
+file; they are also the shared cross-language vectors for T-269. Its sibling
+<code>pwhash/passphrase_file.json</code> is a compat pin, not an oracle: files written by the released 0.6.0
+<code>uacrypt</code> plus byte edits, for the D-219 header, which is this project’s own format (D-240).</p>
 <p><code>verify_password</code>‘s accept/reject cases (T-272, D-222) are in
 <code>crates/dstu-core/tests/vectors/pwhash/verify.json</code>: accepted hashes come from libsodium
 (PyNaCl 1.6.2, <code>crypto_pwhash_str</code> for argon2id and argon2i) and from the reference C
@@ -32024,7 +32095,8 @@ abort, and the blocks are zeroized before they are freed. Two new <code>PwHashEr
 (<code>OutOfMemory</code>, <code>Derive</code>) break an exhaustive <code>match</code>; <code>dstu-core-capi</code>’s one match maps them to
 <code>DSTU_ERR_HASH_ERROR</code> (<code>hash_password</code> never returns them). <strong>Binding gate:</strong> <code>derive_key</code> is a
 new <code>crypto_*</code> function, so T-269 tracks wiring it into the 8 bindings and the C ABI; the
-passphrase file format stays <code>uacrypt</code>-only until then.</p>
+passphrase file format stays <code>uacrypt</code>-only until then. (Superseded 2026-10-18: D-240 moves the
+format into the core and every binding.)</p>
 <p><strong>Decision - CLI.</strong></p>
 <ul>
 <li><code>encrypt</code>: exactly one of <code>--key</code>, <code>--passphrase</code> (terminal, asked twice), <code>--passphrase-file</code>.
@@ -32961,6 +33033,57 @@ trimmed to the returned length). <code>box-open --out -</code> now behaves like 
 are printed, a later failure says INCOMPLETE. The <code>--iterations</code> benchmark paths stay in memory and
 serve as the boundedness test’s control case. Full streaming in the bindings (and <code>derive_key</code>)
 stays T-269.</p>
+<h2 id="d-240-the-passphrase-file-moves-into-the-core-t-269-2026-10-18"><a class="header" href="#d-240-the-passphrase-file-moves-into-the-core-t-269-2026-10-18">D-240: the passphrase file moves into the core (T-269, 2026-10-18)</a></h2>
+<p><strong>Owner decision (2026-10-18).</strong> The bindings read and write the D-219 passphrase file through the
+core, not each through its own copy of the header (rejected: <code>derive_key</code> only, leaving the format
+to <code>uacrypt</code>; and deferring it past 0.7.0). Consequence put first: a new public module and C ABI
+surface, and T-269’s binding pass grows by one stream type per binding.</p>
+<p><strong>Decision.</strong> <code>dstu_core::crypto_pwhash::passphrase_file</code> (feature <code>pwhash</code>), the code of
+<code>crates/uacrypt/src/passphrase.rs</code> moved without a byte of the format changing (D-219’s layout,
+<code>Moderate</code> only, 16-byte salt, no header tag):</p>
+<ul>
+<li><code>seal_stream(passphrase) -&gt; (FileEncryptor, prefix)</code>, same shape as <code>crypto_box::seal_stream</code>
+(D-239); the stream key never leaves the core.</li>
+<li><code>Header::parse(&amp;[u8; 28])</code> then <code>Header::open_stream(passphrase) -&gt; FileDecryptor</code>: two steps so
+every check of the untrusted header (marker, version, KDF, costs) happens before Argon2 allocates
+anything, and <code>uacrypt decrypt</code> keeps D-219’s order (header refused before the prompt).</li>
+<li><code>PassphraseFileError</code>: <code>NotPassphraseFile</code> (byte 0 is not <code>0x50</code>, e.g. a key-encrypted stream
+handed to the passphrase reader), <code>UnsupportedFormat</code>, <code>UnsupportedParams</code>, <code>EmptyPassphrase</code>,
+<code>PwHash</code>. A wrong passphrase stays a first-record <code>FileError::Auth</code>.</li>
+<li>An empty passphrase is refused in the core on both sides: <code>uacrypt</code> already refused it at the
+terminal and in <code>--passphrase-file</code>, and a container under <code>""</code> protects nothing.</li>
+<li><code>uacrypt</code> keeps only the CLI parts (<code>--passphrase-file</code> text rules, the prompt, mintty) and maps
+the core error to its existing messages and exit codes; no user-visible change.</li>
+</ul>
+<p><strong>Evidence.</strong> No independent oracle exists for the header: it is this project’s own format (as
+D-45 for the KDF). The independent check is the existing one, <code>derive_key</code> = libsodium
+<code>crypto_pwhash</code> (<code>tests/vectors/pwhash/derive_key.json</code>). <code>tests/vectors/pwhash/passphrase_file.json</code>
+is a compat pin, not an oracle: two files written by the released 0.6.0 <code>uacrypt.exe</code>
+(<code>SHA256SUMS</code>-checked) plus eight byte edits, generated by
+<code>crates/dstu-core/tests/gen_passphrase_file_vectors.py</code>. Checked: those files open in the core, a
+file from the new <code>uacrypt</code> opens in 0.6.0 and back, and every header refusal runs under Miri (the
+Argon2-running tests are <code>cfg_attr(miri, ignore)</code>: 256 MiB per run).</p>
+<p><strong>Decisions made while wiring it (T-269 phases 2-3, 2026-10-19), recorded so they are not only in
+code:</strong></p>
+<ul>
+<li>C ABI statuses: <code>NotPassphraseFile</code> and <code>UnsupportedFormat</code> both map to
+<code>DSTU_ERR_UNSUPPORTED_VERSION</code>, <code>UnsupportedParams</code> to the new <code>DSTU_ERR_UNSUPPORTED_PARAMS</code> (18),
+Argon2 out of memory to <code>DSTU_ERR_OUT_OF_MEMORY</code> (19), an empty passphrase to
+<code>DSTU_ERR_INVALID_LENGTH</code>. Consequence: the .NET/Go/C++ bindings report a key-encrypted stream
+as “unsupported format version”, while the direct-Rust bindings (Python/Node/Ruby/PHP/Java) carry
+the core’s “not a passphrase file” message. Both fail closed; only the wording differs.</li>
+<li>.NET/Go/C++ refuse an empty passphrase themselves as an argument error, before the C call.</li>
+<li>Blocking: every new Argon2 call holds the Python GIL, the Node event loop and the Ruby GVL, the
+same choice the existing <code>hash_password</code> wrappers made (no binding offloads it).</li>
+<li>No new fuzz target: <code>Header::parse</code> destructures a fixed 28-byte array with no length field to
+trust, so it has no parsing state to explore; <code>open_stream</code> would cost a 256 MiB Argon2 run per
+input; the bytes after the header are the D-208 stream file, already covered by the
+<code>crypto_secretstream_file</code> fuzz target. Recorded as foreclosed, not skipped.</li>
+<li>Shapes per binding: the existing stream type gains constructors (Python/Ruby subclasses, Node
+<code>stream.Transform</code> subclasses, PHP/Java/.NET/C++ <code>forBox</code>/<code>forBox512</code>/<code>forPassphrase</code> factories,
+Go <code>NewBox*</code>/<code>NewPassphrase*</code> functions); PHP’s writer/reader constructors also accept an already
+started codec object, which is how the factories build them.</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows
@@ -32974,6 +33097,20 @@ plus <code>sealed_len</code>, <code>SEAL_STREAM_PREFIX_BYTES</code>/<code>OPEN_S
 <code>open_v2_legacy</code> reads the 0.4-0.6 format (used by <code>uacrypt box-open</code> only).</li>
 <li><strong>C ABI:</strong> <code>dstu_box{,512}_seal_stream</code>/<code>_open_stream</code> (returning the codec handles),
 <code>dstu_box{,512}_sealed_len</code>, <code>DSTU_BOX{,512}_SEAL_STREAM_PREFIX_BYTES</code>/<code>_OPEN_STREAM_PREFIX_BYTES</code>.</li>
+<li><strong><code>dstu-core</code>: the passphrase file in the core</strong> (T-269, <code>docs/DECISIONS.md</code> D-240):
+<code>crypto_pwhash::passphrase_file</code> (<code>seal_stream</code>, <code>Header::parse</code>, <code>Header::open_stream</code>) writes
+and reads the files <code>uacrypt encrypt --passphrase</code> makes - same bytes as 0.5/0.6 (D-219). An
+empty passphrase is refused.</li>
+<li><strong>C ABI:</strong> <code>dstu_pwhash_derive_key</code>, <code>dstu_passphrase_file_check_header</code>/<code>_seal_stream</code>/
+<code>_open_stream</code> (the codec handles again), statuses <code>DSTU_ERR_UNSUPPORTED_PARAMS</code> (18) and
+<code>DSTU_ERR_OUT_OF_MEMORY</code> (19), <code>DSTU_PWHASH_SALTBYTES</code>/<code>_KEYBYTES</code>,
+<code>DSTU_PASSPHRASE_FILE_*_BYTES</code>.</li>
+<li><strong>All 8 bindings</strong> (T-269): <code>derive_key</code> (libsodium’s <code>crypto_pwhash</code>, byte for byte), streaming
+<code>crypto_box</code>/<code>crypto_box512</code> and passphrase files through each binding’s existing stream type
+(Python <code>BoxEncryptor</code>/<code>PassphraseDecryptor</code>, Node.js <code>stream.Transform</code> subclasses, Ruby
+<code>BoxWriter</code>/<code>PassphraseReader</code>, PHP/Java/.NET/C++ <code>forBox</code>/<code>forPassphrase</code> factories, Go
+<code>NewBoxEncryptWriter</code>/<code>NewPassphraseDecryptReader</code>), tested against shared vectors and
+<code>uacrypt</code> in both directions.</li>
 </ul>
 <h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
 <ul>
@@ -32992,6 +33129,10 @@ verified records as it goes and reports INCOMPLETE on a later failure, like <cod
 <code>DSTU_BOX_OPEN_MIN_OVERHEAD</code> (183) / <code>DSTU_BOX512_OPEN_MIN_OVERHEAD</code> (311); size <code>dstu_box*_seal</code>
 with <code>dstu_box*_sealed_len</code>; <code>dstu_box*_open</code>’s plaintext length is now at most <code>sealed_len</code>
 minus that constant, not exact. C++/.NET/Go constants renamed accordingly.</p>
+</li>
+<li>
+<p><strong>C++/.NET/Go <code>Box*.Open</code></strong> report a 0.4-0.6 blob shorter than a v3 one as an unsupported version,
+not as too short (T-269).</p>
 </li>
 <li>
 <p><strong>Windows release binary links the C runtime statically</strong> (T-295, <code>docs/DECISIONS.md</code> D-238):
