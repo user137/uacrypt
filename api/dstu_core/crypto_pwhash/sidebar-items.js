@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["KEY_BYTES","SALT_BYTES"],"enum":["PwHashError","Strength"],"fn":["derive_key","hash_password","verify_password"]};
+window.SIDEBAR_ITEMS = {"constant":["KEY_BYTES","SALT_BYTES"],"enum":["PwHashError","Strength"],"fn":["derive_key","hash_password","verify_password"],"mod":["passphrase_file"]};

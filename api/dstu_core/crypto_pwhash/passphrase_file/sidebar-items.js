@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["CONTAINER_TYPE","HEADER_BYTES","SEAL_STREAM_PREFIX_BYTES"],"enum":["PassphraseFileError"],"fn":["seal_stream"],"struct":["Header"]};
