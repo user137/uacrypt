@@ -14,6 +14,10 @@ All notable changes to this project are documented in this file. Format follows
   key wrap with padding for messages that are not a multiple of the block, all five Kalyna sizes,
   checked against the standard's annex В.11. Unwrap refuses any padding the standard does not
   produce, with the same error as a bad checksum.
+- **`dstu-core`: DSTU 9041 at `l(p)=384`** (T-297, `docs/DECISIONS.md` D-241/D-244):
+  `hazmat::dstu9041::{fp384, curve384, message384, encryption384}` over the recommended curve
+  E384/1. Its key-wrap step follows DSTU 7624; the standard's worked example Г.2 prints a different
+  ciphertext, so the example's `C` is not accepted (everything before the key wrap matches it).
 - **`dstu-core`: streaming `crypto_box`/`crypto_box512`** (T-265, `docs/DECISIONS.md` D-239):
   `seal_stream`/`open_stream` hand out the stream-file codec's `FileEncryptor`/`FileDecryptor`,
   plus `sealed_len`, `SEAL_STREAM_PREFIX_BYTES`/`OPEN_STREAM_PREFIX_BYTES`, `FORMAT_VERSION`.

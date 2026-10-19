@@ -467,7 +467,9 @@ comparable to all five other in-scope algorithms combined" framing, not just a p
   directly — the sole oracle for this primitive, same single-source caveat as the rest of this
   section (no independent reference implementation exists anywhere, confirmed again as part of
   T-177's own closure, not just the 2026-07-21 search above), but now a primary-source vector
-  rather than a secondary thesis transcription. The `l(p)=384/512/768` cases remain unimplemented.
+  rather than a secondary thesis transcription. `l(p)=512` (T-192, Додаток Г.3) and `l(p)=384`
+  (T-297, Додаток Г.2 - up to `kappa`/`H`/`M'`, its `t` does not follow DSTU 7624 KW-p, D-241)
+  followed; `l(p)=768` has no worked example and remains unimplemented.
   **Confirmed 2026-08-06 (owner-supplied photos of the document's final pages): the standard is
   genuinely 36 pages total, not the 40 the store listing states — page 36 is the last page,
   finishing Додаток Г.3's `l(p)=512` decryption steps and then Додаток Д's bibliography.** Table

@@ -77,12 +77,12 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     corroborated only at the entries these vectors reach, plus a ~100-entry spot check across all
     10 `Tᵢ[a]`/`Mulα`/`Mulα⁻¹` tables against the genuine scan (zero mismatches, D-198) — not
     independently transcription-verified in full.
-  - `dstu9041` (`message`/`fp256`/`curve256`/`encryption` for `l(p)=256`; `message512`/`fp512`/
-    `curve512`/`encryption512` for `l(p)=512`, T-192) — hybrid (ECIES-style) asymmetric encryption
-    over a twisted Edwards curve. `l(p) ∈ {256, 512}` (E256/1, E512/1) — the two curve sizes whose
-    Kalyna-KW stage needs no padding variant (D-47's "ship the recommended curve first" extended to
-    the second such size). Verified against the standard's own Додаток Г worked example, the sole
-    oracle for this primitive (T-177, T-192).
+  - `dstu9041` (`message`/`fp256`/`curve256`/`encryption` for `l(p)=256`; `*384` for `l(p)=384`,
+    T-297; `*512` for `l(p)=512`, T-192) — hybrid (ECIES-style) asymmetric encryption over a
+    twisted Edwards curve, `l(p) ∈ {256, 384, 512}` (E256/1, E384/1, E512/1). Verified against the
+    standard's own Додаток Г worked examples, the sole oracle - at 384 up to `kappa`/`H`/`M'` only,
+    since Г.2's printed `t` does not follow DSTU 7624 KW-p (D-241).
+  - `kalyna_kw_p` — DSTU 7624 KW with padding (T-253, D-243), strict constant-time unwrap.
   - Kalyna/Kupyna share S-box/MDS tables (`hazmat::tables`); Strumok's `T` substitution reuses them
     too (D-13).
   - `cargo fuzz` run locally on Windows (MSVC toolchain), zero crashes, for the 3 targets that
@@ -528,9 +528,9 @@ check) is in `docs/dstu-crypto-project.md` "Resources found".
   **`l(p)=512`/E512/1 is implemented too (T-192, 2026-08-08)** — `message512.rs`/`fp512.rs`/
   `curve512.rs`/`encryption512.rs`, same test-first/worked-example-verified pattern, both security
   findings independently re-derived (not assumed to carry over) and re-confirmed applicable.
-  `l(p)=384` (needs `hazmat::kalyna_kw_p` for its non-block-aligned `M'` case, a new primitive) and
-  `l(p)=768` (no worked example exists anywhere in the standard, D-168) remain unimplemented — see
-  `docs/pseudocode/dstu9041.md`'s "Implementation status".
+  **`l(p)=384`/E384/1 too (T-297, 2026-10-19, D-241/D-244)**, its KW stage `hazmat::kalyna_kw_p`
+  per DSTU 7624's text - which Додаток Г.2's printed `t` does not follow (owner: follow the text).
+  `l(p)=768` (no worked example anywhere in the standard, D-168) remains unimplemented.
 - Verify own implementation against Kalyna-reference and the other oracles in `docs/ORACLES.md`.
 - Hardware validation on STM32/ESP32 is a distinct post-MVP phase, not a claim of side-channel
   resistance (see MVP scope above).

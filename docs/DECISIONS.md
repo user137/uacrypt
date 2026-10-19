@@ -15675,3 +15675,40 @@ Round-trip proptests per variant, `wrapped_len` boundaries (48 bytes at 256/256 
 case, the 20-block limit), misuse lengths. Fuzz target `kalyna_kw_p` (round trip asserted,
 arbitrary input into both functions). Oracle independence is as D-241 says: the annex is the only
 oracle.
+
+## D-244: `hazmat::dstu9041` at `l(p)=384` - E384/1 as a third sibling set (T-297 phase 3, 2026-10-19)
+
+**What.** `fp384`/`curve384`/`message384`/`encryption384`, siblings of the 256/512 modules (owner:
+no const-generic merge, D-241). `fp384`/`curve384`/`message384` and the field/curve test files were
+generated from their 512 counterparts by a script that fails on any pattern it cannot find, with
+every constant (`P_LIMBS`, `P_MINUS_2`, the `sqrt` exponents, `W`, `BASE_X/Y`, `ORDER_N`,
+`A_DIV_D`, the field test vectors) computed from the committed `curve-E384-1.json` - D-178's
+hand-transcription failure class closed by construction. The compiler caught the two patterns the
+script first missed (array initialisers), as a type error, not silently. The tests pin the
+constants again: `w_squared_is_p_minus_1`, `a_div_d_matches_curve_constants`, base point on the
+curve, `n·P = O`, `order()` equal to the JSON's `n`.
+
+**Where 384 differs from 256/512 (from the text, not by analogy):**
+- `kappa = x_T^(k)` with `k = 256` (Table 2: Kalyna-256/256 for `l(p)=384`) - the low-order 32
+  bytes of `x_T`, where 256/512 use all of it (`k = l(p)`). Г.2 prints this `kappa`.
+- `M'` is 48 bytes, so `t = Kalyna256_256KwP(kappa, M')` (128 bytes), `C = r || t` = 176 bytes;
+  256/512 keep their example-confirmed `KW(M' || 0^l)`. `decrypt` also refuses a valid KW-p whose
+  message is not exactly 48 bytes (a 128-byte KW-p can carry 48-79 bytes).
+- Table 1: `l_max(p) = 296`, `l_H = 64`; `M~` 37 bytes. `H` is Kupyna-256 as at 256/512 (Г.2's `H`
+  matches exactly).
+
+**Findings re-derived for E384/1 (D-241), wired the same way:** cofactor 4 and the `r = p-1`
+order-2 point are refused by `point_from_x` (`x in {0,1,p-1}`, `x^2 = a/d`, non-residue, then
+`n·candidate == O`); `r_equals_p_minus_1_reconstructs_the_order_2_point` and the crafted-`r`
+cluster in `dstu9041_encryption_384.rs` cover them.
+
+**Evidence.** Г.2: `37·P = Q`, `7·P = R`, `7·Q = T` in Rust; `encrypt`'s `r` equals the printed
+`r`, its `t` equals KW-p of the printed `M'` under the printed `kappa`, the document's own `C` is
+refused (the D-241 divergence, pinned). Field ops against Python big integers, boundary vectors at
+`p`, proptests (field, message, round trip), tamper/misuse/boundary tests mirroring 512.
+
+**CI follow-through in the same change:** `asm_check.rs` lists every `fp384`/`curve384` symbol its
+512 twins have (160 zero-jump rows, green; a missing symbol fails the check); `miri.yml` shards
+`dstu9041_encryption_384` three ways up front (a 384 ladder is ~0.4x a 512 one; 512 needed 6);
+`sonar.cpd.exclusions` gains the four new files (D-181's prediction). Kani harnesses are
+auto-discovered, so the `fp384` proofs run in the existing job.

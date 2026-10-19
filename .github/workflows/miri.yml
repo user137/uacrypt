@@ -90,9 +90,10 @@ jobs:
       # T-296: a file listed in SHARDS runs as that many jobs, each taking every n-th test name
       # (see the run step below), so no single job passes ~60 min. Measured 2026-10-11:
       # dstu9041_encryption_512 took ~3 h in one job; every other file finished under 60 min.
+      # dstu9041_encryption_384 (T-297) is sharded up front: a 384 ladder costs ~0.4x a 512 one.
       - id: list
         env:
-          SHARDS: '{"dstu9041_encryption_512": 6}'
+          SHARDS: '{"dstu9041_encryption_512": 6, "dstu9041_encryption_384": 3}'
         run: |
           targets=$(cd crates/dstu-core/tests && ls *.rs | sed 's/\.rs$//' | jq -R -s -c --argjson shards "$SHARDS" \
             'split("\n")[:-1] | map(. as $t | ($shards[$t] // 1) as $n | range($n) | {target: $t, shard: ., shards: $n, name: (if $n > 1 then "\($t) \(. + 1)/\($n)" else $t end)})')
