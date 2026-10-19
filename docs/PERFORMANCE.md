@@ -2455,3 +2455,20 @@ file `--in`/`--out`, MB/s, base and buffered binaries interleaved (2 x 4 rounds 
 About +11% on Windows (every buffered round beat every base round of its pair), +2-3% on the Pi,
 where the cipher, not the syscall count, is the limit. Windows numbers move a lot between rounds
 (`sync_all` and the on-access scanner); read the ranges, not single rounds.
+
+### `crypto_box`/`crypto_box512` `open` with the public key cached in `SecretKey` — T-287 (2026-10-19)
+
+`SecretKey` now computes `e * P` once (`from_bytes`/`generate`) instead of on every `open`
+(the D-201 KDF binds it), and `point_from_x` uses a precomputed `a * d^-1` instead of one
+`invert` per call. `uacrypt box-open --iterations` (key loaded once, 1 KiB message), Windows dev
+machine, release binary, 3 rounds each:
+
+| Curve | before (ms/op) | after (ms/op) | ops/s before -> after |
+|---|---|---|---|
+| E256/1 (`crypto_box`) | 1.63-1.73 | 1.12-1.19 | 578-612 -> 837-896 |
+| E512/1 (`crypto_box512`) | 9.64-10.53 | 6.59-6.99 | 95-104 -> 143-152 |
+
+About a third off `open` on both curves. `from_bytes`/`generate` are one ladder slower; that is a
+wash for a caller that rebuilds the key for every call (the Python, Node.js, Ruby, PHP and Java
+bindings take the secret key as bytes per call), and a gain for one that keeps it (the C ABI
+handle, so .NET, Go and C++).

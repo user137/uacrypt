@@ -225,21 +225,31 @@ fn embed_seed(seed: &[u8; SEED_LEN]) -> [u8; 32] {
 }
 
 /// A `crypto_box` private key - the DSTU 9041 scalar `e`.
-pub struct SecretKey([u8; 32]);
+pub struct SecretKey {
+    e: [u8; 32],
+    /// `e * P`, computed once here: `open` binds the recipient public key into the KDF
+    /// (D-201), and a full ladder per call was 28-30% of `open` (T-287).
+    public: PublicKey,
+}
 
 impl Drop for SecretKey {
     fn drop(&mut self) {
-        self.0.zeroize();
+        self.e.zeroize();
     }
 }
 
 impl SecretKey {
+    fn from_valid_scalar(e: [u8; 32]) -> Self {
+        let public = PublicKey(base_point().scalar_multiply(&e));
+        SecretKey { e, public }
+    }
+
     /// Builds a secret key from a big-endian 32-byte scalar. Returns `None` if it's outside the
     /// valid range `{2, ..., n-2}` (`hazmat::dstu9041::curve256::is_valid_scalar`).
     #[must_use]
     pub fn from_bytes(e: &[u8; 32]) -> Option<Self> {
         if is_valid_scalar(e) {
-            Some(SecretKey(*e))
+            Some(Self::from_valid_scalar(*e))
         } else {
             None
         }
@@ -253,7 +263,7 @@ impl SecretKey {
     /// Returns [`RandomError`] if the OS CSPRNG fails while drawing a candidate.
     #[cfg(any(feature = "std", feature = "getrandom"))]
     pub fn generate() -> Result<Self, RandomError> {
-        random_valid_scalar().map(SecretKey)
+        random_valid_scalar().map(Self::from_valid_scalar)
     }
 
     /// Returns `e`'s big-endian 32-byte encoding, so a generated key can be persisted and later
@@ -261,12 +271,12 @@ impl SecretKey {
     /// returned array once done with it.
     #[must_use]
     pub fn to_bytes(&self) -> [u8; 32] {
-        self.0
+        self.e
     }
 
     #[must_use]
     pub fn public_key(&self) -> PublicKey {
-        PublicKey(base_point().scalar_multiply(&self.0))
+        self.public
     }
 }
 
@@ -331,7 +341,7 @@ fn decapsulate(
     version: u8,
 ) -> Result<Key, OpenError> {
     let (mut seed_padded, bit_len) =
-        dstu9041_decrypt(kem_ciphertext, &secret.0).map_err(|_| OpenError::InvalidCiphertext)?;
+        dstu9041_decrypt(kem_ciphertext, &secret.e).map_err(|_| OpenError::InvalidCiphertext)?;
     // Defense in depth: an honestly-sealed ciphertext always has bit_len == L_MAX_P (the hash
     // check inside `decrypt` already makes forging a different-but-valid bit_length as hard as a
     // Kupyna-256 preimage), but this is never trusted blindly.
@@ -506,6 +516,26 @@ pub fn open_v2_legacy(sealed: &[u8], secret: &SecretKey) -> Result<Vec<u8>, Open
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// T-287: the public key cached at construction is `e * P`, for a loaded and a generated key.
+    #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "four scalar multiplications; the cache is also exercised by round_trip under Miri"
+    )]
+    fn cached_public_key_is_base_point_times_e() {
+        let mut e = [0u8; 32];
+        e[32 - 1] = 7;
+        let loaded = SecretKey::from_bytes(&e).unwrap();
+        let generated = SecretKey::generate().unwrap();
+        for key in [&loaded, &generated] {
+            let expected = base_point()
+                .scalar_multiply(&key.to_bytes())
+                .x
+                .to_be_bytes();
+            assert_eq!(key.public_key().to_bytes(), expected);
+        }
+    }
 
     /// T-248: the KEM ciphertext (first, middle and last byte), the recipient key (first and last
     /// byte) and the seed all feed the stream key - the property a round-trip test cannot show.

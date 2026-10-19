@@ -36,6 +36,13 @@ const ORDER_N: [u8; 32] = [
     0x29, 0xE2, 0x60, 0x87, 0x78, 0x9B, 0xC2, 0x81, 0x5B, 0xDF, 0xF9, 0x70, 0x93, 0x54, 0x3C, 0xCF,
 ];
 
+/// `a * d^-1 mod p`, the `x^2` value [`point_from_x`] excludes (`D_{1,2}`), precomputed
+/// instead of one `invert` per call (T-287); `a_div_d_matches_curve_constants` re-derives it.
+const A_DIV_D: [u8; 32] = [
+    0xEA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
+    0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xA9, 0x1C,
+];
+
 pub(crate) fn curve_a() -> FieldElement {
     let mut bytes = [0u8; 32];
     bytes[31] = 2;
@@ -194,14 +201,11 @@ impl ProjectivePoint {
 pub fn point_from_x(x: FieldElement) -> Option<Point> {
     let a = curve_a();
     let d = curve_d();
+    let a_div_d = FieldElement::from_be_bytes(&A_DIV_D);
     let p_minus_1 = FieldElement::ZERO.sub(FieldElement::ONE);
     let x_squared = x.square();
 
-    if x == FieldElement::ZERO
-        || x == FieldElement::ONE
-        || x == p_minus_1
-        || x_squared == a.multiply(d.invert())
-    {
+    if x == FieldElement::ZERO || x == FieldElement::ONE || x == p_minus_1 || x_squared == a_div_d {
         return None;
     }
 
@@ -274,4 +278,18 @@ pub fn is_valid_scalar(scalar: &[u8; 32]) -> bool {
     let scalar_gt_one = is_less_than(&one, scalar);
     let scalar_lt_n_minus_1 = is_less_than(scalar, &n_minus_1);
     scalar_gt_one & scalar_lt_n_minus_1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// T-287: the precomputed constant is exactly `a * d^-1` for this curve's `a` and `d`.
+    #[test]
+    fn a_div_d_matches_curve_constants() {
+        assert_eq!(
+            A_DIV_D,
+            curve_a().multiply(curve_d().invert()).to_be_bytes()
+        );
+    }
 }

@@ -10060,8 +10060,14 @@ points at the machine state rather than a GCM-specific regression, but that is n
   - Measure before/after as the binary (`uacrypt encrypt`/`decrypt`, MB/s, 100+ MiB, both OSes,
     D-34), and record the numbers in `docs/PERFORMANCE.md`.
   - Effort S-M. Do it next to T-265 (same I/O layer).
-- [ ] **T-287** (Low, perf, **Plausible** - cost split measured; depends: none, sequence with
-  T-265) `crypto_box::open`/`crypto_box512::open` recompute the recipient public key
+- [x] **T-287** (Low, perf, **Plausible** - cost split measured; depends: none, sequence with
+  T-265) **Done 2026-10-19:** `SecretKey` carries its `PublicKey` (computed in `from_bytes`/
+  `generate`), `point_from_x` uses a precomputed `A_DIV_D` (unit-tested against `a * d^-1`);
+  `box-open` about a third faster on both curves (`docs/PERFORMANCE.md`). Binding check: the C ABI
+  keeps a `SecretKey` handle (so .NET/Go/C++ gain); Python/Node.js/Ruby/PHP/Java rebuild the key
+  from bytes per call, so the ladder only moves from `open` to `from_bytes` there - no gain, no
+  loss; a key object in those bindings would be an API change, not taken here.
+  Original finding: `crypto_box::open`/`crypto_box512::open` recompute the recipient public key
   (`secret.public_key()`, one full ladder; `crypto_box.rs:364`, `crypto_box512.rs:329`) on every
   call for the T-248 KDF binding.
   - Measured in-process: 325.7 us of a 1145.1 us box256 `open` (28.4%) and 2837.9 us of a
