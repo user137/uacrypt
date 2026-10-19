@@ -15622,3 +15622,22 @@ printed `t`, its decoded KW input and this divergence.
 different padding rule and never checks the length field on unwrap. The annex В.11 examples and
 UAPKI/cryptonite are one lineage (T-234). So KW-p rests on the 7624 text plus its own annex, one
 oracle, and the 384 `t` has none.
+
+## D-242: Kupyna-384 public in `hazmat` only (T-254, 2026-10-19)
+
+**Owner decision (2026-10-19).** `hazmat::kupyna::Kupyna384`/`Kupyna384Hasher`, not a third
+`crypto_generichash` size (rejected: adding it there, which by the binding-gap rule means capi and
+all eight bindings). Consequence: binding users have no Kupyna-384; `crypto_generichash` stays at
+256/512.
+
+**Construction.** DSTU 7564 clause 5: the 1024-bit-state core (16 columns, 14 rounds) with
+Kupyna-512's initial value and padding, output the rightmost 384 bits. So `Kupyna384(m)` is the last
+48 bytes of `Kupyna512(m)` - the standard's design, pinned by a test, and the reason no second
+initial value exists in the code (`Kupyna384Kmac` already used the same core).
+
+**Evidence.** Annex Б's one byte-aligned 384-bit example (N = 760, bytes `00..5E`), extracted by
+script into `tests/vectors/kupyna/kupyna-384.json`, passes one-shot and streaming, and passes both
+Bouncy Castle harnesses (`DSTU7564Digest(384)`, Java and .NET), which pick the file up from the
+vector directory. BC is a port of the reference C (`docs/ORACLES.md`), so this is the usual
+shared-lineage second check. Annex Б's bit-length 384 examples (N = 33, 1) were already covered at
+the compression-function level (T-234).

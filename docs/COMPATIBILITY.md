@@ -53,7 +53,8 @@ doesn't matter for them: these are this library's own formats, not a standard in
 | Function | dstu-core | UAPKI | Bouncy Castle |
 |---|---|---|---|
 | Kupyna-256/512 (byte input, annex Б examples) | standard | same | same where tested |
-| Kupyna-48/304/384 (annex Б) | rightmost bytes of the 256/512 cores match; no public API yet (T-254) | - | - |
+| Kupyna-384 (annex Б, N = 760) | standard, `hazmat::kupyna::Kupyna384` (T-254) | - | same (`DSTU7564Digest(384)`) |
+| Kupyna-48/304 (annex Б) | rightmost bytes of the 256/512 cores match; no public API | - | - |
 | Kupyna-KMAC 256/384/512 (annex В.5) | standard | same | same |
 
 ## DSTU 4145-2002

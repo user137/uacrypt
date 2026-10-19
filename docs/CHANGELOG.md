@@ -7,6 +7,9 @@ All notable changes to this project are documented in this file. Format follows
 
 ### Added
 
+- **`dstu-core`: Kupyna-384** (T-254, `docs/DECISIONS.md` D-242): `hazmat::kupyna::Kupyna384` and
+  `Kupyna384Hasher`, checked against DSTU 7564 annex Б and Bouncy Castle. `hazmat` only:
+  `crypto_generichash` keeps Kupyna-256/512.
 - **`dstu-core`: streaming `crypto_box`/`crypto_box512`** (T-265, `docs/DECISIONS.md` D-239):
   `seal_stream`/`open_stream` hand out the stream-file codec's `FileEncryptor`/`FileDecryptor`,
   plus `sealed_len`, `SEAL_STREAM_PREFIX_BYTES`/`OPEN_STREAM_PREFIX_BYTES`, `FORMAT_VERSION`.

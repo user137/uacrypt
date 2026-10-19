@@ -4,7 +4,9 @@
 //! controlled by this project, so a tiny inline extractor is safer than adding a dependency for
 //! two fields.
 
-use dstu_core::hazmat::kupyna::{Kupyna256, Kupyna256Hasher, Kupyna512, Kupyna512Hasher};
+use dstu_core::hazmat::kupyna::{
+    Kupyna256, Kupyna256Hasher, Kupyna384, Kupyna384Hasher, Kupyna512, Kupyna512Hasher,
+};
 
 fn decode_hex(s: &str) -> Vec<u8> {
     assert!(
@@ -128,6 +130,43 @@ fn kupyna_512_streaming_single_update_matches_official_vectors() {
     }
 }
 
+/// DSTU 7564 annex Б's one byte-aligned Kupyna-384 example (N = 760), one-shot and streaming (T-254).
+#[test]
+fn kupyna_384_official_vector() {
+    let json = include_str!("vectors/kupyna/kupyna-384.json");
+    let messages = extract_all(json, "message_hex");
+    let hashes = extract_all(json, "hash_hex");
+    assert_eq!(
+        messages.len(),
+        1,
+        "one byte-aligned Kupyna-384 example in annex Б"
+    );
+    assert_eq!(hashes.len(), 1);
+
+    let message = decode_hex(messages[0]);
+    let expected = decode_hex(hashes[0]);
+    assert_eq!(Kupyna384::digest(&message).as_slice(), expected.as_slice());
+    let mut hasher = Kupyna384Hasher::new();
+    hasher.update(&message);
+    assert_eq!(hasher.finalize().as_slice(), expected.as_slice());
+}
+
+/// DSTU 7564 clause 5: Kupyna-384 runs the 1024-bit-state core of Kupyna-512 with the same initial
+/// value and padding and keeps the rightmost 384 bits, so its digest is the last 48 bytes of
+/// Kupyna-512's. A by-design relation of the standard, pinned here so a refactor that gave
+/// Kupyna-384 its own IV or rounds would fail.
+#[test]
+fn kupyna_384_is_the_last_48_bytes_of_kupyna_512() {
+    for len in [0usize, 1, 95, 127, 128, 129, 300] {
+        let message: Vec<u8> = (0..len).map(|i| (i as u8).wrapping_mul(7)).collect();
+        assert_eq!(
+            Kupyna384::digest(&message).as_slice(),
+            &Kupyna512::digest(&message)[16..],
+            "len {len}"
+        );
+    }
+}
+
 /// A single flipped input bit must not produce the same digest - the cheapest possible check that
 /// the implementation isn't accidentally collapsing distinct inputs (e.g. a truncation or
 /// constant-folding bug), not a substitute for the official vectors' correctness check above.
@@ -147,6 +186,9 @@ fn single_bit_change_produces_a_different_digest() {
 
     let original = Kupyna512::digest(&message);
     assert_ne!(Kupyna512::digest(&flipped), original);
+
+    let original = Kupyna384::digest(&message);
+    assert_ne!(Kupyna384::digest(&flipped), original);
 }
 
 /// `Default` must agree with `new()` - a plain sanity check, not a security property, but cheap
@@ -160,6 +202,10 @@ fn kupyna_hasher_default_matches_new() {
     assert_eq!(
         Kupyna512Hasher::default().finalize(),
         Kupyna512Hasher::new().finalize()
+    );
+    assert_eq!(
+        Kupyna384Hasher::default().finalize(),
+        Kupyna384Hasher::new().finalize()
     );
 }
 
@@ -204,9 +250,12 @@ macro_rules! chunk_invariance_test {
 
 chunk_invariance_test!(kupyna_256_streaming_chunk_invariance, Kupyna256Hasher);
 chunk_invariance_test!(kupyna_512_streaming_chunk_invariance, Kupyna512Hasher);
+chunk_invariance_test!(kupyna_384_streaming_chunk_invariance, Kupyna384Hasher);
 
 mod streaming_proptests {
-    use super::{Kupyna256, Kupyna256Hasher, Kupyna512, Kupyna512Hasher};
+    use super::{
+        Kupyna256, Kupyna256Hasher, Kupyna384, Kupyna384Hasher, Kupyna512, Kupyna512Hasher,
+    };
     use proptest::prelude::*;
 
     macro_rules! streaming_matches_one_shot {
@@ -235,5 +284,10 @@ mod streaming_proptests {
         kupyna_512_streaming_matches_one_shot,
         Kupyna512Hasher,
         Kupyna512
+    );
+    streaming_matches_one_shot!(
+        kupyna_384_streaming_matches_one_shot,
+        Kupyna384Hasher,
+        Kupyna384
     );
 }

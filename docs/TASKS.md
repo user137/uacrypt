@@ -8724,8 +8724,10 @@ Moved to `docs/SECURITY.md` "Standards baseline" (T-246, 2026-10-11): policy liv
   needed for DSTU 9041 `l(p) = 384`. Annex В.11.x.3/4 vectors exist (byte-level for 128/128, 256/256,
   256/512, 512/512; 128/256's is bit-level). Plain KW unwrap already strips their outer layer; the
   padded form looks like `pt || N (LE) || 0x80..` (read §15.4 before implementing).
-- [ ] **T-254** (from T-234) Public Kupyna-384 digest (`R_384` of the 1024-bit-state core, as
-  `Kupyna384Kmac` already uses internally) plus the DSTU 7564 annex Б vector (N = 760).
+- [x] **T-254** (**done 2026-10-19, D-242**: `hazmat::kupyna::Kupyna384`/`Kupyna384Hasher`, annex Б
+  N = 760 vector, both BC harnesses green; `hazmat` only per the owner) (from T-234) Public
+  Kupyna-384 digest (`R_384` of the 1024-bit-state core, as `Kupyna384Kmac` already uses
+  internally) plus the DSTU 7564 annex Б vector (N = 760).
 - [ ] **T-297** (owner 2026-10-19, 0.7.0 step 3; depends: T-253) DSTU 9041 `l(p)=384` end to end:
   `hazmat::dstu9041` E384/1 (`fp384`/`curve384`/`message384`/`encryption384`), `crypto_box384`,
   `uacrypt box-keygen384` + `KeyKind::Box384*`, capi `box384`, all eight bindings, docs. Sources and

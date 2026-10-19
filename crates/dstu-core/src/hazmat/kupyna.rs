@@ -541,6 +541,22 @@ impl Kupyna256 {
     }
 }
 
+/// Kupyna-384: Kupyna-512's 1024-bit state, 14 rounds, initial value and padding, keeping the
+/// rightmost 384 bits (DSTU 7564 clause 5, T-254). So its digest is the last 48 bytes of
+/// [`Kupyna512`]'s for the same message: the standard's design, not a separate function.
+pub struct Kupyna384;
+
+impl Kupyna384 {
+    /// Hashes `message` (byte-aligned only) and returns the 384-bit digest.
+    #[must_use]
+    pub fn digest(message: &[u8]) -> [u8; 48] {
+        let full = digest_generic(message, 16, 14, 11, 48);
+        let mut out = [0u8; 48];
+        out.copy_from_slice(&full[..48]);
+        out
+    }
+}
+
 /// Kupyna-512: 1024-bit internal state, 14 rounds, 512-bit (64-byte) output.
 pub struct Kupyna512;
 
@@ -580,6 +596,36 @@ impl Kupyna256Hasher {
 }
 
 impl Default for Kupyna256Hasher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Streaming Kupyna-384 - see [`Kupyna256Hasher`] and [`Kupyna384`].
+pub struct Kupyna384Hasher(KupynaCore);
+
+impl Kupyna384Hasher {
+    #[must_use]
+    pub fn new() -> Self {
+        Self(KupynaCore::new(16, 14, 11))
+    }
+
+    /// Feeds more message bytes in - see [`Kupyna256Hasher::update`].
+    pub fn update(&mut self, data: &[u8]) {
+        self.0.update(data);
+    }
+
+    /// Consumes the hasher and returns the 384-bit digest of everything fed via `update`.
+    #[must_use]
+    pub fn finalize(self) -> [u8; 48] {
+        let full = self.0.finalize(48);
+        let mut out = [0u8; 48];
+        out.copy_from_slice(&full[..48]);
+        out
+    }
+}
+
+impl Default for Kupyna384Hasher {
     fn default() -> Self {
         Self::new()
     }

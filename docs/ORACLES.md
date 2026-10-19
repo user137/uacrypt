@@ -239,8 +239,8 @@ comparable to all five other in-scope algorithms combined" framing, not just a p
 ### Kupyna (DSTU 7564)
 - **Primary text (T-234, 2026-09-23): DSTU 7564:2014, draft edition.**
   - Annex Б: all 15 byte-level hashing examples pass (Kupyna-256/512, and 48/304/384 as the rightmost
-    bytes of the 256/512 cores). Kupyna-384 N=760 is a new vector, waiting for a public Kupyna-384
-    API (T-254).
+    bytes of the 256/512 cores). Kupyna-384 N=760 is `tests/vectors/kupyna/kupyna-384.json`, run
+    against the public `Kupyna384` and by both Bouncy Castle harnesses (`DSTU7564Digest(384)`, T-254).
   - The six bit-length examples (N = 510/655 for 256/512, N = 33/1 for 384), which the byte API cannot
     take, pass too: a unit test in `hazmat::kupyna` feeds the annex's own padded blocks into the
     compression function and matches every intermediate state and the final hash
