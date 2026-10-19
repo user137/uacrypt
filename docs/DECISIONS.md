@@ -15641,3 +15641,37 @@ Bouncy Castle harnesses (`DSTU7564Digest(384)`, Java and .NET), which pick the f
 vector directory. BC is a port of the reference C (`docs/ORACLES.md`), so this is the usual
 shared-lineage second check. Annex Б's bit-length 384 examples (N = 33, 1) were already covered at
 the compression-function level (T-234).
+
+## D-243: `hazmat::kalyna_kw_p` - DSTU 7624 KW-p with a strict, constant-time unwrap (T-253, 2026-10-19)
+
+**Construction** (the text read in D-241): `wrap` = §15.4 padding (`M || μ_{l/2}(8|M|)` LE ||
+`0x80` || zeros to a block, always) then the existing `kalyna_kw` `wrap_with_cipher`; `unwrap` =
+`kalyna_kw` `unwrap_with_cipher` then §15.5/Б.3. Same five variants as KW, one macro; the KW
+network is reused, not copied.
+
+**Forks decided, recorded so they are not only in code:**
+- **Input range.** `wrap` takes only `l < |M|`, `|M|` not a multiple of `l` (§15.4 needs `|M| > l`;
+  §15.1 sends aligned messages to plain KW), padded to at most KW's 20 blocks. `wrapped_len`
+  returns `None` otherwise. Rejected: also padding aligned input (the text never does; it would
+  give an aligned message two encodings, KW and KW-p).
+- **Strict unwrap, one error.** Beyond §15.5's literal checks, `unwrap` refuses a recovered block
+  `wrap` cannot produce: the 1 bit not as the byte `0x80` (byte API), a nonzero top byte in the
+  length field, non-minimal padding (an extra zero block), a length `<= l` or aligned. All of them
+  and the KW checksum return the one `KwError::ChecksumMismatch` and zero `out`, so there is no
+  padding oracle and each message has one ciphertext. Rejected: a separate padding error (an
+  oracle) and a new `KwError` variant (the enum is not `#[non_exhaustive]`; `ChecksumMismatch` is
+  already "integrity error").
+- **Constant time.** The padding check runs over every byte of the recovered block with `subtle`
+  selects, no branch on its content; the one branch is on the final verdict. After a valid KW
+  checksum the block is authentic, so this is defence in depth, as is `subtle` for the checksum.
+- **`unwrap`'s `out`** is exactly the ciphertext minus one block (KW's own contract) and the
+  message length is returned; the rest of `out` is zero.
+
+**Evidence.** Annex В.11.1/3/4/5.3-4 (128/128, 256/256, 256/512, 512/512) wrap and unwrap
+exactly, and plain KW unwrap of each shows the annex's printed `padded` layout; 128/256 has no
+byte-level example (round trip only). Forged blocks (valid checksum, bad padding) for each refusal
+above; mutation check: disabling any of the five padding conditions fails the forged-padding test.
+Round-trip proptests per variant, `wrapped_len` boundaries (48 bytes at 256/256 = the always-pad
+case, the 20-block limit), misuse lengths. Fuzz target `kalyna_kw_p` (round trip asserted,
+arbitrary input into both functions). Oracle independence is as D-241 says: the annex is the only
+oracle.

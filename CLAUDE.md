@@ -86,10 +86,9 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
   - Kalyna/Kupyna share S-box/MDS tables (`hazmat::tables`); Strumok's `T` substitution reuses them
     too (D-13).
   - `cargo fuzz` run locally on Windows (MSVC toolchain), zero crashes, for the 3 targets that
-    existed at the time (D-32); the target list has since grown to 11 (`kupyna`/`kalyna`/
-    `kalyna_ccm`/`strumok`/`kalyna_cmac`/`kalyna_kw`/`kalyna_gcm`/`kalyna_gmac`/`kalyna_cfb`/
-    `crypto_secretstream`, T-98; `crypto_pwhash_verify`, T-272), all covered by `rust.yml`'s `fuzz-smoke` matrix on every push -
-    the unconditional per-push check, not just a one-time local Windows run.
+    existed at the time (D-32); the list has since grown to 13 (`xtask/src/main.rs`
+    `FUZZ_TARGETS`, T-98 onward, `kalyna_kw_p` T-253), all in `rust.yml`'s `fuzz-smoke` matrix on
+    every push - the unconditional per-push check, not just a one-time local Windows run.
 - `crypto_*` (high-level, misuse-resistant, zero-config — D-09's second layer, D-47's "delete the
   knob" applied throughout: one fixed construction/variant per module, no caller-facing nonce/IV/
   mode/AAD parameter unless noted):

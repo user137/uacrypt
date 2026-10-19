@@ -59,7 +59,7 @@ pub enum KwError {
     ChecksumMismatch,
 }
 
-const MAX_R: usize = 20;
+pub(crate) const MAX_R: usize = 20;
 const MAX_B_SLOTS: usize = 2 * MAX_R + 1;
 
 macro_rules! kalyna_kw_variant {

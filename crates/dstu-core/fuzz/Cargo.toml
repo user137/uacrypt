@@ -58,6 +58,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "kalyna_kw_p"
+path = "fuzz_targets/kalyna_kw_p.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "kalyna_gcm"
 path = "fuzz_targets/kalyna_gcm.rs"
 test = false

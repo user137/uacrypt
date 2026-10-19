@@ -119,7 +119,9 @@ comparable to all five other in-scope algorithms combined" framing, not just a p
     (78/93, `tests/oracle-harness/uapki-kalyna-modes/`, manual, not CI). It is a partly independent
     second transcription, not an unrelated oracle (D-231). Older uapkic (≤ 2.0.2) is not an oracle
     for these modes.
-  - KW-p (В.11.x.3/4) vectors exist for a future `kalyna_kw_p` (T-253).
+  - KW-p (В.11.x.3/4): `tests/vectors/kalyna-kw-p/` (four variants; 128/256's example is not whole
+    bytes), run by `tests/kalyna_kw_p.rs` (T-253). The annex is the only oracle: Bouncy Castle has
+    no padded KW, and UAPKI's differs from the text when `|M| + l/2` is aligned (D-241).
 - **Pseudocode:** `docs/pseudocode/kalyna.md` — transcribed from the paper below, cross-checked
   against the reference C oracle. Its k=2l key-schedule branch (originally ambiguous from the
   paper's own notation) is read as a word-rotation rather than arithmetic addition, corroborated

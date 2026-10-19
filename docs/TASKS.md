@@ -8720,7 +8720,9 @@ Moved to `docs/SECURITY.md` "Standards baseline" (T-246, 2026-10-11): policy liv
   Each binding has its own version line (Python 0.1.1, npm 0.1.1, Ruby 0.1.0) and needs its own
   breaking bump. Apply the publishing runbook memory and verify the live registry pages after
   each step.
-- [ ] **T-253** (from T-234) `hazmat::kalyna_kw_p` - DSTU 7624:2014 §15.4/15.5 KW with padding,
+- [x] **T-253** (**done 2026-10-19, D-241/D-243**: five variants, annex vectors for four, strict
+  constant-time unwrap with one integrity error, fuzz target `kalyna_kw_p`) (from T-234)
+  `hazmat::kalyna_kw_p` - DSTU 7624:2014 §15.4/15.5 KW with padding,
   needed for DSTU 9041 `l(p) = 384`. Annex В.11.x.3/4 vectors exist (byte-level for 128/128, 256/256,
   256/512, 512/512; 128/256's is bit-level). Plain KW unwrap already strips their outer layer; the
   padded form looks like `pt || N (LE) || 0x80..` (read §15.4 before implementing).

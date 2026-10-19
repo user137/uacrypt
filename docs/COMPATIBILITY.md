@@ -26,6 +26,9 @@ Compared against:
 | Mode | Input class | dstu-core | UAPKI ≤ 2.0.2 | UAPKI 2.0.3 | Bouncy Castle 1.85 |
 |---|---|---|---|---|---|
 | Block cipher, ECB, CBC, CFB, OFB, CTR, XTS, KW | annex В examples | standard | same | same (self-test) | same where tested |
+| KW-p | `\|M\| + l/2` not block-aligned (all annex В.11 examples) | standard (`kalyna_kw_p`, T-253) | same | not tested | no padded mode |
+| KW-p | `\|M\| + l/2` block-aligned (DSTU 9041 `l(p)=384`) | Б.2 pads a full block (D-241) | no padding block: a different ciphertext | not tested | no padded mode |
+| KW-p unwrap | a padding `wrap` does not produce | refused as an integrity error (D-243) | strips trailing zeros, length field unchecked | not tested | - |
 | GCM / GMAC | AAD and ciphertext block-aligned, not both empty (all annex examples) | standard | same | same | same |
 | GCM / GMAC | AAD **and** data both empty | rejected (§12.1: AAD and data must not both be empty) | accepted: the tag is `E_K(0)`, the GHASH key itself | rejected | same as UAPKI ≤ 2.0.2 |
 | GCM / GMAC | AAD not block-aligned | `0x80` pad, true length (§12.2) | zero pad | same as dstu-core | zero pad |

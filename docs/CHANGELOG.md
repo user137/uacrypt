@@ -10,6 +10,10 @@ All notable changes to this project are documented in this file. Format follows
 - **`dstu-core`: Kupyna-384** (T-254, `docs/DECISIONS.md` D-242): `hazmat::kupyna::Kupyna384` and
   `Kupyna384Hasher`, checked against DSTU 7564 annex Б and Bouncy Castle. `hazmat` only:
   `crypto_generichash` keeps Kupyna-256/512.
+- **`dstu-core`: Kalyna-KW-p** (T-253, `docs/DECISIONS.md` D-243): `hazmat::kalyna_kw_p`, DSTU 7624
+  key wrap with padding for messages that are not a multiple of the block, all five Kalyna sizes,
+  checked against the standard's annex В.11. Unwrap refuses any padding the standard does not
+  produce, with the same error as a bad checksum.
 - **`dstu-core`: streaming `crypto_box`/`crypto_box512`** (T-265, `docs/DECISIONS.md` D-239):
   `seal_stream`/`open_stream` hand out the stream-file codec's `FileEncryptor`/`FileDecryptor`,
   plus `sealed_len`, `SEAL_STREAM_PREFIX_BYTES`/`OPEN_STREAM_PREFIX_BYTES`, `FORMAT_VERSION`.
