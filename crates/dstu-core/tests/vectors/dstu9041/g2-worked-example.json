@@ -1,0 +1,44 @@
+{
+  "algorithm": "DSTU 9041:2020 worked example, Dodatok G.2 (l(p)=384)",
+  "source": "docs/papers/DSTU_9041-2020_Part of.pdf, document pages 30-33 (scan indices 28-31) - see docs/DECISIONS.md D-241",
+  "curve": "crates/dstu-core/tests/vectors/dstu9041/curve-E384-1.json",
+  "hash_function_id_hex": "01",
+  "hash_function": "Kupyna-256 (DSTU 7564:2014), truncated to l_H=64 bits from the LOW-order end, same as G.1/G.3",
+  "kalyna_kw_l_k_bits": 256,
+  "kalyna_kw_mode": "Kalyna-256/256-KW-p (DSTU 7624 §15.4/15.5) - M' is 384 bits, not a multiple of the 256-bit block",
+  "private_key_e_hex": "25",
+  "private_key_e_decimal": 37,
+  "private_key_e_note": "Hex, as in G.1/G.3: the document prints 'e = 25'; 37*P equals the printed Q exactly.",
+  "public_key_Q": {
+    "x_hex": "A1CEAAC37594B34668E9EB6990099048A60FEF7EE85A9629F4AC3F613201D2A14DE2F755199DA9CCB11BE0EC4985D752",
+    "y_hex": "1FA6D7AD65274DE5BD21B95FD5662EC9FC6C33CE5FEAB7FA644CF06E352E2389A0939F956DD10E23DB30CDA43548EB43"
+  },
+  "message_M_bits": 256,
+  "message_M_hex": "0000000000000000000000000000000000000000000000000000000000000007",
+  "ephemeral_key_epsilon_hex": "7",
+  "R_point": {
+    "x_hex": "68DAE99E63CAEBD09A8BFCC872C26BA2D5295D8C9CC892BBFA290DC9D19E59E18818200C5E62608F7107C39954CE2F0C",
+    "y_hex": "E809C038A075C247B218F810229385238B758E8C88DFB87489A3A4310950855D64F36EF9045475636AE1F8C20D6790B5"
+  },
+  "T_point": {
+    "x_hex": "A7F84E927B831606F276894FF23317B908DFBF9F39AC501934EBE0287CB44DC8C98E361392A1B083E056882556C352B9",
+    "y_hex": "22E77A3AADD0B56BFFC3D3B6913B3F45E0D5E53011BBB0935359CFA91164AB8D9F99CEABF875D5E3F0FD08E2C8D442CF"
+  },
+  "kappa_kw_key_hex": "08DFBF9F39AC501934EBE0287CB44DC8C98E361392A1B083E056882556C352B9",
+  "kappa_note": "kappa = the low-order 256 bits of x_T, big-endian - the document prints it; also the only candidate under which the printed t inverts to a valid KW checksum (D-241)",
+  "H_hex": "774E8653DD48D732",
+  "H_note": "Printed exactly in the encryption and the decryption half; the printed M' line drops the '8D' in the middle (774E8653DD4732...), a printing slip - the decryption half prints the full M' correctly.",
+  "M_prime_hex": "01774E8653DD48D732010000000000000000000000000000000000000000000000000000000000000000000000000007",
+  "printed_t_hex": "50037B9804DB9468BA2E0E17D264D50FEC44C5973E9065CFBF97BD6E6AC7AFF649CD4580455CADB6A802F3F210679C16DBC615CBDDD045569416BC5906591F035B367BC019022161651FBA3B1142765D65F0825DF5D100ED8E1BFEBC9450EF283F0243976EADED3801D34BB4808A34E3A75BA9EE3B2765356425FBBDBCC8B99A",
+  "printed_t_note": "Restored from C = r||t: the standalone t line drops a 'D' (CBDD0455 vs CBDDD0455 in both C copies) and every copy drops one '0' at hex position 208 (D3801D printed as D381D) - the only single-digit insertion under which the raw DSTU 7624 §15.3 inverse ends in the all-zero checksum block (4096 insertions x 5 kappa candidates tried, exactly one hit).",
+  "printed_t_kw_plaintext_hex": "01774E8653DD48D732010000000000000000000000000000000000000000000000000000000000000000000000000007000000000000000000000001100000000000000000000000000000000000000000000000000000000000000000000000",
+  "printed_t_discrepancy": "DIVERGENCE (D-241): the document's t is Kalyna-256/256-KW over M' || 00*11 01 10 00*3 || 00*32, not DSTU 7624 §15.4's M' || mu_128(384) LE (80 01 00*14) || 80 00*31. The 16-byte field reads as 384 written in binary (110000000) and parsed as hex; the last block is zeros where B.2 puts the 1 bit. This crate follows the DSTU 7624 text (owner decision 2026-10-19), so it does not reproduce this t and rejects the document's C.",
+  "printed_ciphertext_C_hex": "68DAE99E63CAEBD09A8BFCC872C26BA2D5295D8C9CC892BBFA290DC9D19E59E18818200C5E62608F7107C39954CE2F0C50037B9804DB9468BA2E0E17D264D50FEC44C5973E9065CFBF97BD6E6AC7AFF649CD4580455CADB6A802F3F210679C16DBC615CBDDD045569416BC5906591F035B367BC019022161651FBA3B1142765D65F0825DF5D100ED8E1BFEBC9450EF283F0243976EADED3801D34BB4808A34E3A75BA9EE3B2765356425FBBDBCC8B99A",
+  "verified_checks": [
+    "37 * P == Q, 7 * P == R, 7 * Q == T - each matches the printed point exactly, both coordinates",
+    "r^2 mod p and the decryption half's recovered y (= p - y_R, the document notes the sign flip) match the printed values exactly",
+    "kappa equals the printed kappa exactly",
+    "Kupyna256(l_M~ || M~) low 8 bytes == the printed H exactly (scratch run of hazmat::kupyna::Kupyna256)",
+    "the decryption half's printed D(t) equals M' above"
+  ]
+}

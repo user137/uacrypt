@@ -15557,3 +15557,68 @@ code:**
   `stream.Transform` subclasses, PHP/Java/.NET/C++ `forBox`/`forBox512`/`forPassphrase` factories,
   Go `NewBox*`/`NewPassphrase*` functions); PHP's writer/reader constructors also accept an already
   started codec object, which is how the factories build them.
+
+## D-241: DSTU 9041 `l(p)=384` sources checked; Додаток Г.2's `t` does not follow DSTU 7624 §15.4 (0.7.0 step 3 phase 0, 2026-10-19)
+
+**Owner decisions (2026-10-19).** `l(p)=384` lands in 0.7.0 end to end (hazmat, `crypto_box384`,
+CLI, capi, all eight bindings). The 384 modules are a third sibling set, not a const-generic merge
+of 256/512 (the review D-181 asked for once a third set appeared). Kupyna-384 goes public in
+`hazmat` only, not in `crypto_generichash`. After the finding below the owner chose (a): follow the
+DSTU 7624 text, record Г.2's `t` as a discrepancy (rejected: (b) reproduce Г.2 by hardcoding its
+layout; (c) defer `l(p)=384`).
+
+**E384/1 (Table В.2, first entry, document page 19 = scan index 17).** Both columns transcribed from
+260 DPI renders; a script converted the decimal column to hex and compared it with the transcribed
+hex, so the long `F`/`0` runs of `p`/`n` come from the decimal value, not from counting (D-166).
+Results, all re-run against the written `tests/vectors/dstu9041/curve-E384-1.json`:
+`p = 2^384 - 2147`, `p mod 8 = 5` (same `sqrt` formula and reduction shape as `fp256`/`fp512`);
+`p`, `n` prime (Miller-Rabin, 40 rounds); `P` on the curve, `n·P = (1, 0)`; cofactor 4 re-derived
+via the Hasse interval (the only `h <= 20`); the table's `w` equals `2^((p-1)/4) mod p`; `a = 2` and
+`d = 532` are both non-squares, as on E256/1 and E512/1. Г.2 itself says "таблиці В.1" for its
+parameters; the values are В.2's (a slip in the document).
+
+**Додаток Г.2 (document pages 30-33).** Computed, not transcribed digit by digit (D-180's method):
+`Q = 0x25·P`, `R = 7·P`, `T = 7·Q`, `r^2`, the decryption half's `y` (`p - y_R`, the document notes
+the sign flip) and `kappa` (low 256 bits of `x_T`, big-endian) all equal the printed values
+exactly. `H = Kupyna256(l_M~ || M~)` low 8 bytes `= 774E8653DD48D732` exactly (the printed `M'`
+line drops the `8D`; the decryption half prints it whole). The decryption half prints `D(t) = M'`
+(48 bytes), so it shows nothing of the padding.
+
+**DSTU 7624 §15.1-15.5 and annex Б, read for KW-p (draft PDF pages 33-35, 40).**
+- KW (no padding) is used when `|M|` is a multiple of the block, KW-p otherwise (15.1); KW-p needs
+  `|M| > l` (15.4).
+- 15.4: `M || μ_{l/2}(|M|)` - the bit length as an `l/2`-bit little-endian field (the notation list
+  defines `μ_l(j)` as little endian) - then Б.2's padding, then KW (15.2), which appends `0^l`.
+- Б.2 pads **always**: a 1 bit and `l - 1 - (N mod l)` zeros, a full block when `N` is already a
+  multiple of `l`. UAPKI's `padding()` pads only unaligned input, so the two differ exactly when
+  `|M| + l/2` is a multiple of `l` - the `l(p)=384` case (48 + 16 = 64 bytes). On it UAPKI's
+  `encrypt_kw` gives a 96-byte `t`, the text gives 128.
+- 15.5 + Б.3: KW unwrap, strip the trailing zeros and the 1 bit (error if none or nothing left),
+  then the last `l/2` bits must equal `μ(|M''| - l/2)`; anything else is an integrity error.
+- The annex KW-p examples (В.11.1/3/4/5.3-4, extracted by script into
+  `tests/vectors/kalyna-kw-p/`) all have `|M| + l/2` unaligned, so they cannot tell the Б.2 and
+  UAPKI rules apart. 128/256's example has `N = 314` bits, not whole bytes: no byte-API vector.
+  Pad + this crate's `Kalyna256_256Kw` reproduces В.11.3.3 exactly (scratch check).
+
+**The finding.** 7624-faithful KW-p over Г.2's `M'` gives a 128-byte `t` (the printed length) with
+different bytes. The printed `t` was recovered exactly: the standalone line drops a `D`, and every
+copy drops one `0` (hex position 208, `D3801D` printed `D381D`); among all 4096 single-digit
+insertions under five `kappa` candidates, exactly one makes the raw §15.3 inverse end in the
+all-zero checksum block. It inverts to KW over
+`M' || 00×11 01 10 00×3 || 00×32` instead of §15.4's `M' || 80 01 00×14 || 80 00×31`. The 16-byte
+field reads as 384 written in binary (`110000000`) and parsed as hex; the last block is zeros where
+Б.2 puts the 1 bit. That fits a slip in whatever tool produced the example, and it matches the
+"M' plus an all-zero block" shape G.1/G.3 already showed (D-165/D-180) - a hypothesis, not a
+proof: no second example exists.
+
+**Consequence.** `hazmat::dstu9041` at `l(p)=384` reproduces Г.2's curve arithmetic, `kappa`, `H`
+and `M'`, but not its `t`: it rejects the document's `C`, and a third-party 9041 implementation
+built from the authors' tool would not interoperate at this size. 256/512 are unchanged (their
+`M' || 0^l` input is confirmed by their own examples). `g2-worked-example.json` records the
+printed `t`, its decoded KW input and this divergence.
+
+**Oracle independence, stated plainly.** Bouncy Castle has no DSTU 9041 and no padded KW
+(`DSTU7624WrapEngine` rejects unaligned input); UAPKI has no DSTU 9041 and its KW-p follows a
+different padding rule and never checks the length field on unwrap. The annex В.11 examples and
+UAPKI/cryptonite are one lineage (T-234). So KW-p rests on the 7624 text plus its own annex, one
+oracle, and the 384 `t` has none.

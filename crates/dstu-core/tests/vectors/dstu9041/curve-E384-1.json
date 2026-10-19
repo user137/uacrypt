@@ -1,0 +1,30 @@
+{
+  "algorithm": "DSTU 9041:2020 recommended curve E384/1",
+  "security_level_lambda": 191,
+  "l_p_bits": 384,
+  "source": "docs/papers/DSTU_9041-2020_Part of.pdf, Table B.2 (first entry), page 19 of the document (scan index 17) - both the dec and the hex column transcribed from 260 DPI renders and cross-checked against each other by script, see docs/DECISIONS.md D-241",
+  "curve_equation": "x^2 + a*y^2 = d*x^2*y^2 + 1 (mod p) - twisted Edwards with x/y swapped relative to the textbook a*X^2+Y^2=1+d*X^2*Y^2 form, see docs/pseudocode/dstu9041.md",
+  "p_hex": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF79D",
+  "a": 2,
+  "d_hex": "214",
+  "n_hex": "4000000000000000000000000000000000000000000000000AF905B73674AC7D4AF38C53331DC208A517DCB3F340EECF",
+  "base_point": {
+    "x_hex": "F5FC151B6264CB53A4B879AA9A1F4A5156BBF063B56AAA912617C0E4CEFF15D2DF497D9AEF12374A22D22C3B402B2C71",
+    "y_hex": "A9027207E88074F4AFA3D44D4590DD04BAFBF6AE3D321091F500C783F4707940B7F5EBDD93325C5391843F9A78526BB1"
+  },
+  "w_hex": "CF5F8268D23125BE87CFADDA26368BFF2818CECA634EC9255ED990AE67926D52A5A0A33C2009F6B07F1D389EE5CEA1C1",
+  "verified_checks": [
+    "every value: the decimal column converted to hex equals the transcribed hex column (p's F-run and n's 0-run lengths come from the decimal value, not from counting)",
+    "p == 2^384 - 2147 (0x...F79D), p mod 8 == 5 - same sqrt formula and reduction shape as fp256/fp512",
+    "p is prime (Miller-Rabin, 40 rounds)",
+    "n is prime (Miller-Rabin, 40 rounds)",
+    "base point satisfies the curve equation mod p",
+    "n * base_point == neutral element (1, 0)",
+    "cofactor re-derived, not copied: 4 is the only h <= 20 with h*n inside the Hasse interval",
+    "w == 2^((p-1)/4) mod p and w^2 == p-1 (Table B.2's own w column)",
+    "a = 2 and d are both non-squares mod p - the same as E256/1 and E512/1 (D-167 already covers what that means for the addition law)"
+  ],
+  "not_verified": [
+    "Table B.2's other entries (E384/2 through E384/5) - out of scope, same 'first curve per level' precedent as Tables B.1/B.3"
+  ]
+}
