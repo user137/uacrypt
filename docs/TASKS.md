@@ -10067,6 +10067,14 @@ points at the machine state rather than a GCM-specific regression, but that is n
   keeps a `SecretKey` handle (so .NET/Go/C++ gain); Python/Node.js/Ruby/PHP/Java rebuild the key
   from bytes per call, so the ladder only moves from `open` to `from_bytes` there - no gain, no
   loss; a key object in those bindings would be an API change, not taken here.
+  Miri follow-up (same day): building a valid key now costs a ladder, so tests that only
+  round-trip or generate keys got slow under Miri (local Windows Miri: one E256/1 ladder ~250 s,
+  capi `box512_secretkey_from_bytes_round_trips_and_rejects_invalid_scalar` 1210 s). The capi
+  box/box512 tests are split (the invalid-scalar refusal stays live) and the round trip plus
+  `crypto_box512`'s `truncated_input_is_rejected_not_a_panic`, `uacrypt`'s
+  `run_box_open_command_truncated_input_is_rejected`/`run_box_keygen_command_produces_
+  distinct_keys_each_call` are `cfg_attr(miri, ignore)`, about 50 Miri-minutes in all. Confirm on
+  the next CI run (baseline 40d7d2b: uacrypt 51.4 min, capi 25.3 min).
   Original finding: `crypto_box::open`/`crypto_box512::open` recompute the recipient public key
   (`secret.public_key()`, one full ladder; `crypto_box.rs:364`, `crypto_box512.rs:329`) on every
   call for the T-248 KDF binding.

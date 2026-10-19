@@ -9156,6 +9156,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "box-keygen and each key load cost a full scalar multiplication since T-287"
+    )]
     fn run_box_open_command_truncated_input_is_rejected() {
         let dir = TempDir::new("box_truncated");
         run_box_keygen_command(&BoxKeygenArgs {
@@ -9324,6 +9328,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "box-keygen and each key load cost a full scalar multiplication since T-287"
+    )]
     fn run_box_keygen_command_produces_distinct_keys_each_call() {
         let dir = TempDir::new("box_keygen_distinct");
         run_box_keygen_command(&BoxKeygenArgs {

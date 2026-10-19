@@ -109,6 +109,10 @@ fn public_key_round_trips_through_bytes() {
 }
 
 #[test]
+#[cfg_attr(
+    miri,
+    ignore = "SecretKey::generate costs a full l(p)=512 scalar multiplication since T-287; crypto_box's own truncated-input test stays live under Miri"
+)]
 fn truncated_input_is_rejected_not_a_panic() {
     let secret = SecretKey::generate().expect("OS CSPRNG available in test environment");
     for len in [0usize, 1, 20, KEM_CIPHERTEXT_LEN, MIN_SEALED_LEN - 1] {

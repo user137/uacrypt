@@ -1022,7 +1022,11 @@ fn box_seal_open_round_trip_tamper_rejection_and_undersized_buffers() {
 }
 
 #[test]
-fn box_secretkey_from_bytes_round_trips_and_rejects_invalid_scalar() {
+#[cfg_attr(
+    miri,
+    ignore = "a valid box key costs a full scalar multiplication since T-287 (cached public key)"
+)]
+fn box_secretkey_from_bytes_round_trips() {
     let mut secret_ptr: *mut DstuBoxSecretKey = ptr::null_mut();
     assert_eq!(
         unsafe { dstu_box_secretkey_generate(&mut secret_ptr) },
@@ -1041,7 +1045,10 @@ fn box_secretkey_from_bytes_round_trips_and_rejects_invalid_scalar() {
     unsafe { dstu_box_secretkey_bytes(reloaded_ptr, reloaded_bytes.as_mut_ptr()) };
     assert_eq!(reloaded_bytes, bytes);
     unsafe { dstu_box_secretkey_free(reloaded_ptr) };
+}
 
+#[test]
+fn box_secretkey_from_bytes_rejects_invalid_scalar() {
     // misuse: zero scalar is out of the valid range
     let zero = [0u8; DSTU_BOX_SECRETKEY_BYTES];
     let mut invalid_ptr: *mut DstuBoxSecretKey = ptr::null_mut();
@@ -1257,7 +1264,11 @@ fn box512_seal_open_round_trip_tamper_rejection_and_undersized_buffers() {
 }
 
 #[test]
-fn box512_secretkey_from_bytes_round_trips_and_rejects_invalid_scalar() {
+#[cfg_attr(
+    miri,
+    ignore = "a valid box key costs a full scalar multiplication since T-287 (cached public key)"
+)]
+fn box512_secretkey_from_bytes_round_trips() {
     let mut secret_ptr: *mut DstuBox512SecretKey = ptr::null_mut();
     assert_eq!(
         unsafe { dstu_box512_secretkey_generate(&mut secret_ptr) },
@@ -1276,7 +1287,10 @@ fn box512_secretkey_from_bytes_round_trips_and_rejects_invalid_scalar() {
     unsafe { dstu_box512_secretkey_bytes(reloaded_ptr, reloaded_bytes.as_mut_ptr()) };
     assert_eq!(reloaded_bytes, bytes);
     unsafe { dstu_box512_secretkey_free(reloaded_ptr) };
+}
 
+#[test]
+fn box512_secretkey_from_bytes_rejects_invalid_scalar() {
     // misuse: zero scalar is out of the valid range
     let zero = [0u8; DSTU_BOX512_SECRETKEY_BYTES];
     let mut invalid_ptr: *mut DstuBox512SecretKey = ptr::null_mut();
