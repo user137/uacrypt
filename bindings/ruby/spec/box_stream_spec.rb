@@ -3,7 +3,7 @@
 require "json"
 require "stringio"
 
-# Streaming crypto_box/crypto_box512 (T-265 format v3, T-269): BoxWriter/BoxReader and the 512
+# Streaming crypto_box/crypto_box384/crypto_box512 (T-265 format v3, T-269, T-297): BoxWriter/BoxReader and the 384/512
 # pair over the core's seal_stream/open_stream. Happy path: the shared v3 vectors (one-shot
 # box_open and the streaming reader), a round trip across record boundaries, one-shot/streaming
 # byte equivalence. Security: tampering, a wrong key, trailing data. Misuse: wrong-length keys, a
@@ -18,6 +18,8 @@ RSpec.describe "DstuCore streaming box" do
   curves = {
     256 => { open: :box_open, writer: DstuCore::BoxWriter, reader: DstuCore::BoxReader,
              keygen: :box_keygen, public_key: :box_public_key, secret_field: "box256_secret_key_hex" },
+    384 => { open: :box384_open, writer: DstuCore::Box384Writer, reader: DstuCore::Box384Reader,
+             keygen: :box384_keygen, public_key: :box384_public_key, secret_field: "box384_secret_key_hex" },
     512 => { open: :box512_open, writer: DstuCore::Box512Writer, reader: DstuCore::Box512Reader,
              keygen: :box512_keygen, public_key: :box512_public_key, secret_field: "box512_secret_key_hex" }
   }
@@ -52,6 +54,14 @@ RSpec.describe "DstuCore streaming box" do
     end
 
     it "box#{curve}: the 0.6 format is refused as unsupported" do
+      if curve == 384
+        # 0.4-0.6 had no l(p)=384 (T-297): a version-2 byte stands in for such a file.
+        secret = DstuCore.public_send(c[:keygen])
+        sealed = "\x02".b + ("\x00" * 240)
+        expect { DstuCore.public_send(c[:open], secret, sealed) }.to raise_error(DstuCore::Error, /version/)
+        expect { stream_open.call(secret, sealed) }.to raise_error(DstuCore::Error, /version/)
+        next
+      end
       vectors = load.call("legacy_v2.json")
       secret = hex.call(vectors[c[:secret_field]])
       vectors["cases"].select { |v| v["curve"] == curve }.each do |v|

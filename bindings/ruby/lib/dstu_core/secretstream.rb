@@ -223,6 +223,21 @@ module DstuCore
     end
   end
 
+  # crypto_box384 counterpart of BoxWriter.
+  class Box384Writer < SecretStreamWriter
+    def initialize(public_key, out) # rubocop:disable Lint/MissingSuper
+      start(SecretStreamFileEncryptor.box384_seal(public_key), out)
+    end
+  end
+
+  # crypto_box384 counterpart of BoxReader.
+  class Box384Reader < SecretStreamReader
+    def initialize(secret_key, inp) # rubocop:disable Lint/MissingSuper
+      bind(inp)
+      start(SecretStreamFileDecryptor.box384_open(secret_key, read_prefix(BOX384_OPEN_STREAM_PREFIX_BYTES, "sealed message")))
+    end
+  end
+
   # crypto_box512 counterpart of BoxWriter.
   class Box512Writer < SecretStreamWriter
     def initialize(public_key, out) # rubocop:disable Lint/MissingSuper

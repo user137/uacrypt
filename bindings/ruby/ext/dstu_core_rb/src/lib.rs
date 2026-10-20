@@ -8,6 +8,7 @@
 //! is deferred to a later step.
 
 mod auth;
+mod box384;
 mod box512;
 mod crypto_box;
 mod error;
@@ -50,6 +51,10 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     module.define_singleton_method("box_seal", function!(crypto_box::box_seal, 2))?;
     module.define_singleton_method("box_open", function!(crypto_box::box_open, 2))?;
 
+    module.define_singleton_method("box384_keygen", function!(box384::box384_keygen, 0))?;
+    module.define_singleton_method("box384_public_key", function!(box384::box384_public_key, 1))?;
+    module.define_singleton_method("box384_seal", function!(box384::box384_seal, 2))?;
+    module.define_singleton_method("box384_open", function!(box384::box384_open, 2))?;
     module.define_singleton_method("box512_keygen", function!(box512::box512_keygen, 0))?;
     module.define_singleton_method("box512_public_key", function!(box512::box512_public_key, 1))?;
     module.define_singleton_method("box512_seal", function!(box512::box512_seal, 2))?;

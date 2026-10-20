@@ -16,7 +16,7 @@ use dstu_core::crypto_pwhash::passphrase_file::{self, Header, HEADER_BYTES};
 use dstu_core::crypto_secretstream::{
     FileDecryptor, FileEncryptor, Key, PullState, PushState, Tag, CHUNK_BYTES, MAX_RECORD_BYTES,
 };
-use dstu_core::{crypto_box, crypto_box512};
+use dstu_core::{crypto_box, crypto_box384, crypto_box512};
 use magnus::{wrap, Error, RArray, RString, Ruby};
 
 fn tag_from_byte(ruby: &Ruby, byte: u8) -> Result<Tag, Error> {
@@ -116,7 +116,7 @@ impl SecretStreamPullState {
 
 /// Stream-file writer (T-284): the D-208 framing from the core codec. `secretstream.rb`'s
 /// `SecretStreamWriter` drives it and does only I/O. `new` takes a stream key; `box_seal`/
-/// `box512_seal`/`passphrase_seal` (T-269) start the same codec under a `crypto_box` KEM prefix or
+/// `box384_seal`/`box512_seal`/`passphrase_seal` (T-269) start the same codec under a `crypto_box` KEM prefix or
 /// a passphrase-file header, and `prefix` then includes it.
 #[wrap(class = "DstuCore::SecretStreamFileEncryptor")]
 pub struct SecretStreamFileEncryptor(RefCell<FileEncryptor>, Vec<u8>);
@@ -132,6 +132,13 @@ impl SecretStreamFileEncryptor {
     fn box_seal(ruby: &Ruby, public_key: RString) -> Result<Self, Error> {
         let recipient = crate::crypto_box::public_key_from_bytes(ruby, &public_key.to_bytes())?;
         let (inner, prefix) = crypto_box::seal_stream(&recipient).dstu(ruby)?;
+        Ok(Self(RefCell::new(inner), prefix.to_vec()))
+    }
+
+    /// Starts a `crypto_box384` (format v3) stream to `public_key`.
+    fn box384_seal(ruby: &Ruby, public_key: RString) -> Result<Self, Error> {
+        let recipient = crate::box384::public_key_from_bytes(ruby, &public_key.to_bytes())?;
+        let (inner, prefix) = crypto_box384::seal_stream(&recipient).dstu(ruby)?;
         Ok(Self(RefCell::new(inner), prefix.to_vec()))
     }
 
@@ -202,6 +209,19 @@ impl SecretStreamFileDecryptor {
             "prefix",
         )?;
         let inner = crypto_box::open_stream(&prefix, &secret).dstu(ruby)?;
+        Ok(Self(RefCell::new(inner)))
+    }
+
+    /// Opens a `crypto_box384` stream: `prefix` is its first `BOX384_OPEN_STREAM_PREFIX_BYTES`
+    /// bytes.
+    fn box384_open(ruby: &Ruby, secret_key: RString, prefix: RString) -> Result<Self, Error> {
+        let secret = crate::box384::secret_key_from_bytes(ruby, &secret_key.to_bytes())?;
+        let prefix = to_array::<{ crypto_box384::OPEN_STREAM_PREFIX_BYTES }>(
+            ruby,
+            &prefix.to_bytes(),
+            "prefix",
+        )?;
+        let inner = crypto_box384::open_stream(&prefix, &secret).dstu(ruby)?;
         Ok(Self(RefCell::new(inner)))
     }
 
@@ -283,6 +303,10 @@ pub fn init(ruby: &Ruby, module: magnus::RModule) -> Result<(), Error> {
         function!(SecretStreamFileEncryptor::box_seal, 1),
     )?;
     file_enc.define_singleton_method(
+        "box384_seal",
+        function!(SecretStreamFileEncryptor::box384_seal, 1),
+    )?;
+    file_enc.define_singleton_method(
         "box512_seal",
         function!(SecretStreamFileEncryptor::box512_seal, 1),
     )?;
@@ -307,6 +331,10 @@ pub fn init(ruby: &Ruby, module: magnus::RModule) -> Result<(), Error> {
         function!(SecretStreamFileDecryptor::box_open, 2),
     )?;
     file_dec.define_singleton_method(
+        "box384_open",
+        function!(SecretStreamFileDecryptor::box384_open, 2),
+    )?;
+    file_dec.define_singleton_method(
         "box512_open",
         function!(SecretStreamFileDecryptor::box512_open, 2),
     )?;
@@ -317,6 +345,10 @@ pub fn init(ruby: &Ruby, module: magnus::RModule) -> Result<(), Error> {
     module.const_set(
         "BOX_OPEN_STREAM_PREFIX_BYTES",
         crypto_box::OPEN_STREAM_PREFIX_BYTES,
+    )?;
+    module.const_set(
+        "BOX384_OPEN_STREAM_PREFIX_BYTES",
+        crypto_box384::OPEN_STREAM_PREFIX_BYTES,
     )?;
     module.const_set(
         "BOX512_OPEN_STREAM_PREFIX_BYTES",
