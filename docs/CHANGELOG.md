@@ -25,6 +25,10 @@ All notable changes to this project are documented in this file. Format follows
 - **C ABI:** `dstu_box384_*` (T-297), the `dstu_box512_*` set at l(p)=384:
   `DSTU_BOX384_SECRETKEY_BYTES`/`_PUBLICKEY_BYTES` (48), `DSTU_BOX384_OPEN_MIN_OVERHEAD` (231),
   `DSTU_BOX384_SEAL_STREAM_PREFIX_BYTES` (210), `DSTU_BOX384_OPEN_STREAM_PREFIX_BYTES` (177).
+- **All 8 bindings** (T-297): `crypto_box384` with the same names as each binding's
+  `crypto_box512` wrapper at 384 (for example Python `box384_seal`/`Box384Encryptor`, .NET
+  `Box384SecretKey`/`ForBox384`, Go `Box384SecretKey`/`NewBox384EncryptWriter`), streaming
+  included, tested against the shared `box/v3.json`.
 - **`dstu-core`: streaming `crypto_box`/`crypto_box512`** (T-265, `docs/DECISIONS.md` D-239):
   `seal_stream`/`open_stream` hand out the stream-file codec's `FileEncryptor`/`FileDecryptor`,
   plus `sealed_len`, `SEAL_STREAM_PREFIX_BYTES`/`OPEN_STREAM_PREFIX_BYTES`, `FORMAT_VERSION`.

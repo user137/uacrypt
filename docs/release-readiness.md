@@ -511,9 +511,9 @@ In rough dependency order:
    whether the DSTU §6.9/§6.10 compressed point encoding is needed for 1.0 (the wrapper currently
    ships only an uncompressed 42-byte form).
 6. **DSTU 9041's `hazmat` primitive and its `crypto_box` high-level wrapper are both done**
-   (`l(p)=256` only, T-177/T-178, D-169) — no longer the hard-blocked, no-known-path-forward item
-   this note originally described. Still an open scope decision for 1.0 whether `crypto_kx` (and the
-   `l(p)=384/512/768` curve sizes, T-182) are required, or whether the current surface is acceptable
+   (`l(p)=256`, T-177/T-178, D-169; `l(p)=512` T-192/T-193; `l(p)=384` T-297, D-241-D-245) — no
+   longer the hard-blocked item this note originally described. Still an open scope decision for
+   1.0 whether `crypto_kx` (and `l(p)=768`, which has no worked example, D-168) are required, or whether the current surface is acceptable
    for a first release — don't treat either answer as decided by this entry.
 7. **Mechanical release work**: `uacrypt`'s real `encrypt`/`decrypt`/`hash` commands are now done
    (T-16, D-52), GitHub Releases binaries are too (T-18/T-119, 2026-07-26), and crates.io/PyPI/npm/
