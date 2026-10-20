@@ -8736,8 +8736,9 @@ Moved to `docs/SECURITY.md` "Standards baseline" (T-246, 2026-10-11): policy liv
   the Г.2 `t` divergence: D-241. Phase plan: the 0.7.0 detailed plan, step 3.
   Progress: hazmat (5c02fed, D-244), `crypto_box384` + CLI (acae0a8, D-245), capi (46b1dc9),
   all eight bindings (964191c..79e91ed, 2026-10-20; each runner reads `curve: 384`). Local checks
-  green per binding (C++ clang-tidy not run locally: not installed). Left: perf numbers, Pi run,
-  the final doc sweep, CI after the owner's push.
+  green per binding. Pi (aarch64, 2026-10-20): workspace clippy + `cargo test --workspace
+  --all-features`, `xtask cpp`, clang-tidy on the C++ binding, all clean. Perf: docs/PERFORMANCE.md.
+  Left: CI after the owner's push (Miri timing of the new 384 files, Sonar gate, asm-check).
 - [x] **T-252** (**done locally 2026-09-24, not yet run in CI** - `release.yml`: `cargo auditable
   build --locked`, a CycloneDX SBOM job, `assemble-release-assets` with provenance attestations and a
   Sigstore keyless-signed `SHA256SUMS`, every publish job gated to a `v*` tag push, and

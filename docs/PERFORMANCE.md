@@ -2472,3 +2472,19 @@ About a third off `open` on both curves. `from_bytes`/`generate` are one ladder 
 wash for a caller that rebuilds the key for every call (the Python, Node.js, Ruby, PHP and Java
 bindings take the secret key as bytes per call), and a gain for one that keeps it (the C ABI
 handle, so .NET, Go and C++).
+
+### `crypto_box384` next to the other two curves — T-297 (2026-10-20)
+
+`uacrypt box-seal`/`box-open --iterations` (keys loaded once, 1 KiB message), release binary, 3
+interleaved rounds per curve; Windows dev machine (200 iterations) and the Raspberry Pi 5 (aarch64,
+100 iterations). ms/op:
+
+| Curve | Windows seal | Windows open | Pi seal | Pi open |
+|---|---|---|---|---|
+| E256/1 (`crypto_box`) | 0.96 | 1.10-1.11 | 1.64 | 1.89 |
+| E384/1 (`crypto_box384`) | 2.63-2.68 | 3.04-3.05 | 4.47 | 5.11-5.12 |
+| E512/1 (`crypto_box512`) | 5.64-5.68 | 6.48-6.57 | 9.53 | 10.87-11.14 |
+
+E384/1 sits where its field size puts it: about 2.8x E256/1 and half of E512/1 on both machines
+(a 6-limb field multiply over a 384-step ladder). The KW-p step (one 128-byte wrap) does not show
+at this scale.
