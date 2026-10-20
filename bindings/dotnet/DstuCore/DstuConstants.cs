@@ -15,6 +15,12 @@ public static class DstuConstants
     /// plaintext is at most the sealed length minus this.</summary>
     public const int BoxOpenMinOverhead = 183;
 
+    public const int Box384SecretKeyBytes = 48;
+    public const int Box384PublicKeyBytes = 48;
+
+    /// <summary>The <c>l(p)=384</c> sibling of <see cref="BoxOpenMinOverhead"/>.</summary>
+    public const int Box384OpenMinOverhead = 231;
+
     public const int Box512SecretKeyBytes = 64;
     public const int Box512PublicKeyBytes = 64;
 
@@ -26,6 +32,8 @@ public static class DstuConstants
     // DSTU_PASSPHRASE_FILE_*_BYTES. The native side reads/writes exactly this many bytes.
     internal const int BoxSealStreamPrefixBytes = 162;
     internal const int BoxOpenStreamPrefixBytes = 129;
+    internal const int Box384SealStreamPrefixBytes = 210;
+    internal const int Box384OpenStreamPrefixBytes = 177;
     internal const int Box512SealStreamPrefixBytes = 290;
     internal const int Box512OpenStreamPrefixBytes = 257;
     internal const int PassphraseFileHeaderBytes = 28;

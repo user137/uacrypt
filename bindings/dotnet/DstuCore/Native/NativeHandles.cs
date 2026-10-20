@@ -47,6 +47,24 @@ internal sealed class BoxPublicKeyHandle : DstuNativeHandle
     }
 }
 
+internal sealed class Box384SecretKeyHandle : DstuNativeHandle
+{
+    protected override bool ReleaseHandle()
+    {
+        NativeMethods.dstu_box384_secretkey_free(handle);
+        return true;
+    }
+}
+
+internal sealed class Box384PublicKeyHandle : DstuNativeHandle
+{
+    protected override bool ReleaseHandle()
+    {
+        NativeMethods.dstu_box384_publickey_free(handle);
+        return true;
+    }
+}
+
 internal sealed class Box512SecretKeyHandle : DstuNativeHandle
 {
     protected override bool ReleaseHandle()

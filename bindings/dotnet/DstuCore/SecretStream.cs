@@ -104,6 +104,16 @@ public sealed class SecretStreamEncryptStream : Stream
         return new SecretStreamEncryptStream(inner, (enc, prefix), leaveOpen);
     }
 
+    /// <summary><c>crypto_box384</c> counterpart of <see cref="ForBox"/>.</summary>
+    public static SecretStreamEncryptStream ForBox384(Stream inner, Box384PublicKey recipient, bool leaveOpen = false)
+    {
+        ArgumentNullException.ThrowIfNull(inner);
+        ArgumentNullException.ThrowIfNull(recipient);
+        var prefix = new byte[DstuConstants.Box384SealStreamPrefixBytes];
+        NativeStatus.ThrowIfError(NativeMethods.dstu_box384_seal_stream(recipient.Handle, prefix, out var enc));
+        return new SecretStreamEncryptStream(inner, (enc, prefix), leaveOpen);
+    }
+
     /// <summary><c>crypto_box512</c> counterpart of <see cref="ForBox"/>.</summary>
     public static SecretStreamEncryptStream ForBox512(Stream inner, Box512PublicKey recipient, bool leaveOpen = false)
     {
@@ -274,6 +284,16 @@ public sealed class SecretStreamDecryptStream : Stream
         ArgumentNullException.ThrowIfNull(secret);
         var prefix = ReadPrefix(inner, DstuConstants.BoxOpenStreamPrefixBytes, "sealed message");
         NativeStatus.ThrowIfError(NativeMethods.dstu_box_open_stream(secret.Handle, prefix, out var dec));
+        return new SecretStreamDecryptStream(inner, dec, leaveOpen);
+    }
+
+    /// <summary><c>crypto_box384</c> counterpart of <see cref="ForBox"/>.</summary>
+    public static SecretStreamDecryptStream ForBox384(Stream inner, Box384SecretKey secret, bool leaveOpen = false)
+    {
+        ArgumentNullException.ThrowIfNull(inner);
+        ArgumentNullException.ThrowIfNull(secret);
+        var prefix = ReadPrefix(inner, DstuConstants.Box384OpenStreamPrefixBytes, "sealed message");
+        NativeStatus.ThrowIfError(NativeMethods.dstu_box384_open_stream(secret.Handle, prefix, out var dec));
         return new SecretStreamDecryptStream(inner, dec, leaveOpen);
     }
 

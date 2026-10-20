@@ -92,6 +92,53 @@ internal static partial class NativeMethods
         nuint plaintextOutCap,
         out nuint plaintextLenOut);
 
+    // ---- crypto_box384 ----
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box384_secretkey_generate(out Box384SecretKeyHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box384_secretkey_from_bytes(byte[] bytes, out Box384SecretKeyHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_box384_secretkey_bytes(Box384SecretKeyHandle key, byte[] outBytes);
+
+    [LibraryImport(LibName)]
+    internal static partial Box384PublicKeyHandle dstu_box384_secretkey_public_key(Box384SecretKeyHandle key);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_box384_secretkey_free(IntPtr key);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box384_publickey_from_bytes(byte[] bytes, out Box384PublicKeyHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_box384_publickey_bytes(Box384PublicKeyHandle key, byte[] outBytes);
+
+    [LibraryImport(LibName)]
+    internal static partial void dstu_box384_publickey_free(IntPtr key);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box384_sealed_len(nuint messageLen, out nuint lenOut);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box384_seal(
+        Box384PublicKeyHandle recipient,
+        byte[]? message,
+        nuint messageLen,
+        byte[] sealedOut,
+        nuint sealedOutCap,
+        out nuint sealedLenOut);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box384_open(
+        Box384SecretKeyHandle secret,
+        byte[]? sealedIn,
+        nuint sealedLen,
+        byte[] plaintextOut,
+        nuint plaintextOutCap,
+        out nuint plaintextLenOut);
+
     // ---- crypto_box512 ----
 
     [LibraryImport(LibName)]
@@ -319,7 +366,7 @@ internal static partial class NativeMethods
     [LibraryImport(LibName)]
     internal static partial IntPtr dstu_secretstream_file_decryptor_last_error(FileDecryptorHandle dec);
 
-    // ---- streaming crypto_box/crypto_box512 and passphrase files (T-265/T-269) ----
+    // ---- streaming crypto_box/crypto_box384/crypto_box512 and passphrase files (T-265/T-269/T-297) ----
     // Each prefix buffer is exactly the matching DstuConstants length; the C side reads or writes
     // that many bytes.
 
@@ -338,6 +385,14 @@ internal static partial class NativeMethods
     [LibraryImport(LibName)]
     internal static partial DstuStatus dstu_box512_open_stream(
         Box512SecretKeyHandle secret, byte[] prefix, out FileDecryptorHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box384_seal_stream(
+        Box384PublicKeyHandle recipient, byte[] prefixOut, out FileEncryptorHandle handle);
+
+    [LibraryImport(LibName)]
+    internal static partial DstuStatus dstu_box384_open_stream(
+        Box384SecretKeyHandle secret, byte[] prefix, out FileDecryptorHandle handle);
 
     [LibraryImport(LibName)]
     internal static partial DstuStatus dstu_passphrase_file_seal_stream(
