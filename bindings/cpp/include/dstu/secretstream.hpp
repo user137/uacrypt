@@ -2,6 +2,7 @@
 #define DSTU_CPP_SECRETSTREAM_HPP
 
 #include "box.hpp"
+#include "box384.hpp"
 #include "box512.hpp"
 #include "bytes.hpp"
 #include "constants.hpp"
@@ -93,6 +94,13 @@ class SecretStreamEncryptor {
   static SecretStreamEncryptor ForBox(std::ostream &out, const BoxPublicKey &recipient) {
     Started started{nullptr, std::vector<std::uint8_t>(DSTU_BOX_SEAL_STREAM_PREFIX_BYTES)};
     CheckStatus(dstu_box_seal_stream(recipient.native_handle(), started.prefix.data(), &started.enc));
+    return SecretStreamEncryptor(out, started);
+  }
+
+  /// crypto_box384 counterpart of ForBox.
+  static SecretStreamEncryptor ForBox384(std::ostream &out, const Box384PublicKey &recipient) {
+    Started started{nullptr, std::vector<std::uint8_t>(DSTU_BOX384_SEAL_STREAM_PREFIX_BYTES)};
+    CheckStatus(dstu_box384_seal_stream(recipient.native_handle(), started.prefix.data(), &started.enc));
     return SecretStreamEncryptor(out, started);
   }
 
@@ -234,6 +242,14 @@ class SecretStreamDecryptor {
     const auto prefix = ReadPrefix(in, DSTU_BOX_OPEN_STREAM_PREFIX_BYTES, "sealed message");
     DstuFileDecryptor *dec = nullptr;
     CheckStatus(dstu_box_open_stream(secret.native_handle(), prefix.data(), &dec));
+    return SecretStreamDecryptor(in, dec);
+  }
+
+  /// crypto_box384 counterpart of ForBox.
+  static SecretStreamDecryptor ForBox384(std::istream &in, const Box384SecretKey &secret) {
+    const auto prefix = ReadPrefix(in, DSTU_BOX384_OPEN_STREAM_PREFIX_BYTES, "sealed message");
+    DstuFileDecryptor *dec = nullptr;
+    CheckStatus(dstu_box384_open_stream(secret.native_handle(), prefix.data(), &dec));
     return SecretStreamDecryptor(in, dec);
   }
 

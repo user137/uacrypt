@@ -10,6 +10,7 @@
 
 #include "auth.hpp"
 #include "box.hpp"
+#include "box384.hpp"
 #include "box512.hpp"
 #include "bytes.hpp"
 #include "constants.hpp"

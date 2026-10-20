@@ -245,6 +245,41 @@ void TestBox512() {
         "Box512PublicKey::FromBytes should reject x = 0");
 }
 
+void TestBox384() {
+  auto secretKey = dstu::Box384SecretKey::Generate();
+  auto publicKey = secretKey.Public();
+  const std::string message = "a message for the public key's holder only";
+  auto sealed = publicKey.Seal(ToBytes(message));
+  CHECK(sealed.size() == message.size() + dstu::kBox384OpenMinOverhead,
+        "a message under 8 KiB should seal to its size + DSTU_BOX384_OPEN_MIN_OVERHEAD exactly");
+
+  auto opened = secretKey.Open(sealed);
+  CHECK(opened == ToBytes(message), "opened plaintext should match the original message");
+
+  auto tampered = sealed;
+  tampered.back() ^= 1;
+  CHECK(Throws<dstu::CryptoError>([&] { secretKey.Open(tampered); }), "Open should reject a tampered ciphertext");
+
+  auto otherSecretKey = dstu::Box384SecretKey::Generate();
+  CHECK(Throws<dstu::CryptoError>([&] { otherSecretKey.Open(sealed); }),
+        "Open should reject the correct sealed message under the wrong secret key");
+
+  CHECK(Throws<dstu::CryptoError>([&] { secretKey.Open(std::vector<std::uint8_t>{1, 2, 3}); }),
+        "Open should reject input shorter than DSTU_BOX384_OPEN_MIN_OVERHEAD");
+
+  // T-265: a multi-record message opens to exactly its own bytes, no trailing padding.
+  std::vector<std::uint8_t> large(20000);
+  for (std::size_t i = 0; i < large.size(); i++) {
+    large[i] = static_cast<std::uint8_t>(i % 251);
+  }
+  CHECK(secretKey.Open(publicKey.Seal(large)) == large, "a multi-record message should round-trip exactly");
+
+  CHECK(Throws<dstu::ArgumentError>([&] { dstu::Box384SecretKey::FromBytes(std::vector<std::uint8_t>(48, 0)); }),
+        "Box384SecretKey::FromBytes should reject a zero scalar");
+  CHECK(Throws<dstu::ArgumentError>([&] { dstu::Box384PublicKey::FromBytes(std::vector<std::uint8_t>(48, 0)); }),
+        "Box384PublicKey::FromBytes should reject x = 0");
+}
+
 void TestSecretstream() {
   auto key = dstu::SecretstreamKey::Generate();
   const std::string plaintext = "a whole file, conceptually split into chunks, larger than one buffer";
@@ -870,7 +905,7 @@ void TestPwhashSharedVerifyVectors() {
   CHECK(cases == 22, "the shared pwhash verify file should hold 22 cases");
 }
 
-// ---- T-269: streaming crypto_box/crypto_box512, passphrase files, DeriveKey ----
+// ---- T-269: streaming crypto_box/crypto_box384/crypto_box512, passphrase files, DeriveKey ----
 // Shared vectors: box/v3.json and legacy_v2.json (the 0.4-0.6 format must be an unsupported
 // version, not "too short" - the T-265 mislabel), pwhash/passphrase_file.json (written by the
 // released 0.6.0 uacrypt; only the Argon2 cases run Argon2, 256 MiB, t=3) and
@@ -902,7 +937,7 @@ std::vector<std::uint8_t> Pattern(std::size_t n) {
   return out;
 }
 
-/// One curve's operations behind a common shape, so each check runs on both.
+/// One curve's operations behind a common shape, so each check runs on every size.
 template <class Secret, class Public>
 struct BoxCurve {
   Secret secret;
@@ -915,6 +950,9 @@ struct BoxCurve {
     std::istringstream source(std::string(sealedMessage.begin(), sealedMessage.end()));
     if constexpr (std::is_same_v<Secret, dstu::BoxSecretKey>) {
       auto dec = dstu::SecretStreamDecryptor::ForBox(source, secret);
+      return dec.ReadAll();
+    } else if constexpr (std::is_same_v<Secret, dstu::Box384SecretKey>) {
+      auto dec = dstu::SecretStreamDecryptor::ForBox384(source, secret);
       return dec.ReadAll();
     } else {
       auto dec = dstu::SecretStreamDecryptor::ForBox512(source, secret);
@@ -935,6 +973,9 @@ struct BoxCurve {
     };
     if constexpr (std::is_same_v<Secret, dstu::BoxSecretKey>) {
       auto enc = dstu::SecretStreamEncryptor::ForBox(sink, pk);
+      run(enc);
+    } else if constexpr (std::is_same_v<Secret, dstu::Box384SecretKey>) {
+      auto enc = dstu::SecretStreamEncryptor::ForBox384(sink, pk);
       run(enc);
     } else {
       auto enc = dstu::SecretStreamEncryptor::ForBox512(sink, pk);
@@ -1031,12 +1072,36 @@ void TestBoxStream() {
   const std::string legacy = ReadText(DSTU_BOX_LEGACY_VECTORS);
   CHECK(!v3.empty() && !legacy.empty(), "the box vectors should be readable");
   using Curve256 = BoxCurve<dstu::BoxSecretKey, dstu::BoxPublicKey>;
+  using Curve384 = BoxCurve<dstu::Box384SecretKey, dstu::Box384PublicKey>;
   using Curve512 = BoxCurve<dstu::Box512SecretKey, dstu::Box512PublicKey>;
   CheckBoxVectors(Curve256{dstu::BoxSecretKey::FromBytes(FromHex(JsonField(v3, "box256_secret_key_hex")))}, 256, v3,
                   legacy);
+  CheckBoxVectors(Curve384{dstu::Box384SecretKey::FromBytes(FromHex(JsonField(v3, "box384_secret_key_hex")))}, 384,
+                  v3, legacy);
   CheckBoxVectors(Curve512{dstu::Box512SecretKey::FromBytes(FromHex(JsonField(v3, "box512_secret_key_hex")))}, 512,
                   v3, legacy);
   CheckBoxStream(Curve256{dstu::BoxSecretKey::Generate()}, Curve256{dstu::BoxSecretKey::Generate()}, "box256 stream");
+  CheckBoxStream(Curve384{dstu::Box384SecretKey::Generate()}, Curve384{dstu::Box384SecretKey::Generate()},
+                 "box384 stream");
+  // 0.4-0.6 had no l(p)=384 (T-297): a version-2 byte in front of a long enough blob stands in.
+  {
+    const Curve384 curve{dstu::Box384SecretKey::Generate()};
+    std::vector<std::uint8_t> v2(dstu::kBox384OpenMinOverhead + 10, 0);
+    v2[0] = 2;
+    for (int streaming = 0; streaming < 2; streaming++) {
+      std::string message;
+      try {
+        if (streaming == 0) {
+          curve.OneShotOpen(v2);
+        } else {
+          curve.StreamOpen(v2);
+        }
+      } catch (const dstu::CryptoError &e) {
+        message = e.what();
+      }
+      CHECK(message.find("version") != std::string::npos, "a version-2 blob should be an unsupported version at 384");
+    }
+  }
   CheckBoxStream(Curve512{dstu::Box512SecretKey::Generate()}, Curve512{dstu::Box512SecretKey::Generate()},
                  "box512 stream");
 }
@@ -1176,6 +1241,7 @@ int main() {
     TestSecretbox();
     TestBox();
     TestBox512();
+    TestBox384();
     TestSecretstream();
     TestSecretstreamOversizedDeclaredChunkLength();
     TestSecretstreamSharedVectors();

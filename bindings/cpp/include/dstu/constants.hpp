@@ -14,6 +14,10 @@ inline constexpr std::size_t kBoxPublicKeyBytes = DSTU_BOX_PUBLICKEY_BYTES;
 /// The shortest sealed message (format v3, T-265): BoxSecretKey::Open's plaintext is at most
 /// sealed.size() minus this. BoxPublicKey::Seal's exact size comes from dstu_box_sealed_len.
 inline constexpr std::size_t kBoxOpenMinOverhead = DSTU_BOX_OPEN_MIN_OVERHEAD;
+inline constexpr std::size_t kBox384SecretKeyBytes = DSTU_BOX384_SECRETKEY_BYTES;
+inline constexpr std::size_t kBox384PublicKeyBytes = DSTU_BOX384_PUBLICKEY_BYTES;
+/// The l(p)=384 sibling of kBoxOpenMinOverhead.
+inline constexpr std::size_t kBox384OpenMinOverhead = DSTU_BOX384_OPEN_MIN_OVERHEAD;
 inline constexpr std::size_t kBox512SecretKeyBytes = DSTU_BOX512_SECRETKEY_BYTES;
 inline constexpr std::size_t kBox512PublicKeyBytes = DSTU_BOX512_PUBLICKEY_BYTES;
 /// The l(p)=512 sibling of kBoxOpenMinOverhead.
