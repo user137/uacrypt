@@ -4787,6 +4787,7 @@ EVERYDAY COMMANDS:
     sign            Sign a file of any size with a signing key.
     verify          Check a `sign` signature against a verifying key.
     box-keygen      Generate a fresh crypto_box secret key (DSTU 9041, l(p)=256).
+    box-keygen384   Generate a fresh crypto_box secret key (DSTU 9041, l(p)=384).
     box-keygen512   Generate a fresh crypto_box secret key (DSTU 9041, l(p)=512).
     box-pubkey      Derive the matching public key from a secret key, for `box-seal`.
     box-seal        Encrypt a file to a recipient's public key (DSTU 9041, hybrid via KDF).
@@ -4810,7 +4811,8 @@ FILE FORMATS (byte layouts, with field sizes in bytes: see docs/CLI.md 'File for
     encrypt with a passphrase
                     0x50 || 0x01 || 0x01 || Argon2id m KiB (4, LE) || t (4, LE) || p (1)
                     || salt (16), then the same stream as above
-    box-seal       version (1) || KEM ciphertext (128 / 256) || header (32) || ciphertext || auth tag (16)
+    box-seal        version (1, = 3) || KEM ciphertext (128 / 176 / 256 by curve), then the
+                    `encrypt` stream above (its own version, header, records)
     key files       one text line `<kind>:<key hex>:<check hex>`, see docs/CLI.md 'Key files';
                     the lower-level commands above take raw key bytes instead
     kalyna-gcm/-gmac write raw ciphertext/tag files with no container and no format version, so
