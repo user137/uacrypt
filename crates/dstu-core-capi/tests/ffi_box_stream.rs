@@ -274,7 +274,7 @@ macro_rules! box_stream_tests {
                     DstuStatus::DSTU_OK
                 );
                 let mut sealed = vec![2u8];
-                sealed.extend_from_slice(&vec![0xAA; $MIN_OVERHEAD + 10]);
+                sealed.resize($MIN_OVERHEAD + 11, 0xAA);
                 assert_eq!(
                     open(secret, &sealed),
                     Err(DstuStatus::DSTU_ERR_UNSUPPORTED_VERSION)
