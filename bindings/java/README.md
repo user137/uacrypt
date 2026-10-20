@@ -41,7 +41,8 @@ correctness/rejection/misuse suite each surface is verified against (D-64/D-65).
 | Type | Members | Notes |
 |---|---|---|
 | `SecretBox` | `keygen`, `seal`, `open` | Single-message authenticated encryption. `examples secretbox`. |
-| `Box` | `keygen`, `publicKey`, `seal`, `open`; `SecretStreamEncryptor.forBox`, `SecretStreamDecryptor.forBox` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, `l(p)=256`, D-169). `seal`/`open` hold the whole message in memory; the `forBox` streams write and read the same bytes (format v3) chunk by chunk, as `uacrypt box-seal`/`box-open` do (`forBox512` for `Box512`). `examples box`. |
+| `Box` | `keygen`, `publicKey`, `seal`, `open`; `SecretStreamEncryptor.forBox`, `SecretStreamDecryptor.forBox` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, `l(p)=256`, D-169). `seal`/`open` hold the whole message in memory; the `forBox` streams write and read the same bytes (format v3) chunk by chunk, as `uacrypt box-seal`/`box-open` do (`forBox384`/`forBox512` for `Box384`/`Box512`). `examples box`. |
+| `Box384` | Same members as `Box` | `l(p)=384`/E384/1 sibling of `crypto_box` (T-297) — distinct class, not interchangeable. `examples box384`. |
 | `Box512` | Same members as `Box` | `l(p)=512`/E512/1 sibling of `crypto_box` (T-193/T-204) — distinct class, not interchangeable. `examples box512`. |
 | `SecretStream`, `SecretStreamEncryptor`, `SecretStreamDecryptor` | `keygen`; `OutputStream`/`InputStream` subclasses | Chunked streaming AEAD. Wire format matches `uacrypt encrypt`/`decrypt` exactly (D-118). `close()` deliberately never emits the `Final` chunk — call `complete()` explicitly on the success path (it also flushes the sink); `close()` closes the sink or source, as `java.io` filter streams do (0.2.0, T-275); see the class doc comment. `examples secretstream-file`. |
 | `Sign` | `keygen`, `verifyingKey`, `sign`, `verify` | DSTU 4145 `m=163` digital signatures, deterministic nonce (no RNG dependency). `examples sign`. |
@@ -79,7 +80,7 @@ mvn compile
 javac -cp target/classes -d target/examples-classes examples/*.java
 java -cp "target/classes;target/examples-classes" Main secretbox          # Windows (`;` separator)
 java -cp "target/classes:target/examples-classes" Main secretbox          # Linux/macOS (`:` separator)
-# ... box, box512, secretstream-file, sign, sign257, password-hashing, misc
+# ... box, box384, box512, secretstream-file, sign, sign257, password-hashing, misc
 ```
 
 ## Packaging

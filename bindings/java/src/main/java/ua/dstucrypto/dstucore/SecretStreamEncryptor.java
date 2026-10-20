@@ -39,6 +39,7 @@ public final class SecretStreamEncryptor extends OutputStream {
     // The box/passphrase prefix in front of the stream file's own (D-239/D-240); the native side
     // refuses any other length, so a drift fails every test.
     private static final int BOX_SEAL_PREFIX_BYTES = 1 + 128 + FILE_PREFIX_BYTES;
+    private static final int BOX384_SEAL_PREFIX_BYTES = 1 + 176 + FILE_PREFIX_BYTES;
     private static final int BOX512_SEAL_PREFIX_BYTES = 1 + 256 + FILE_PREFIX_BYTES;
     private static final int PASSPHRASE_SEAL_PREFIX_BYTES = 28 + FILE_PREFIX_BYTES;
 
@@ -77,6 +78,12 @@ public final class SecretStreamEncryptor extends OutputStream {
     public static SecretStreamEncryptor forBox(byte[] publicKey, OutputStream out) throws IOException {
         byte[] prefix = new byte[BOX_SEAL_PREFIX_BYTES];
         return new SecretStreamEncryptor(out, new Started(nativeBoxSeal(publicKey, prefix), prefix));
+    }
+
+    /** {@code crypto_box384} counterpart of {@link #forBox}. */
+    public static SecretStreamEncryptor forBox384(byte[] publicKey, OutputStream out) throws IOException {
+        byte[] prefix = new byte[BOX384_SEAL_PREFIX_BYTES];
+        return new SecretStreamEncryptor(out, new Started(nativeBox384Seal(publicKey, prefix), prefix));
     }
 
     /** {@code crypto_box512} counterpart of {@link #forBox}. */
@@ -202,6 +209,8 @@ public final class SecretStreamEncryptor extends OutputStream {
     private static native long nativeInit(byte[] key, byte[] prefixOut);
 
     private static native long nativeBoxSeal(byte[] publicKey, byte[] prefixOut);
+
+    private static native long nativeBox384Seal(byte[] publicKey, byte[] prefixOut);
 
     private static native long nativeBox512Seal(byte[] publicKey, byte[] prefixOut);
 

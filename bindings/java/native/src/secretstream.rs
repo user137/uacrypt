@@ -17,7 +17,7 @@ use dstu_core::crypto_secretstream::{
     FileDecryptor, FileEncryptor, Key, PullState, PushState, Tag, CHUNK_BYTES, FILE_PREFIX_BYTES,
     MAX_RECORD_BYTES,
 };
-use dstu_core::{crypto_box, crypto_box512};
+use dstu_core::{crypto_box, crypto_box384, crypto_box512};
 use jni::objects::{JByteArray, JClass};
 use jni::sys::{jboolean, jbyteArray, jint, jlong, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
@@ -463,6 +463,24 @@ pub extern "system" fn Java_ua_dstucrypto_dstucore_SecretStreamEncryptor_nativeB
     })
 }
 
+/// Starts a `crypto_box384` (format v3) stream to `publicKey`.
+#[no_mangle]
+pub extern "system" fn Java_ua_dstucrypto_dstucore_SecretStreamEncryptor_nativeBox384Seal<
+    'local,
+>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    public_key: JByteArray<'local>,
+    prefix_out: JByteArray<'local>,
+) -> jlong {
+    guard(&mut env, 0, |env| {
+        let bytes = env.convert_byte_array(&public_key).expect("convert key");
+        let recipient = crate::box384::public_key_from_bytes(&bytes)?;
+        let (enc, prefix) = crypto_box384::seal_stream(&recipient).crypto()?;
+        start_encryptor(env, &prefix_out, (enc, &prefix))
+    })
+}
+
 /// Starts a `crypto_box512` (format v3) stream to `publicKey`.
 #[no_mangle]
 pub extern "system" fn Java_ua_dstucrypto_dstucore_SecretStreamEncryptor_nativeBox512Seal<
@@ -515,6 +533,26 @@ pub extern "system" fn Java_ua_dstucrypto_dstucore_SecretStreamDecryptor_nativeB
         let prefix = env.convert_byte_array(&prefix).expect("convert prefix");
         let prefix = to_array::<{ crypto_box::OPEN_STREAM_PREFIX_BYTES }>(&prefix, "prefix")?;
         let dec = crypto_box::open_stream(&prefix, &secret).crypto()?;
+        Ok(Box::into_raw(Box::new(dec)) as jlong)
+    })
+}
+
+/// Opens a `crypto_box384` stream: `prefix` is its first `Box384.OPEN_STREAM_PREFIX_BYTES` bytes.
+#[no_mangle]
+pub extern "system" fn Java_ua_dstucrypto_dstucore_SecretStreamDecryptor_nativeBox384Open<
+    'local,
+>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    secret_key: JByteArray<'local>,
+    prefix: JByteArray<'local>,
+) -> jlong {
+    guard(&mut env, 0, |env| {
+        let key = env.convert_byte_array(&secret_key).expect("convert key");
+        let secret = crate::box384::secret_key_from_bytes(&key)?;
+        let prefix = env.convert_byte_array(&prefix).expect("convert prefix");
+        let prefix = to_array::<{ crypto_box384::OPEN_STREAM_PREFIX_BYTES }>(&prefix, "prefix")?;
+        let dec = crypto_box384::open_stream(&prefix, &secret).crypto()?;
         Ok(Box::into_raw(Box::new(dec)) as jlong)
     })
 }

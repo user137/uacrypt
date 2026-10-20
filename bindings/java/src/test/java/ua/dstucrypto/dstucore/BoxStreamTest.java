@@ -1,5 +1,6 @@
 package ua.dstucrypto.dstucore;
 
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -18,8 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Streaming {@code crypto_box}/{@code crypto_box512} (T-265 format v3, T-269):
- * {@link SecretStreamEncryptor#forBox}/{@link SecretStreamDecryptor#forBox} and the 512 pair over
+ * Streaming {@code crypto_box}/{@code crypto_box384}/{@code crypto_box512} (T-265 format v3, T-269,
+ * T-297): {@link SecretStreamEncryptor#forBox}/{@link SecretStreamDecryptor#forBox} and the 384/512 pairs over
  * the core's {@code seal_stream}/{@code open_stream}. Happy path: the shared v3 vectors (one-shot
  * {@code open} and the streaming reader), a round trip across record boundaries, one-shot/streaming
  * byte equivalence. Security: tampering, a wrong key, trailing data. Misuse: wrong-length keys, a
@@ -57,21 +58,24 @@ class BoxStreamTest {
     }
 
     private static byte[] keygen(int curve) {
-        return curve == 256 ? Box.keygen() : Box512.keygen();
+        return curve == 256 ? Box.keygen() : curve == 384 ? Box384.keygen() : Box512.keygen();
     }
 
     private static byte[] publicKey(int curve, byte[] secret) {
-        return curve == 256 ? Box.publicKey(secret) : Box512.publicKey(secret);
+        return curve == 256 ? Box.publicKey(secret) : curve == 384 ? Box384.publicKey(secret) : Box512.publicKey(secret);
     }
 
     private static byte[] oneShotOpen(int curve, byte[] secret, byte[] sealed) {
-        return curve == 256 ? Box.open(secret, sealed) : Box512.open(secret, sealed);
+        return curve == 256 ? Box.open(secret, sealed)
+                : curve == 384 ? Box384.open(secret, sealed) : Box512.open(secret, sealed);
     }
 
     private static byte[] streamOpen(int curve, byte[] secret, byte[] sealed) throws IOException {
         ByteArrayInputStream in = new ByteArrayInputStream(sealed);
         try (SecretStreamDecryptor dec = curve == 256
                 ? SecretStreamDecryptor.forBox(secret, in)
+                : curve == 384
+                ? SecretStreamDecryptor.forBox384(secret, in)
                 : SecretStreamDecryptor.forBox512(secret, in)) {
             return dec.readAll();
         }
@@ -79,7 +83,9 @@ class BoxStreamTest {
 
     private static SecretStreamEncryptor writer(int curve, byte[] publicKey, ByteArrayOutputStream out)
             throws IOException {
-        return curve == 256 ? SecretStreamEncryptor.forBox(publicKey, out) : SecretStreamEncryptor.forBox512(publicKey, out);
+        return curve == 256 ? SecretStreamEncryptor.forBox(publicKey, out)
+                : curve == 384 ? SecretStreamEncryptor.forBox384(publicKey, out)
+                : SecretStreamEncryptor.forBox512(publicKey, out);
     }
 
     private static byte[] streamSeal(int curve, byte[] publicKey, byte[] message) throws IOException {
@@ -94,7 +100,7 @@ class BoxStreamTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {256, 512})
+    @ValueSource(ints = {256, 384, 512})
     void sharedV3VectorsGiveTheirExpectedOutcome(int curve) throws Exception {
         String json = json("v3.json");
         byte[] secret = secretFrom(json, curve);
@@ -118,7 +124,7 @@ class BoxStreamTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {256, 512})
+    @ValueSource(ints = {256, 512}) // 0.4-0.6 had no l(p)=384
     void theZeroSixFormatIsRefusedAsUnsupported(int curve) throws Exception {
         String json = json("legacy_v2.json");
         byte[] secret = secretFrom(json, curve);
@@ -136,7 +142,7 @@ class BoxStreamTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {256, 512})
+    @ValueSource(ints = {256, 384, 512})
     void streamRoundTripReadsBackStreamingAndOneShot(int curve) throws Exception {
         byte[] secret = keygen(curve);
         for (int size : new int[] {0, 1, 8 * 1024, 8 * 1024 + 1, 3 * 8 * 1024 + 5}) {
@@ -148,7 +154,7 @@ class BoxStreamTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {256, 512})
+    @ValueSource(ints = {256, 384, 512})
     void tamperingAWrongKeyAndTrailingDataFailClosed(int curve) throws Exception {
         byte[] secret = keygen(curve);
         byte[] sealed = streamSeal(curve, publicKey(curve, secret), pattern(100));
@@ -164,7 +170,7 @@ class BoxStreamTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {256, 512})
+    @ValueSource(ints = {256, 384, 512})
     void misuseIsRefused(int curve) throws Exception {
         byte[] secret = keygen(curve);
         byte[] wrong = new byte[] {1, 1, 1};
@@ -181,7 +187,7 @@ class BoxStreamTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {256, 512})
+    @ValueSource(ints = {256, 384, 512})
     void closeWithoutCompleteLeavesNoFinalRecord(int curve) throws Exception {
         byte[] secret = keygen(curve);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -189,5 +195,17 @@ class BoxStreamTest {
             enc.write(pattern(3 * 8 * 1024));
         }
         assertThrows(DstuException.class, () -> streamOpen(curve, secret, out.toByteArray()));
+    }
+
+    /** No 0.4-0.6 file exists at l(p)=384 (T-297): a version-2 byte stands in for one. */
+    @Test
+    void aVersion2BlobIsUnsupportedAt384() throws Exception {
+        byte[] secret = Box384.keygen();
+        byte[] sealed = new byte[241];
+        sealed[0] = 2;
+        DstuException one = assertThrows(DstuException.class, () -> oneShotOpen(384, secret, sealed));
+        assertTrue(one.getMessage().contains("version"), one.getMessage());
+        DstuException streaming = assertThrows(DstuException.class, () -> streamOpen(384, secret, sealed));
+        assertTrue(streaming.getMessage().contains("version"), streaming.getMessage());
     }
 }

@@ -27,6 +27,7 @@ public final class SecretStreamDecryptor extends InputStream {
     // The version byte and KEM ciphertext in front of a box stream file (D-239), and the
     // passphrase-file header (D-240); the native side refuses any other length.
     private static final int BOX_OPEN_PREFIX_BYTES = 1 + 128;
+    private static final int BOX384_OPEN_PREFIX_BYTES = 1 + 176;
     private static final int BOX512_OPEN_PREFIX_BYTES = 1 + 256;
     private static final int PASSPHRASE_HEADER_BYTES = 28;
 
@@ -60,6 +61,12 @@ public final class SecretStreamDecryptor extends InputStream {
     public static SecretStreamDecryptor forBox(byte[] secretKey, InputStream in) throws IOException {
         byte[] prefix = readPrefix(in, BOX_OPEN_PREFIX_BYTES, "sealed message");
         return new SecretStreamDecryptor(in, nativeBoxOpen(secretKey, prefix));
+    }
+
+    /** {@code crypto_box384} counterpart of {@link #forBox}. */
+    public static SecretStreamDecryptor forBox384(byte[] secretKey, InputStream in) throws IOException {
+        byte[] prefix = readPrefix(in, BOX384_OPEN_PREFIX_BYTES, "sealed message");
+        return new SecretStreamDecryptor(in, nativeBox384Open(secretKey, prefix));
     }
 
     /** {@code crypto_box512} counterpart of {@link #forBox}. */
@@ -167,6 +174,8 @@ public final class SecretStreamDecryptor extends InputStream {
     private static native long nativeNew(byte[] key);
 
     private static native long nativeBoxOpen(byte[] secretKey, byte[] prefix);
+
+    private static native long nativeBox384Open(byte[] secretKey, byte[] prefix);
 
     private static native long nativeBox512Open(byte[] secretKey, byte[] prefix);
 
