@@ -15623,6 +15623,13 @@ different padding rule and never checks the length field on unwrap. The annex В
 UAPKI/cryptonite are one lineage (T-234). So KW-p rests on the 7624 text plus its own annex, one
 oracle, and the 384 `t` has none.
 
+**Run, not only read (2026-10-20).** A scratch harness over UAPKI uapkic 2.0.3 (37039b1, the
+checkout `tests/oracle-harness/uapki-kalyna-modes/` uses) calling `dstu7624_init_kw` +
+`dstu7624_encrypt`: the four annex KW-p vectors come out byte for byte (a partly independent second
+transcription of the annex, as D-231 says of UAPKI 2.0.3), and Г.2's `M'` under its `kappa` gives a
+96-byte result, neither this crate's 128-byte `t` nor the document's. So the document's `t` is not
+UAPKI's KW-p either; the UAPKI <= 2.0.2 cells in COMPATIBILITY.md rest on reading the same code.
+
 ## D-242: Kupyna-384 public in `hazmat` only (T-254, 2026-10-19)
 
 **Owner decision (2026-10-19).** `hazmat::kupyna::Kupyna384`/`Kupyna384Hasher`, not a third
