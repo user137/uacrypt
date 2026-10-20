@@ -20,6 +20,11 @@ function dstu_core_box_public_key(string $secret_key): string {}
 function dstu_core_box_seal(string $public_key, string $message): string {}
 function dstu_core_box_open(string $secret_key, string $sealed): string {}
 
+// --- crypto_box384 (l(p)=384 sibling of crypto_box, T-297) ---
+function dstu_core_box384_keygen(): string {}
+function dstu_core_box384_public_key(string $secret_key): string {}
+function dstu_core_box384_seal(string $public_key, string $message): string {}
+function dstu_core_box384_open(string $secret_key, string $sealed): string {}
 // --- crypto_box512 (l(p)=512 sibling of crypto_box, T-193/T-204) ---
 function dstu_core_box512_keygen(): string {}
 function dstu_core_box512_public_key(string $secret_key): string {}
@@ -78,6 +83,10 @@ class DstuCoreSecretStreamFileEncryptor
         return new self('');
     }
 
+    public static function box384_seal(string $public_key): self
+    {
+        return new self('');
+    }
     public static function box512_seal(string $public_key): self
     {
         return new self('');
@@ -114,6 +123,10 @@ class DstuCoreSecretStreamFileDecryptor
         return new self('');
     }
 
+    public static function box384_open(string $secret_key, string $prefix): self
+    {
+        return new self('');
+    }
     public static function box512_open(string $secret_key, string $prefix): self
     {
         return new self('');
@@ -163,6 +176,7 @@ function dstu_core_pwhash_derive_key(string $password, string $salt, int $streng
 const DSTU_CORE_PWHASH_SALTBYTES = 16;
 const DSTU_CORE_PASSPHRASE_FILE_HEADER_BYTES = 28;
 const DSTU_CORE_BOX_OPEN_STREAM_PREFIX_BYTES = 129;
+const DSTU_CORE_BOX384_OPEN_STREAM_PREFIX_BYTES = 177;
 const DSTU_CORE_BOX512_OPEN_STREAM_PREFIX_BYTES = 257;
 
 // --- crypto_auth ---

@@ -21,7 +21,7 @@ use dstu_core::crypto_pwhash::passphrase_file::{self, Header, HEADER_BYTES};
 use dstu_core::crypto_secretstream::{
     FileDecryptor, FileEncryptor, Key, PullState, PushState, Tag, CHUNK_BYTES, MAX_RECORD_BYTES,
 };
-use dstu_core::{crypto_box, crypto_box512};
+use dstu_core::{crypto_box, crypto_box384, crypto_box512};
 
 fn tag_from_byte(byte: u8) -> Result<Tag, PhpException> {
     Tag::from_byte(byte).ok_or_else(|| {
@@ -132,7 +132,7 @@ impl SecretStreamPullState {
 
 /// Stream-file writer (T-284): the D-208 framing from the core codec.
 /// `lib/DstuCoreSecretStream.php`'s `DstuCoreSecretStreamWriter` drives it and does only I/O.
-/// The constructor takes a stream key; the static `box_seal`/`box512_seal`/`passphrase_seal`
+/// The constructor takes a stream key; the static `box_seal`/`box384_seal`/`box512_seal`/`passphrase_seal`
 /// (T-269) start the same codec under a `crypto_box` KEM prefix or a passphrase-file header, and
 /// `prefix()` then includes it.
 #[php_class]
@@ -152,6 +152,15 @@ impl SecretStreamFileEncryptor {
     pub fn box_seal(public_key: Binary<u8>) -> Result<Self, PhpException> {
         let recipient = crate::crypto_box::public_key_from_bytes(&public_key)?;
         let (inner, prefix) = crypto_box::seal_stream(&recipient).dstu()?;
+        Ok(Self(RefCell::new(inner), prefix.to_vec()))
+    }
+
+    /// Starts a `crypto_box384` (format v3) stream to `public_key`. Named explicitly: the
+    /// snake_case rename would split `box384` into `box_512`.
+    #[php(name = "box384_seal")]
+    pub fn box384_seal(public_key: Binary<u8>) -> Result<Self, PhpException> {
+        let recipient = crate::box384::public_key_from_bytes(&public_key)?;
+        let (inner, prefix) = crypto_box384::seal_stream(&recipient).dstu()?;
         Ok(Self(RefCell::new(inner), prefix.to_vec()))
     }
 
@@ -217,6 +226,16 @@ impl SecretStreamFileDecryptor {
         let secret = crate::crypto_box::secret_key_from_bytes(&secret_key)?;
         let prefix = to_array::<{ crypto_box::OPEN_STREAM_PREFIX_BYTES }>(&prefix, "prefix")?;
         let inner = crypto_box::open_stream(&prefix, &secret).dstu()?;
+        Ok(Self(RefCell::new(inner)))
+    }
+
+    /// Opens a `crypto_box384` stream: `prefix` is its first
+    /// `DSTU_CORE_BOX384_OPEN_STREAM_PREFIX_BYTES` bytes; feed the rest.
+    #[php(name = "box384_open")]
+    pub fn box384_open(secret_key: Binary<u8>, prefix: Binary<u8>) -> Result<Self, PhpException> {
+        let secret = crate::box384::secret_key_from_bytes(&secret_key)?;
+        let prefix = to_array::<{ crypto_box384::OPEN_STREAM_PREFIX_BYTES }>(&prefix, "prefix")?;
+        let inner = crypto_box384::open_stream(&prefix, &secret).dstu()?;
         Ok(Self(RefCell::new(inner)))
     }
 

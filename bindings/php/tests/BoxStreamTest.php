@@ -6,8 +6,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Streaming crypto_box/crypto_box512 (T-265 format v3, T-269): DstuCoreSecretStreamWriter::forBox/
- * forBox512 and the matching readers over the core's seal_stream/open_stream. Happy path: the
+ * Streaming crypto_box/crypto_box384/crypto_box512 (T-265 format v3, T-269, T-297):
+ * DstuCoreSecretStreamWriter::forBox/forBox384/forBox512 and the matching readers over the core's seal_stream/open_stream. Happy path: the
  * shared v3 vectors (one-shot open and the streaming reader), a round trip across record
  * boundaries, one-shot/streaming byte equivalence. Security: tampering, a wrong key, trailing
  * data. Misuse: wrong-length keys, a cut prefix, the 0.4-0.6 format. Error path: a writer whose
@@ -19,7 +19,7 @@ final class BoxStreamTest extends TestCase
     /** @return array<string, array{int}> */
     public static function curves(): array
     {
-        return ['box256' => [256], 'box512' => [512]];
+        return ['box256' => [256], 'box384' => [384], 'box512' => [512]];
     }
 
     private static function vectors(string $name): array
@@ -51,23 +51,37 @@ final class BoxStreamTest extends TestCase
 
     private static function oneShotOpen(int $curve, string $secret, string $sealed): string
     {
-        return $curve === 256 ? dstu_core_box_open($secret, $sealed) : dstu_core_box512_open($secret, $sealed);
+        return match ($curve) {
+            256 => dstu_core_box_open($secret, $sealed),
+            384 => dstu_core_box384_open($secret, $sealed),
+            default => dstu_core_box512_open($secret, $sealed),
+        };
     }
 
     private static function streamOpen(int $curve, string $secret, string $sealed): string
     {
         $in = self::memoryStream($sealed);
-        $reader = $curve === 256
-            ? DstuCoreSecretStreamReader::forBox($secret, $in)
-            : DstuCoreSecretStreamReader::forBox512($secret, $in);
+        $reader = match ($curve) {
+            256 => DstuCoreSecretStreamReader::forBox($secret, $in),
+            384 => DstuCoreSecretStreamReader::forBox384($secret, $in),
+            default => DstuCoreSecretStreamReader::forBox512($secret, $in),
+        };
 
         return $reader->readAll();
     }
 
     private static function keypair(int $curve): array
     {
-        $secret = $curve === 256 ? dstu_core_box_keygen() : dstu_core_box512_keygen();
-        $public = $curve === 256 ? dstu_core_box_public_key($secret) : dstu_core_box512_public_key($secret);
+        $secret = match ($curve) {
+            256 => dstu_core_box_keygen(),
+            384 => dstu_core_box384_keygen(),
+            default => dstu_core_box512_keygen(),
+        };
+        $public = match ($curve) {
+            256 => dstu_core_box_public_key($secret),
+            384 => dstu_core_box384_public_key($secret),
+            default => dstu_core_box512_public_key($secret),
+        };
 
         return [$secret, $public];
     }
@@ -75,9 +89,11 @@ final class BoxStreamTest extends TestCase
     private static function streamSeal(int $curve, string $public, string $message): string
     {
         $out = self::memoryStream();
-        $writer = $curve === 256
-            ? DstuCoreSecretStreamWriter::forBox($public, $out)
-            : DstuCoreSecretStreamWriter::forBox512($public, $out);
+        $writer = match ($curve) {
+            256 => DstuCoreSecretStreamWriter::forBox($public, $out),
+            384 => DstuCoreSecretStreamWriter::forBox384($public, $out),
+            default => DstuCoreSecretStreamWriter::forBox512($public, $out),
+        };
         $writer->write(substr($message, 0, 7));
         $writer->write(substr($message, 7));
         $writer->close();
@@ -124,7 +140,13 @@ final class BoxStreamTest extends TestCase
     public function testTheZeroSixFormatIsRefusedAsUnsupported(int $curve): void
     {
         $vectors = self::vectors('legacy_v2.json');
-        $secret = hex2bin($vectors["box{$curve}_secret_key_hex"]);
+        if ($curve === 384) {
+            // 0.4-0.6 had no l(p)=384 (T-297): a version-2 byte stands in for such a file.
+            [$secret] = self::keypair($curve);
+            $vectors = ['cases' => [['curve' => 384, 'sealed_hex' => bin2hex("\x02" . str_repeat("\x00", 240))]]];
+        } else {
+            $secret = hex2bin($vectors["box{$curve}_secret_key_hex"]);
+        }
         foreach ($vectors['cases'] as $case) {
             if ($case['curve'] !== $curve) {
                 continue;
@@ -202,6 +224,8 @@ final class BoxStreamTest extends TestCase
         $this->expectException(\ValueError::class);
         if ($curve === 256) {
             DstuCoreSecretStreamWriter::forBox("\x01\x01\x01", self::memoryStream());
+        } elseif ($curve === 384) {
+            DstuCoreSecretStreamWriter::forBox384("\x01\x01\x01", self::memoryStream());
         } else {
             DstuCoreSecretStreamWriter::forBox512("\x01\x01\x01", self::memoryStream());
         }
@@ -214,6 +238,8 @@ final class BoxStreamTest extends TestCase
         $in = self::memoryStream(str_repeat("\x03", 400));
         if ($curve === 256) {
             DstuCoreSecretStreamReader::forBox("\x01\x01\x01", $in);
+        } elseif ($curve === 384) {
+            DstuCoreSecretStreamReader::forBox384("\x01\x01\x01", $in);
         } else {
             DstuCoreSecretStreamReader::forBox512("\x01\x01\x01", $in);
         }
@@ -224,9 +250,11 @@ final class BoxStreamTest extends TestCase
     {
         [$secret, $public] = self::keypair($curve);
         $out = self::memoryStream();
-        $writer = $curve === 256
-            ? DstuCoreSecretStreamWriter::forBox($public, $out)
-            : DstuCoreSecretStreamWriter::forBox512($public, $out);
+        $writer = match ($curve) {
+            256 => DstuCoreSecretStreamWriter::forBox($public, $out),
+            384 => DstuCoreSecretStreamWriter::forBox384($public, $out),
+            default => DstuCoreSecretStreamWriter::forBox512($public, $out),
+        };
         $writer->write(self::pattern(3 * 8 * 1024));
         // No close(): the caller's own work failed (D-118), so no Final record is written.
         rewind($out);

@@ -19,6 +19,7 @@
 #![cfg_attr(windows, feature(abi_vectorcall))]
 
 mod auth;
+mod box384;
 mod box512;
 mod crypto_box;
 mod error;
@@ -63,7 +64,11 @@ pub const DSTU_CORE_PWHASH_SALTBYTES: i32 = 16;
 pub const DSTU_CORE_PASSPHRASE_FILE_HEADER_BYTES: i32 = 28;
 #[php_const]
 pub const DSTU_CORE_BOX_OPEN_STREAM_PREFIX_BYTES: i32 = 129;
-// Named explicitly: the default rename splits `BOX512` into `BOX_512` (seen on the Pi).
+// Named explicitly: the default rename splits `BOX384`/`BOX512` into `BOX_384`/`BOX_512` (seen on
+// the Pi).
+#[php_const]
+#[php(name = "DSTU_CORE_BOX384_OPEN_STREAM_PREFIX_BYTES")]
+pub const DSTU_CORE_BOX384_OPEN_STREAM_PREFIX_BYTES: i32 = 177;
 #[php_const]
 #[php(name = "DSTU_CORE_BOX512_OPEN_STREAM_PREFIX_BYTES")]
 pub const DSTU_CORE_BOX512_OPEN_STREAM_PREFIX_BYTES: i32 = 257;
@@ -75,6 +80,8 @@ const _: () = assert!(
             == dstu_core::crypto_pwhash::passphrase_file::HEADER_BYTES
         && DSTU_CORE_BOX_OPEN_STREAM_PREFIX_BYTES as usize
             == dstu_core::crypto_box::OPEN_STREAM_PREFIX_BYTES
+        && DSTU_CORE_BOX384_OPEN_STREAM_PREFIX_BYTES as usize
+            == dstu_core::crypto_box384::OPEN_STREAM_PREFIX_BYTES
         && DSTU_CORE_BOX512_OPEN_STREAM_PREFIX_BYTES as usize
             == dstu_core::crypto_box512::OPEN_STREAM_PREFIX_BYTES
 );
@@ -98,6 +105,7 @@ pub fn module(module: ModuleBuilder) -> ModuleBuilder {
         .constant(wrap_constant!(DSTU_CORE_PWHASH_SALTBYTES))
         .constant(wrap_constant!(DSTU_CORE_PASSPHRASE_FILE_HEADER_BYTES))
         .constant(wrap_constant!(DSTU_CORE_BOX_OPEN_STREAM_PREFIX_BYTES))
+        .constant(wrap_constant!(DSTU_CORE_BOX384_OPEN_STREAM_PREFIX_BYTES))
         .constant(wrap_constant!(DSTU_CORE_BOX512_OPEN_STREAM_PREFIX_BYTES))
         .constant(wrap_constant!(DSTU_CORE_SECRETSTREAM_TAG_MESSAGE))
         .constant(wrap_constant!(DSTU_CORE_SECRETSTREAM_TAG_PUSH))
@@ -107,6 +115,7 @@ pub fn module(module: ModuleBuilder) -> ModuleBuilder {
 
     let module = error::register(module);
     let module = crypto_box::register(module);
+    let module = box384::register(module);
     let module = box512::register(module);
     let module = secretbox::register(module);
     let module = sign::register(module);

@@ -73,6 +73,12 @@ final class DstuCoreSecretStreamWriter
     }
 
     /** @param resource $out */
+    public static function forBox384(string $publicKey, $out): self
+    {
+        return new self(DstuCoreSecretStreamFileEncryptor::box384_seal($publicKey), $out);
+    }
+
+    /** @param resource $out */
     public static function forBox512(string $publicKey, $out): self
     {
         return new self(DstuCoreSecretStreamFileEncryptor::box512_seal($publicKey), $out);
@@ -240,6 +246,14 @@ final class DstuCoreSecretStreamReader implements Iterator
         $prefix = self::readPrefix($inp, DSTU_CORE_BOX_OPEN_STREAM_PREFIX_BYTES, 'sealed message');
 
         return new self(DstuCoreSecretStreamFileDecryptor::box_open($secretKey, $prefix), $inp);
+    }
+
+    /** @param resource $inp */
+    public static function forBox384(string $secretKey, $inp): self
+    {
+        $prefix = self::readPrefix($inp, DSTU_CORE_BOX384_OPEN_STREAM_PREFIX_BYTES, 'sealed message');
+
+        return new self(DstuCoreSecretStreamFileDecryptor::box384_open($secretKey, $prefix), $inp);
     }
 
     /** @param resource $inp */
