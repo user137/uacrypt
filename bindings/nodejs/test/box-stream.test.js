@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * Streaming `crypto_box`/`crypto_box512` (T-265 format v3, T-269): `BoxEncryptor`/`BoxDecryptor`
- * and the 512 pair over the core's `seal_stream`/`open_stream`. Happy path: the shared v3 vectors
+ * Streaming `crypto_box`/`crypto_box384`/`crypto_box512` (T-265 format v3, T-269, T-297):
+ * `BoxEncryptor`/`BoxDecryptor` and the 384/512 pairs over the core's `seal_stream`/`open_stream`. Happy path: the shared v3 vectors
  * (one-shot `boxOpen` and the streaming reader), a round trip across record boundaries, the
  * one-shot/streaming byte equivalence. Security: tampering, a wrong key, trailing data. Misuse:
  * wrong-length keys, a cut prefix, the 0.4-0.6 format. Error path: a destroyed pipeline leaves no
@@ -21,6 +21,10 @@ const CURVES = {
   256: {
     open: dstu.boxOpen, Enc: dstu.BoxEncryptor, Dec: dstu.BoxDecryptor,
     keygen: dstu.boxKeygen, publicKey: dstu.boxPublicKey, secretField: 'box256_secret_key_hex',
+  },
+  384: {
+    open: dstu.box384Open, Enc: dstu.Box384Encryptor, Dec: dstu.Box384Decryptor,
+    keygen: dstu.box384Keygen, publicKey: dstu.box384PublicKey, secretField: 'box384_secret_key_hex',
   },
   512: {
     open: dstu.box512Open, Enc: dstu.Box512Encryptor, Dec: dstu.Box512Decryptor,
@@ -60,7 +64,7 @@ async function runThrough(transform, input) {
   return Buffer.concat(chunks);
 }
 
-for (const curve of [256, 512]) {
+for (const curve of [256, 384, 512]) {
   const c = CURVES[curve];
 
   test(`box${curve}: shared v3 vectors give their expected outcome`, async () => {
@@ -83,6 +87,14 @@ for (const curve of [256, 512]) {
   });
 
   test(`box${curve}: the 0.6 format is refused as unsupported`, async () => {
+    if (curve === 384) {
+      // 0.4-0.6 had no l(p)=384 (T-297): a version-2 byte stands in for such a file.
+      const secret = c.keygen();
+      const sealed = Buffer.concat([Buffer.from([2]), Buffer.alloc(240)]);
+      assert.throws(() => c.open(secret, sealed), /version/);
+      await assert.rejects(runThrough(new c.Dec(secret), [sealed]), /version/);
+      return;
+    }
     const vectors = load('legacy_v2.json');
     const secret = Buffer.from(vectors[c.secretField], 'hex');
     for (const v of vectors.cases.filter((x) => x.curve === curve)) {

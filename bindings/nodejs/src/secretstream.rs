@@ -16,7 +16,7 @@ use dstu_core::crypto_pwhash::passphrase_file::{self, Header, HEADER_BYTES};
 use dstu_core::crypto_secretstream::{
     FileDecryptor, FileEncryptor, Key, PullState, PushState, Tag, CHUNK_BYTES, MAX_RECORD_BYTES,
 };
-use dstu_core::{crypto_box, crypto_box512};
+use dstu_core::{crypto_box, crypto_box384, crypto_box512};
 use napi::bindgen_prelude::Buffer;
 use napi::{Error, Result};
 use napi_derive::napi;
@@ -141,7 +141,7 @@ impl SecretStreamPullState {
 
 /// Stream-file writer (T-284): the D-208 framing from the core codec. `js/secretstream.js`'s
 /// `SecretStreamEncryptor` drives it and does only buffering. The constructor takes a stream key;
-/// the `boxSeal`/`box512Seal`/`passphraseSeal` factories (T-269) start the same codec under a
+/// the `boxSeal`/`box384Seal`/`box512Seal`/`passphraseSeal` factories (T-269) start the same codec under a
 /// `crypto_box` KEM prefix or a passphrase-file header, and `prefix` then includes it.
 #[napi]
 pub struct SecretStreamFileEncryptor {
@@ -166,6 +166,17 @@ impl SecretStreamFileEncryptor {
     pub fn box_seal(public_key: Buffer) -> Result<Self> {
         let recipient = crate::crypto_box::public_key_from_bytes(&public_key)?;
         let (inner, prefix) = crypto_box::seal_stream(&recipient).dstu()?;
+        Ok(Self {
+            inner,
+            prefix: prefix.to_vec(),
+        })
+    }
+
+    /// Starts a `crypto_box384` (format v3) stream to `publicKey`.
+    #[napi(factory, js_name = "box384Seal")]
+    pub fn box384_seal(public_key: Buffer) -> Result<Self> {
+        let recipient = crate::box384::public_key_from_bytes(&public_key)?;
+        let (inner, prefix) = crypto_box384::seal_stream(&recipient).dstu()?;
         Ok(Self {
             inner,
             prefix: prefix.to_vec(),
@@ -246,6 +257,16 @@ impl SecretStreamFileDecryptor {
         let secret = crate::crypto_box::secret_key_from_bytes(&secret_key)?;
         let prefix = to_array::<{ crypto_box::OPEN_STREAM_PREFIX_BYTES }>(&prefix, "prefix")?;
         let inner = crypto_box::open_stream(&prefix, &secret).dstu()?;
+        Ok(Self { inner })
+    }
+
+    /// Opens a `crypto_box384` stream: `prefix` is its first `BOX384_OPEN_STREAM_PREFIX_BYTES`
+    /// bytes; feed the rest.
+    #[napi(factory, js_name = "box384Open")]
+    pub fn box384_open(secret_key: Buffer, prefix: Buffer) -> Result<Self> {
+        let secret = crate::box384::secret_key_from_bytes(&secret_key)?;
+        let prefix = to_array::<{ crypto_box384::OPEN_STREAM_PREFIX_BYTES }>(&prefix, "prefix")?;
+        let inner = crypto_box384::open_stream(&prefix, &secret).dstu()?;
         Ok(Self { inner })
     }
 

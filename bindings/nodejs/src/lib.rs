@@ -11,6 +11,7 @@
 //! `stream.Transform` wrapper is deferred to step 3, matching `bindings/python`'s own split.
 
 mod auth;
+mod box384;
 mod box512;
 mod crypto_box;
 mod generichash;
@@ -25,6 +26,7 @@ mod stream;
 mod util;
 
 pub use auth::*;
+pub use box384::*;
 pub use box512::*;
 pub use crypto_box::*;
 pub use generichash::*;
@@ -71,6 +73,8 @@ pub const PASSPHRASE_FILE_HEADER_BYTES: u32 = 28;
 #[napi]
 pub const BOX_OPEN_STREAM_PREFIX_BYTES: u32 = 129;
 #[napi]
+pub const BOX384_OPEN_STREAM_PREFIX_BYTES: u32 = 177;
+#[napi]
 pub const BOX512_OPEN_STREAM_PREFIX_BYTES: u32 = 257;
 
 // The literals above are what napi can export as constants; tie them to the core's own values.
@@ -79,6 +83,8 @@ const _: () = assert!(
         && PASSPHRASE_FILE_HEADER_BYTES as usize
             == dstu_core::crypto_pwhash::passphrase_file::HEADER_BYTES
         && BOX_OPEN_STREAM_PREFIX_BYTES as usize == dstu_core::crypto_box::OPEN_STREAM_PREFIX_BYTES
+        && BOX384_OPEN_STREAM_PREFIX_BYTES as usize
+            == dstu_core::crypto_box384::OPEN_STREAM_PREFIX_BYTES
         && BOX512_OPEN_STREAM_PREFIX_BYTES as usize
             == dstu_core::crypto_box512::OPEN_STREAM_PREFIX_BYTES
 );

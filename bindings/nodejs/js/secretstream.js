@@ -165,6 +165,13 @@ class BoxEncryptor extends SecretStreamEncryptor {
   }
 }
 
+/** `crypto_box384` counterpart of `BoxEncryptor`. */
+class Box384Encryptor extends SecretStreamEncryptor {
+  _startCodec(publicKey) {
+    return native.SecretStreamFileEncryptor.box384Seal(publicKey);
+  }
+}
+
 /** `crypto_box512` counterpart of `BoxEncryptor`. */
 class Box512Encryptor extends SecretStreamEncryptor {
   _startCodec(publicKey) {
@@ -213,6 +220,20 @@ class BoxDecryptor extends PrefixedDecryptor {
   }
 }
 
+/** `crypto_box384` counterpart of `BoxDecryptor`. */
+class Box384Decryptor extends PrefixedDecryptor {
+  constructor(secretKey, options) {
+    checkLength(secretKey, 48, 'secretKey');
+    super(secretKey, options);
+    this._prefixBytes = native.BOX384_OPEN_STREAM_PREFIX_BYTES;
+    this._prefixName = 'sealed message';
+  }
+
+  _openCodec(secretKey, prefix) {
+    return native.SecretStreamFileDecryptor.box384Open(secretKey, prefix);
+  }
+}
+
 /** `crypto_box512` counterpart of `BoxDecryptor`. */
 class Box512Decryptor extends PrefixedDecryptor {
   constructor(secretKey, options) {
@@ -248,6 +269,8 @@ module.exports = {
   SecretStreamDecryptor,
   BoxEncryptor,
   BoxDecryptor,
+  Box384Encryptor,
+  Box384Decryptor,
   Box512Encryptor,
   Box512Decryptor,
   PassphraseEncryptor,

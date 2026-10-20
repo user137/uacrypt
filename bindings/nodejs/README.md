@@ -56,6 +56,7 @@ console.log(dstu.secretboxOpen(key, sealed).toString()); // "a message worth pro
 |---|---|---|
 | `crypto_secretbox` | `secretboxKeygen`, `secretboxSeal`, `secretboxOpen` | Single-message authenticated encryption. `examples/secretbox.js`. |
 | `crypto_box` | `boxKeygen`, `boxPublicKey`, `boxSeal`, `boxOpen`, `BoxEncryptor`, `BoxDecryptor` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, `l(p)=256`, D-169). `boxSeal`/`boxOpen` hold the whole message in memory; the `stream.Transform` `BoxEncryptor`/`BoxDecryptor` write and read the same bytes (format v3) chunk by chunk, as `uacrypt box-seal`/`box-open` do. `examples/box.js`. |
+| `crypto_box384` | `box384Keygen`, `box384PublicKey`, `box384Seal`, `box384Open`, `Box384Encryptor`, `Box384Decryptor` | `l(p)=384`/E384/1 sibling of `crypto_box` (T-297). `examples/box384.js`. |
 | `crypto_box512` | `box512Keygen`, `box512PublicKey`, `box512Seal`, `box512Open`, `Box512Encryptor`, `Box512Decryptor` | `l(p)=512`/E512/1 sibling of `crypto_box` (T-193/T-204). `examples/box512.js`. |
 | `crypto_secretstream` | `secretstreamKeygen`, `SecretStreamPushState`, `SecretStreamPullState`, `SecretStreamEncryptor`, `SecretStreamDecryptor` | Chunked streaming AEAD. The `stream.Transform` `SecretStreamEncryptor`/`SecretStreamDecryptor` wire format matches `uacrypt encrypt`/`decrypt` exactly (D-118). `examples/secretstream-file.js`. |
 | `crypto_sign` | `signKeygen`, `signVerifyingKey`, `signMessage`, `signVerify` | DSTU 4145 `m=163` digital signatures, deterministic nonce (no RNG dependency). `examples/sign.js`. |
