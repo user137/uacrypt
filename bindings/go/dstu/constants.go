@@ -10,8 +10,12 @@ const (
 	// BoxOpenMinOverhead is the shortest sealed message (format v3, T-265): BoxSecretKey.Open's
 	// plaintext is at most len(sealed) minus this.
 	BoxOpenMinOverhead   = int(C.DSTU_BOX_OPEN_MIN_OVERHEAD)
-	Box512SecretKeyBytes = int(C.DSTU_BOX512_SECRETKEY_BYTES)
-	Box512PublicKeyBytes = int(C.DSTU_BOX512_PUBLICKEY_BYTES)
+	Box384SecretKeyBytes = int(C.DSTU_BOX384_SECRETKEY_BYTES)
+	Box384PublicKeyBytes = int(C.DSTU_BOX384_PUBLICKEY_BYTES)
+	// Box384OpenMinOverhead is the l(p)=384 sibling of BoxOpenMinOverhead.
+	Box384OpenMinOverhead = int(C.DSTU_BOX384_OPEN_MIN_OVERHEAD)
+	Box512SecretKeyBytes  = int(C.DSTU_BOX512_SECRETKEY_BYTES)
+	Box512PublicKeyBytes  = int(C.DSTU_BOX512_PUBLICKEY_BYTES)
 	// Box512OpenMinOverhead is the l(p)=512 sibling of BoxOpenMinOverhead.
 	Box512OpenMinOverhead = int(C.DSTU_BOX512_OPEN_MIN_OVERHEAD)
 	AuthKeyBytes          = int(C.DSTU_AUTH_KEY_BYTES)

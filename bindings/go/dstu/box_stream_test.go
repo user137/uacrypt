@@ -11,8 +11,8 @@ import (
 	"testing"
 )
 
-// Streaming crypto_box/crypto_box512 (T-265 format v3, T-269): NewBox(512)EncryptWriter/
-// NewBox(512)DecryptReader over the C ABI's _seal_stream/_open_stream. Happy path: the shared v3
+// Streaming crypto_box/crypto_box384/crypto_box512 (T-265 format v3, T-269, T-297):
+// NewBox(384|512)EncryptWriter/NewBox(384|512)DecryptReader over the C ABI's _seal_stream/_open_stream. Happy path: the shared v3
 // vectors (one-shot Open and the streaming reader), a round trip across record boundaries,
 // one-shot/streaming byte equivalence. Security: tampering, a wrong key, trailing data. Misuse: a
 // cut prefix, the 0.4-0.6 format (an unsupported version even when shorter than a v3 blob - the
@@ -20,6 +20,7 @@ import (
 
 type boxVectors struct {
 	Box256SecretKeyHex string `json:"box256_secret_key_hex"`
+	Box384SecretKeyHex string `json:"box384_secret_key_hex"`
 	Box512SecretKeyHex string `json:"box512_secret_key_hex"`
 	Cases              []struct {
 		Curve        int    `json:"curve"`
@@ -51,7 +52,7 @@ func pattern(n int) []byte {
 	return out
 }
 
-// boxCurve puts one curve's operations behind a common shape, so each test runs on both.
+// boxCurve puts one curve's operations behind a common shape, so each test runs on every size.
 type boxCurve struct {
 	open     func([]byte) ([]byte, error)
 	reader   func(io.Reader) (*SecretStreamDecryptReader, error)
@@ -77,6 +78,25 @@ func newBoxCurve(t *testing.T, bits int, secret []byte) boxCurve {
 			open:     sk.Open,
 			reader:   func(r io.Reader) (*SecretStreamDecryptReader, error) { return NewBoxDecryptReader(r, sk, true) },
 			writer:   func(w io.Writer) (*SecretStreamEncryptWriter, error) { return NewBoxEncryptWriter(w, pk, true) },
+			closeAll: func() { sk.Close(); pk.Close() },
+		}
+	}
+	if bits == 384 {
+		var sk *Box384SecretKey
+		var err error
+		if secret == nil {
+			sk, err = GenerateBox384SecretKey()
+		} else {
+			sk, err = Box384SecretKeyFromBytes(secret)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		pk := sk.PublicKey()
+		return boxCurve{
+			open:     sk.Open,
+			reader:   func(r io.Reader) (*SecretStreamDecryptReader, error) { return NewBox384DecryptReader(r, sk, true) },
+			writer:   func(w io.Writer) (*SecretStreamEncryptWriter, error) { return NewBox384EncryptWriter(w, pk, true) },
 			closeAll: func() { sk.Close(); pk.Close() },
 		}
 	}
@@ -130,15 +150,18 @@ func (c boxCurve) streamSeal(t *testing.T, message []byte) []byte {
 }
 
 func secretField(v boxVectors, bits int) string {
-	if bits == 256 {
+	switch bits {
+	case 256:
 		return v.Box256SecretKeyHex
+	case 384:
+		return v.Box384SecretKeyHex
 	}
 	return v.Box512SecretKeyHex
 }
 
 func TestBoxStreamSharedV3Vectors(t *testing.T) {
 	v := loadBoxVectors(t, "v3.json")
-	for _, bits := range []int{256, 512} {
+	for _, bits := range []int{256, 384, 512} {
 		c := newBoxCurve(t, bits, mustHex(t, secretField(v, bits)))
 		seen := 0
 		for _, tc := range v.Cases {
@@ -167,7 +190,7 @@ func TestBoxStreamSharedV3Vectors(t *testing.T) {
 
 func TestBoxStreamRefusesTheZeroSixFormatAsAnUnsupportedVersion(t *testing.T) {
 	v := loadBoxVectors(t, "legacy_v2.json")
-	for _, bits := range []int{256, 512} {
+	for _, bits := range []int{256, 512} { // 0.4-0.6 had no l(p)=384
 		c := newBoxCurve(t, bits, mustHex(t, secretField(v, bits)))
 		for _, tc := range v.Cases {
 			if tc.Curve != bits {
@@ -185,8 +208,23 @@ func TestBoxStreamRefusesTheZeroSixFormatAsAnUnsupportedVersion(t *testing.T) {
 	}
 }
 
+// TestBox384RefusesAVersion2BlobAsAnUnsupportedVersion: no 0.4-0.6 file exists at l(p)=384
+// (T-297), so a version-2 byte in front of a long enough blob stands in for one.
+func TestBox384RefusesAVersion2BlobAsAnUnsupportedVersion(t *testing.T) {
+	c := newBoxCurve(t, 384, nil)
+	defer c.closeAll()
+	sealed := make([]byte, Box384OpenMinOverhead+10)
+	sealed[0] = 2
+	if _, err := c.open(sealed); err == nil || !strings.Contains(err.Error(), "version") {
+		t.Fatalf("one-shot: %v, want an unsupported-version error", err)
+	}
+	if _, err := c.streamOpen(sealed); err == nil || !strings.Contains(err.Error(), "version") {
+		t.Fatalf("streaming: %v, want an unsupported-version error", err)
+	}
+}
+
 func TestBoxStreamRoundTripReadsBackStreamingAndOneShot(t *testing.T) {
-	for _, bits := range []int{256, 512} {
+	for _, bits := range []int{256, 384, 512} {
 		c := newBoxCurve(t, bits, nil)
 		for _, size := range []int{0, 1, 8 * 1024, 8*1024 + 1, 3*8*1024 + 5} {
 			message := pattern(size)
@@ -206,7 +244,7 @@ func TestBoxStreamRoundTripReadsBackStreamingAndOneShot(t *testing.T) {
 
 func TestBoxStreamTamperingAWrongKeyAndTrailingDataFailClosed(t *testing.T) {
 	var cryptoErr *CryptoError
-	for _, bits := range []int{256, 512} {
+	for _, bits := range []int{256, 384, 512} {
 		c := newBoxCurve(t, bits, nil)
 		other := newBoxCurve(t, bits, nil)
 		sealed := c.streamSeal(t, pattern(100))
@@ -229,7 +267,7 @@ func TestBoxStreamTamperingAWrongKeyAndTrailingDataFailClosed(t *testing.T) {
 }
 
 func TestBoxStreamRefusesACutPrefixAsTooShort(t *testing.T) {
-	for _, bits := range []int{256, 512} {
+	for _, bits := range []int{256, 384, 512} {
 		c := newBoxCurve(t, bits, nil)
 		sealed := c.streamSeal(t, pattern(10))
 		for _, cut := range []int{0, 1, 50} {
@@ -242,7 +280,7 @@ func TestBoxStreamRefusesACutPrefixAsTooShort(t *testing.T) {
 }
 
 func TestBoxStreamCloseWithoutCompleteLeavesNoFinalRecord(t *testing.T) {
-	for _, bits := range []int{256, 512} {
+	for _, bits := range []int{256, 384, 512} {
 		c := newBoxCurve(t, bits, nil)
 		var buf bytes.Buffer
 		w, err := c.writer(&buf)

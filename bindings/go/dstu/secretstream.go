@@ -107,6 +107,8 @@ func NewSecretStreamEncryptWriter(inner io.Writer, key *SecretstreamKey, leaveOp
 const (
 	boxSealStreamPrefixBytes            = C.DSTU_BOX_SEAL_STREAM_PREFIX_BYTES
 	boxOpenStreamPrefixBytes            = C.DSTU_BOX_OPEN_STREAM_PREFIX_BYTES
+	box384SealStreamPrefixBytes         = C.DSTU_BOX384_SEAL_STREAM_PREFIX_BYTES
+	box384OpenStreamPrefixBytes         = C.DSTU_BOX384_OPEN_STREAM_PREFIX_BYTES
 	box512SealStreamPrefixBytes         = C.DSTU_BOX512_SEAL_STREAM_PREFIX_BYTES
 	box512OpenStreamPrefixBytes         = C.DSTU_BOX512_OPEN_STREAM_PREFIX_BYTES
 	passphraseFileHeaderBytes           = C.DSTU_PASSPHRASE_FILE_HEADER_BYTES
@@ -121,6 +123,17 @@ func NewBoxEncryptWriter(inner io.Writer, recipient *BoxPublicKey, leaveOpen boo
 	prefixPtr, _ := cBytes(prefix)
 	var enc *C.DstuFileEncryptor
 	if err := statusError(C.dstu_box_seal_stream(recipient.ptr, prefixPtr, &enc)); err != nil {
+		return nil, err
+	}
+	return startEncryptWriter(inner, enc, prefix, leaveOpen)
+}
+
+// NewBox384EncryptWriter is the crypto_box384 counterpart of NewBoxEncryptWriter.
+func NewBox384EncryptWriter(inner io.Writer, recipient *Box384PublicKey, leaveOpen bool) (*SecretStreamEncryptWriter, error) {
+	prefix := make([]byte, box384SealStreamPrefixBytes)
+	prefixPtr, _ := cBytes(prefix)
+	var enc *C.DstuFileEncryptor
+	if err := statusError(C.dstu_box384_seal_stream(recipient.ptr, prefixPtr, &enc)); err != nil {
 		return nil, err
 	}
 	return startEncryptWriter(inner, enc, prefix, leaveOpen)
@@ -287,6 +300,20 @@ func NewBoxDecryptReader(inner io.Reader, secret *BoxSecretKey, leaveOpen bool) 
 	prefixPtr, _ := cBytes(prefix)
 	var dec *C.DstuFileDecryptor
 	if err := statusError(C.dstu_box_open_stream(secret.ptr, prefixPtr, &dec)); err != nil {
+		return nil, err
+	}
+	return startDecryptReader(inner, dec, leaveOpen)
+}
+
+// NewBox384DecryptReader is the crypto_box384 counterpart of NewBoxDecryptReader.
+func NewBox384DecryptReader(inner io.Reader, secret *Box384SecretKey, leaveOpen bool) (*SecretStreamDecryptReader, error) {
+	prefix, err := readPrefix(inner, box384OpenStreamPrefixBytes, "sealed message")
+	if err != nil {
+		return nil, err
+	}
+	prefixPtr, _ := cBytes(prefix)
+	var dec *C.DstuFileDecryptor
+	if err := statusError(C.dstu_box384_open_stream(secret.ptr, prefixPtr, &dec)); err != nil {
 		return nil, err
 	}
 	return startDecryptReader(inner, dec, leaveOpen)
