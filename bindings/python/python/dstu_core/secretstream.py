@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from ._dstu_core import (
+    BOX384_OPEN_STREAM_PREFIX_BYTES,
     BOX512_OPEN_STREAM_PREFIX_BYTES,
     BOX_OPEN_STREAM_PREFIX_BYTES,
     PASSPHRASE_FILE_HEADER_BYTES,
@@ -201,6 +202,21 @@ class BoxDecryptor(SecretStreamDecryptor):
     def __init__(self, secret_key: bytes, inp: _Readable) -> None:
         prefix = _read_prefix(inp, BOX_OPEN_STREAM_PREFIX_BYTES, "sealed message")
         self._start(SecretStreamFileDecryptor.box_open(secret_key, prefix), inp)
+
+
+class Box384Encryptor(SecretStreamEncryptor):
+    """`crypto_box384` counterpart of `BoxEncryptor`."""
+
+    def __init__(self, public_key: bytes, out: _Writable) -> None:
+        self._start(SecretStreamFileEncryptor.box384_seal(public_key), out)
+
+
+class Box384Decryptor(SecretStreamDecryptor):
+    """`crypto_box384` counterpart of `BoxDecryptor`."""
+
+    def __init__(self, secret_key: bytes, inp: _Readable) -> None:
+        prefix = _read_prefix(inp, BOX384_OPEN_STREAM_PREFIX_BYTES, "sealed message")
+        self._start(SecretStreamFileDecryptor.box384_open(secret_key, prefix), inp)
 
 
 class Box512Encryptor(SecretStreamEncryptor):

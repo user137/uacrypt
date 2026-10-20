@@ -57,6 +57,7 @@ assert d.secretbox_open(key, sealed) == b"a message worth protecting"
 |---|---|---|
 | `crypto_secretbox` | `secretbox_keygen`, `secretbox_seal`, `secretbox_open` | Single-message authenticated encryption. `examples/secretbox.py`. |
 | `crypto_box` | `box_keygen`, `box_public_key`, `box_seal`, `box_open`, `BoxEncryptor`, `BoxDecryptor` | Public-key encryption (hybrid via KDF over `hazmat::dstu9041`, `l(p)=256`, D-169). `box_seal`/`box_open` hold the whole message in memory; the file-like `BoxEncryptor`/`BoxDecryptor` write and read the same bytes (format v3) chunk by chunk, as `uacrypt box-seal`/`box-open` do. `examples/box.py`. |
+| `crypto_box384` | `box384_keygen`, `box384_public_key`, `box384_seal`, `box384_open`, `Box384Encryptor`, `Box384Decryptor` | `l(p)=384`/E384/1 sibling of `crypto_box` (T-297). `examples/box384.py`. |
 | `crypto_box512` | `box512_keygen`, `box512_public_key`, `box512_seal`, `box512_open`, `Box512Encryptor`, `Box512Decryptor` | `l(p)=512`/E512/1 sibling of `crypto_box` (T-193/T-204). `examples/box512.py`. |
 | `crypto_secretstream` | `secretstream_keygen`, `SecretStreamPushState`, `SecretStreamPullState`, `SecretStreamEncryptor`, `SecretStreamDecryptor` | Chunked streaming AEAD. The file-like `SecretStreamEncryptor`/`SecretStreamDecryptor` wire format matches `uacrypt encrypt`/`decrypt` exactly (D-118). `examples/secretstream_file.py`. |
 | `crypto_sign` | `sign_keygen`, `sign_verifying_key`, `sign_message`, `sign_verify` | DSTU 4145 `m=163` digital signatures, deterministic nonce (no RNG dependency). `examples/sign.py`. |

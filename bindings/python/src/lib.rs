@@ -14,6 +14,7 @@
 //! `crypto_secretstream` wrapper) is deferred to later steps.
 
 mod auth;
+mod box384;
 mod box512;
 mod crypto_box;
 mod error;
@@ -55,6 +56,15 @@ fn _dstu_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add(
         "BOX_OPEN_STREAM_PREFIX_BYTES",
         dstu_core::crypto_box::OPEN_STREAM_PREFIX_BYTES,
+    )?;
+
+    m.add_function(wrap_pyfunction!(box384::box384_keygen, m)?)?;
+    m.add_function(wrap_pyfunction!(box384::box384_public_key, m)?)?;
+    m.add_function(wrap_pyfunction!(box384::box384_seal, m)?)?;
+    m.add_function(wrap_pyfunction!(box384::box384_open, m)?)?;
+    m.add(
+        "BOX384_OPEN_STREAM_PREFIX_BYTES",
+        dstu_core::crypto_box384::OPEN_STREAM_PREFIX_BYTES,
     )?;
 
     m.add_function(wrap_pyfunction!(box512::box512_keygen, m)?)?;

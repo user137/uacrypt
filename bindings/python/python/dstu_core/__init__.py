@@ -6,6 +6,7 @@ docs/DECISIONS.md for the full threat model and per-construction status
 """
 
 from ._dstu_core import (
+    BOX384_OPEN_STREAM_PREFIX_BYTES,
     BOX512_OPEN_STREAM_PREFIX_BYTES,
     BOX_OPEN_STREAM_PREFIX_BYTES,
     PASSPHRASE_FILE_HEADER_BYTES,
@@ -25,6 +26,10 @@ from ._dstu_core import (
     auth,
     auth_keygen,
     auth_verify,
+    box384_keygen,
+    box384_open,
+    box384_public_key,
+    box384_seal,
     box512_keygen,
     box512_open,
     box512_public_key,
@@ -59,6 +64,8 @@ from ._dstu_core import (
     stream_keygen,
 )
 from .secretstream import (
+    Box384Decryptor,
+    Box384Encryptor,
     Box512Decryptor,
     Box512Encryptor,
     BoxDecryptor,
@@ -70,6 +77,7 @@ from .secretstream import (
 )
 
 __all__ = [
+    "BOX384_OPEN_STREAM_PREFIX_BYTES",
     "BOX512_OPEN_STREAM_PREFIX_BYTES",
     "BOX_OPEN_STREAM_PREFIX_BYTES",
     "PASSPHRASE_FILE_HEADER_BYTES",
@@ -81,6 +89,8 @@ __all__ = [
     "SECRETSTREAM_TAG_MESSAGE",
     "SECRETSTREAM_TAG_PUSH",
     "SECRETSTREAM_TAG_REKEY",
+    "Box384Decryptor",
+    "Box384Encryptor",
     "Box512Decryptor",
     "Box512Encryptor",
     "BoxDecryptor",
@@ -97,6 +107,10 @@ __all__ = [
     "auth",
     "auth_keygen",
     "auth_verify",
+    "box384_keygen",
+    "box384_open",
+    "box384_public_key",
+    "box384_seal",
     "box512_keygen",
     "box512_open",
     "box512_public_key",

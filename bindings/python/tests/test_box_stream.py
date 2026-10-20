@@ -1,5 +1,5 @@
-"""Streaming `crypto_box`/`crypto_box512` (T-265 format v3, T-269): `BoxEncryptor`/`BoxDecryptor`
-and the 512 pair over the core's `seal_stream`/`open_stream`. Happy path: the shared v3 vectors
+"""Streaming `crypto_box`/`crypto_box384`/`crypto_box512` (T-265 format v3, T-269, T-297):
+`BoxEncryptor`/`BoxDecryptor` and the 384/512 pairs over the core's `seal_stream`/`open_stream`. Happy path: the shared v3 vectors
 (one-shot `box_open` and the streaming reader), a round trip across record boundaries, and the
 one-shot/streaming byte equivalence. Security: tampering and a wrong key. Misuse: wrong-length
 keys, a cut prefix, write after close, the 0.4-0.6 format. Error path: a failing sink.
@@ -41,6 +41,14 @@ _CURVES = {
         d.box_public_key,
         "box256_secret_key_hex",
     ),
+    384: (
+        d.box384_open,
+        d.Box384Encryptor,
+        d.Box384Decryptor,
+        d.box384_keygen,
+        d.box384_public_key,
+        "box384_secret_key_hex",
+    ),
     512: (
         d.box512_open,
         d.Box512Encryptor,
@@ -56,7 +64,7 @@ def _stream_open(decryptor: type, secret: bytes, sealed: bytes) -> bytes:
     return decryptor(secret, io.BytesIO(sealed)).read_all()
 
 
-@pytest.mark.parametrize("curve", [256, 512])
+@pytest.mark.parametrize("curve", [256, 384, 512])
 def test_shared_v3_vectors_give_their_expected_outcome(curve: int) -> None:
     vectors = _load("v3.json")
     box_open, _, decryptor, _, _, secret_field = _CURVES[curve]
@@ -77,7 +85,7 @@ def test_shared_v3_vectors_give_their_expected_outcome(curve: int) -> None:
     assert seen > 0
 
 
-@pytest.mark.parametrize("curve", [256, 512])
+@pytest.mark.parametrize("curve", [256, 512])  # 0.4-0.6 had no l(p)=384
 def test_the_0_6_format_is_refused_as_unsupported(curve: int) -> None:
     vectors = _load("legacy_v2.json")
     box_open, _, decryptor, _, _, secret_field = _CURVES[curve]
@@ -90,7 +98,7 @@ def test_the_0_6_format_is_refused_as_unsupported(curve: int) -> None:
             _stream_open(decryptor, secret, sealed)
 
 
-@pytest.mark.parametrize("curve", [256, 512])
+@pytest.mark.parametrize("curve", [256, 384, 512])
 @pytest.mark.parametrize("size", [0, 1, 8 * 1024, 8 * 1024 + 1, 3 * 8 * 1024 + 5])
 def test_stream_round_trip_and_one_shot_reader(curve: int, size: int) -> None:
     box_open, encryptor, decryptor, keygen, public_key, _ = _CURVES[curve]
@@ -105,7 +113,7 @@ def test_stream_round_trip_and_one_shot_reader(curve: int, size: int) -> None:
     assert box_open(secret, sealed) == message
 
 
-@pytest.mark.parametrize("curve", [256, 512])
+@pytest.mark.parametrize("curve", [256, 384, 512])
 def test_tampered_and_wrong_key_fail_closed(curve: int) -> None:
     _, encryptor, decryptor, keygen, public_key, _ = _CURVES[curve]
     secret = keygen()
@@ -124,7 +132,7 @@ def test_tampered_and_wrong_key_fail_closed(curve: int) -> None:
         _stream_open(decryptor, secret, bytes(sealed) + b"\x00")
 
 
-@pytest.mark.parametrize("curve", [256, 512])
+@pytest.mark.parametrize("curve", [256, 384, 512])
 def test_misuse_is_refused(curve: int) -> None:
     _, encryptor, decryptor, keygen, public_key, _ = _CURVES[curve]
     secret = keygen()
@@ -154,7 +162,7 @@ class _FailingSink:
         return len(data)
 
 
-@pytest.mark.parametrize("curve", [256, 512])
+@pytest.mark.parametrize("curve", [256, 384, 512])
 def test_a_failing_sink_raises_its_own_error(curve: int) -> None:
     _, encryptor, _, keygen, public_key, _ = _CURVES[curve]
     with pytest.raises(OSError, match="disk full"):
@@ -162,3 +170,13 @@ def test_a_failing_sink_raises_its_own_error(curve: int) -> None:
     enc = encryptor(public_key(keygen()), _FailingSink(1))
     with pytest.raises(OSError, match="disk full"):
         enc.write(_pattern(3 * 8 * 1024))
+
+
+def test_a_version_2_blob_is_unsupported_at_384() -> None:
+    """No 0.4-0.6 file exists at l(p)=384 (T-297): a version-2 byte stands in for one."""
+    secret = d.box384_keygen()
+    sealed = bytes([2]) + bytes(240)
+    with pytest.raises(d.DstuError, match="version"):
+        d.box384_open(secret, sealed)
+    with pytest.raises(d.DstuError, match="version"):
+        _stream_open(d.Box384Decryptor, secret, sealed)
