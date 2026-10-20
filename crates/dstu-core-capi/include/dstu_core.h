@@ -21,6 +21,27 @@
 
 #define DSTU_AUTH_TAG_BYTES 32
 
+#define DSTU_BOX384_SECRETKEY_BYTES 48
+
+#define DSTU_BOX384_PUBLICKEY_BYTES 48
+
+/**
+ * The smallest sealed message (T-265, D-239: format v3, `version (1) || KEM ciphertext (176) ||
+ * stream file` with one empty `Final` record). `dstu_box384_open`'s plaintext is at most `sealed_len -
+ * DSTU_BOX384_OPEN_MIN_OVERHEAD` bytes; `dstu_box384_sealed_len` gives `dstu_box384_seal`'s exact output size.
+ */
+#define DSTU_BOX384_OPEN_MIN_OVERHEAD 231
+
+/**
+ * The bytes `dstu_box384_seal_stream` writes first: the box prefix and the stream file's own prefix.
+ */
+#define DSTU_BOX384_SEAL_STREAM_PREFIX_BYTES 210
+
+/**
+ * The bytes `dstu_box384_open_stream` reads: the version byte and the KEM ciphertext.
+ */
+#define DSTU_BOX384_OPEN_STREAM_PREFIX_BYTES 177
+
 #define DSTU_BOX512_SECRETKEY_BYTES 64
 
 #define DSTU_BOX512_PUBLICKEY_BYTES 64
@@ -286,6 +307,17 @@ typedef enum {
 typedef struct DstuAuthKey DstuAuthKey;
 
 /**
+ * Opaque `crypto_box384` public-key handle.
+ */
+typedef struct DstuBox384PublicKey DstuBox384PublicKey;
+
+/**
+ * Opaque `crypto_box384` secret-key handle. `dstu_box384_secretkey_free`'s `Box::from_raw` fires
+ * the wrapped `SecretKey`'s own `Zeroize`-on-`Drop` impl.
+ */
+typedef struct DstuBox384SecretKey DstuBox384SecretKey;
+
+/**
  * Opaque `crypto_box512` public-key handle.
  */
 typedef struct DstuBox512PublicKey DstuBox512PublicKey;
@@ -460,6 +492,189 @@ DstuStatus dstu_auth_verify(const DstuAuthKey *key,
                             const uint8_t *message,
                             size_t message_len,
                             const uint8_t *tag);
+
+/**
+ * Generates a fresh secret key from the OS CSPRNG. Returns `DSTU_OK` (writing `*out`) or
+ * `DSTU_ERR_RANDOM`/`DSTU_ERR_NULL_POINTER`.
+ *
+ * # Safety
+ *
+ * `out` must be a valid, non-null pointer to a `*mut DstuBox384SecretKey`.
+ */
+ DstuStatus dstu_box384_secretkey_generate(DstuBox384SecretKey **out);
+
+/**
+ * Builds a secret key from a big-endian `DSTU_BOX384_SECRETKEY_BYTES`-byte scalar. Returns
+ * `DSTU_ERR_INVALID_KEY` if it's outside the valid range `{2, ..., n-2}`,
+ * `DSTU_ERR_NULL_POINTER` if `bytes`/`out` is NULL.
+ *
+ * # Safety
+ *
+ * `bytes` must be valid for reads of `DSTU_BOX384_SECRETKEY_BYTES` bytes when non-null; `out`
+ * must be a valid, non-null pointer to a `*mut DstuBox384SecretKey`.
+ */
+ DstuStatus dstu_box384_secretkey_from_bytes(const uint8_t *bytes, DstuBox384SecretKey **out);
+
+/**
+ * Copies the key's big-endian `DSTU_BOX384_SECRETKEY_BYTES`-byte encoding into `out`. **The
+ * caller must `dstu_memzero()` this once done** - same gap `dstu_box_secretkey_bytes` has. A NULL
+ * `key`/`out` is a no-op.
+ *
+ * # Safety
+ *
+ * `out` must be valid for writes of `DSTU_BOX384_SECRETKEY_BYTES` bytes when non-null.
+ */
+ void dstu_box384_secretkey_bytes(const DstuBox384SecretKey *key, uint8_t *out);
+
+/**
+ * Derives the public key for `key` - infallible. Returns NULL if `key` is NULL.
+ *
+ * # Safety
+ *
+ * `key` must be either NULL or a valid pointer from `dstu_box384_secretkey_generate`/
+ * `dstu_box384_secretkey_from_bytes`.
+ */
+ DstuBox384PublicKey *dstu_box384_secretkey_public_key(const DstuBox384SecretKey *key);
+
+/**
+ * Frees a secret key. NULL is a no-op.
+ *
+ * # Safety
+ *
+ * `key` must be either NULL or a pointer previously returned by `dstu_box384_secretkey_generate`/
+ * `dstu_box384_secretkey_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
+ */
+
+void dstu_box384_secretkey_free(DstuBox384SecretKey *key);
+
+/**
+ * Builds a public key from its compressed `DSTU_BOX384_PUBLICKEY_BYTES`-byte `x`-coordinate
+ * encoding (`crypto_box384`'s own module doc explains why `x` alone is a safe compression).
+ * Returns `DSTU_ERR_INVALID_KEY` if `bytes` isn't a valid field element, or doesn't reconstruct to
+ * a point inside the base point's own prime-order subgroup; `DSTU_ERR_NULL_POINTER` if
+ * `bytes`/`out` is NULL.
+ *
+ * # Safety
+ *
+ * `bytes` must be valid for reads of `DSTU_BOX384_PUBLICKEY_BYTES` bytes when non-null; `out`
+ * must be a valid, non-null pointer to a `*mut DstuBox384PublicKey`.
+ */
+ DstuStatus dstu_box384_publickey_from_bytes(const uint8_t *bytes, DstuBox384PublicKey **out);
+
+/**
+ * Copies the key's `DSTU_BOX384_PUBLICKEY_BYTES`-byte encoding into `out` - not secret, no
+ * `dstu_memzero` needed afterward. A NULL `key`/`out` is a no-op.
+ *
+ * # Safety
+ *
+ * `out` must be valid for writes of `DSTU_BOX384_PUBLICKEY_BYTES` bytes when non-null.
+ */
+ void dstu_box384_publickey_bytes(const DstuBox384PublicKey *key, uint8_t *out);
+
+/**
+ * Frees a public key. NULL is a no-op.
+ *
+ * # Safety
+ *
+ * `key` must be either NULL or a pointer previously returned by
+ * `dstu_box384_secretkey_public_key`/`dstu_box384_publickey_from_bytes`, not already freed - freeing an already-freed pointer is undefined behavior, not merely unsupported; this fn cannot detect or reject it.
+ */
+
+void dstu_box384_publickey_free(DstuBox384PublicKey *key);
+
+/**
+ * Encrypts `message` (any length) to `recipient` in one call (format v3, T-265) - the whole
+ * message is read from `message` and held in `sealed_out`; `dstu_box384_seal_stream` is the
+ * bounded-memory form. `sealed_out` must have capacity >= `dstu_box384_sealed_len(message_len)` -
+ * checked before any crypto work runs; `DSTU_ERR_BUFFER_TOO_SMALL` if not. On `DSTU_OK`,
+ * `*sealed_len_out` is exactly that length.
+ *
+ * # Safety
+ *
+ * `recipient`/`sealed_len_out` must be non-null; `message` must be valid for reads of
+ * `message_len` bytes when non-null and `message_len > 0`; `sealed_out` must be valid for writes
+ * of `sealed_out_cap` bytes when non-null.
+ */
+
+DstuStatus dstu_box384_seal(const DstuBox384PublicKey *recipient,
+                            const uint8_t *message,
+                            size_t message_len,
+                            uint8_t *sealed_out,
+                            size_t sealed_out_cap,
+                            size_t *sealed_len_out);
+
+/**
+ * Decrypts `sealed` (format v3, from [`dstu_box384_seal`] or [`dstu_box384_seal_stream`]) under `secret`
+ * in one call - `dstu_box384_open_stream` is the bounded-memory form. `plaintext_out` must have
+ * capacity >= `sealed_len - DSTU_BOX384_OPEN_MIN_OVERHEAD` (0 when `sealed_len` is smaller) - checked
+ * before any crypto work runs; `DSTU_ERR_BUFFER_TOO_SMALL` if not. On `DSTU_OK`,
+ * `*plaintext_len_out` is the plaintext length, at most that capacity (the record framing makes
+ * it shorter for multi-chunk messages). `DSTU_ERR_UNSUPPORTED_VERSION` for a blob whose first byte
+ * is not 3 (D-239); `DSTU_ERR_TRUNCATED` if it is too short or its
+ * stream ends early. On `DSTU_ERR_TAG_MISMATCH` (wrong key, or any tampered wire segment -
+ * deliberately not distinguished further, see this module's own top doc comment), `plaintext_out`
+ * is left zeroed, never partially-trusted plaintext.
+ *
+ * # Safety
+ *
+ * `secret`/`plaintext_len_out` must be non-null; `sealed` must be valid for reads of
+ * `sealed_len` bytes when non-null and `sealed_len > 0`; `plaintext_out` must be valid for
+ * writes of `plaintext_out_cap` bytes when non-null.
+ */
+
+DstuStatus dstu_box384_open(const DstuBox384SecretKey *secret,
+                            const uint8_t *sealed,
+                            size_t sealed_len,
+                            uint8_t *plaintext_out,
+                            size_t plaintext_out_cap,
+                            size_t *plaintext_len_out);
+
+/**
+ * Writes `dstu_box384_seal`'s exact output length for a `message_len`-byte message to `*len_out`.
+ * Returns `DSTU_OK`, `DSTU_ERR_INVALID_LENGTH` if it would overflow `size_t`, or
+ * `DSTU_ERR_NULL_POINTER`.
+ *
+ * # Safety
+ *
+ * `len_out` must be NULL or valid for a write.
+ */
+ DstuStatus dstu_box384_sealed_len(size_t message_len, size_t *len_out);
+
+/**
+ * Starts sealing a message of any length to `recipient` with bounded memory (T-265): writes the
+ * `DSTU_BOX384_SEAL_STREAM_PREFIX_BYTES`-byte prefix (write it first) to `prefix_out` and a stream-file
+ * encryptor to `*out` - drive it with `dstu_secretstream_file_encryptor_seal_chunk`/`_seal_final`
+ * and free it with `dstu_secretstream_file_encryptor_free`. The output is what `dstu_box384_seal`
+ * returns. Returns `DSTU_OK`, `DSTU_ERR_RANDOM` or `DSTU_ERR_NULL_POINTER`.
+ *
+ * # Safety
+ *
+ * `recipient` must be NULL or a valid public-key handle; `prefix_out` must be NULL or valid for
+ * writes of `DSTU_BOX384_SEAL_STREAM_PREFIX_BYTES` bytes; `out` must be NULL or valid for a write.
+ */
+
+DstuStatus dstu_box384_seal_stream(const DstuBox384PublicKey *recipient,
+                                   uint8_t *prefix_out,
+                                   DstuFileEncryptor **out);
+
+/**
+ * Starts opening a sealed message with bounded memory (T-265): `prefix` is its first
+ * `DSTU_BOX384_OPEN_STREAM_PREFIX_BYTES` bytes. On `DSTU_OK`, `*out` is a stream-file decryptor for
+ * everything after them - drive it with `dstu_secretstream_file_decryptor_next_len`/`_feed`/
+ * `_finish` and free it with `dstu_secretstream_file_decryptor_free`. Returns
+ * `DSTU_ERR_UNSUPPORTED_VERSION` if `prefix` does not start with 3 (checked before `secret` is
+ * used), `DSTU_ERR_TAG_MISMATCH` if the KEM ciphertext does not open under `secret`, or
+ * `DSTU_ERR_NULL_POINTER`; `*out` is not written on failure.
+ *
+ * # Safety
+ *
+ * `secret` must be NULL or a valid secret-key handle; `prefix` must be NULL or valid for reads of
+ * `DSTU_BOX384_OPEN_STREAM_PREFIX_BYTES` bytes; `out` must be NULL or valid for a write.
+ */
+
+DstuStatus dstu_box384_open_stream(const DstuBox384SecretKey *secret,
+                                   const uint8_t *prefix,
+                                   DstuFileDecryptor **out);
 
 /**
  * Generates a fresh secret key from the OS CSPRNG. Returns `DSTU_OK` (writing `*out`) or

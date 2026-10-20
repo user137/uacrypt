@@ -633,6 +633,97 @@ static void test_box512(void) {
   dstu_box512_secretkey_free(secret);
 }
 
+static void test_box384(void) {
+  DstuBox384SecretKey *secret = NULL;
+  CHECK(dstu_box384_secretkey_generate(&secret) == DSTU_OK, "box384 secretkey generate should succeed");
+  DstuBox384PublicKey *public_key = dstu_box384_secretkey_public_key(secret);
+  CHECK(public_key != NULL, "box384 secretkey_public_key should not return NULL for a valid key");
+
+  const char *message = "a message for the public key's holder only";
+  size_t message_len = strlen(message);
+  size_t sealed_cap = 0;
+  CHECK(dstu_box384_sealed_len(message_len, &sealed_cap) == DSTU_OK, "box384 sealed_len should succeed");
+  uint8_t *sealed = malloc(sealed_cap);
+  size_t sealed_len = 0;
+  CHECK(dstu_box384_seal(public_key, (const uint8_t *)message, message_len, sealed, sealed_cap, &sealed_len) ==
+            DSTU_OK,
+        "box384 seal should succeed with an exactly-sized buffer");
+  CHECK(sealed_len == sealed_cap, "sealed_len should equal dstu_box384_sealed_len exactly");
+
+  uint8_t *opened = malloc(message_len);
+  size_t opened_len = 0;
+  CHECK(dstu_box384_open(secret, sealed, sealed_len, opened, message_len, &opened_len) == DSTU_OK,
+        "box384 open should succeed on an authentic ciphertext");
+  CHECK(opened_len == message_len && memcmp(opened, message, message_len) == 0,
+        "box384 opened plaintext should match the original message");
+
+  /* rejection: tampered ciphertext */
+  uint8_t *tampered = malloc(sealed_len);
+  memcpy(tampered, sealed, sealed_len);
+  tampered[sealed_len - 1] ^= 1;
+  uint8_t *garbage = malloc(message_len);
+  memset(garbage, 0xFF, message_len);
+  size_t garbage_len = 0;
+  CHECK(dstu_box384_open(secret, tampered, sealed_len, garbage, message_len, &garbage_len) ==
+            DSTU_ERR_TAG_MISMATCH,
+        "box384 open should reject a tampered ciphertext");
+  int garbage_all_zero = 1;
+  for (size_t i = 0; i < message_len; i++) {
+    if (garbage[i] != 0) {
+      garbage_all_zero = 0;
+    }
+  }
+  CHECK(garbage_all_zero, "box384 plaintext_out should be left zeroed on tag mismatch, never partially trusted");
+
+  /* rejection: wrong secret key */
+  DstuBox384SecretKey *other_secret = NULL;
+  CHECK(dstu_box384_secretkey_generate(&other_secret) == DSTU_OK, "second box384 secretkey generate should succeed");
+  uint8_t *wrong_key_out = malloc(message_len);
+  size_t wrong_key_len = 0;
+  CHECK(dstu_box384_open(other_secret, sealed, sealed_len, wrong_key_out, message_len, &wrong_key_len) ==
+            DSTU_ERR_TAG_MISMATCH,
+        "box384 open should reject the correct sealed message under the wrong secret key");
+  dstu_box384_secretkey_free(other_secret);
+  free(wrong_key_out);
+
+  /* misuse: truncated input */
+  uint8_t small_out[4];
+  size_t small_len = 0;
+  CHECK(dstu_box384_open(secret, sealed, 4, small_out, sizeof(small_out), &small_len) == DSTU_ERR_TRUNCATED,
+        "box384 open should reject input shorter than DSTU_BOX384_OPEN_MIN_OVERHEAD");
+
+  /* misuse: undersized output buffer on seal - checked before any crypto work runs */
+  uint8_t tiny[4];
+  size_t tiny_len = 0;
+  CHECK(dstu_box384_seal(public_key, (const uint8_t *)message, message_len, tiny, sizeof(tiny), &tiny_len) ==
+            DSTU_ERR_BUFFER_TOO_SMALL,
+        "box384 seal should reject an undersized output buffer");
+
+  /* misuse: undersized output buffer on open */
+  size_t tiny_open_len = 0;
+  CHECK(dstu_box384_open(secret, sealed, sealed_len, tiny, sizeof(tiny), &tiny_open_len) ==
+            DSTU_ERR_BUFFER_TOO_SMALL,
+        "box384 open should reject an undersized output buffer");
+
+  /* misuse: invalid key encodings */
+  uint8_t zero48[DSTU_BOX384_SECRETKEY_BYTES] = {0};
+  DstuBox384SecretKey *invalid_secret = NULL;
+  CHECK(dstu_box384_secretkey_from_bytes(zero48, &invalid_secret) == DSTU_ERR_INVALID_KEY,
+        "box384 secretkey_from_bytes should reject a zero scalar");
+  CHECK(invalid_secret == NULL, "box384 secretkey_from_bytes should not write *out on failure");
+  DstuBox384PublicKey *invalid_public = NULL;
+  CHECK(dstu_box384_publickey_from_bytes(zero48, &invalid_public) == DSTU_ERR_INVALID_KEY,
+        "box384 publickey_from_bytes should reject x = 0");
+  CHECK(invalid_public == NULL, "box384 publickey_from_bytes should not write *out on failure");
+
+  free(sealed);
+  free(opened);
+  free(tampered);
+  free(garbage);
+  dstu_box384_publickey_free(public_key);
+  dstu_box384_secretkey_free(secret);
+}
+
 static void test_null_misuse(void) {
   CHECK(dstu_auth_key_generate(NULL) == DSTU_ERR_NULL_POINTER, "auth_key_generate(NULL) should be rejected");
   CHECK(dstu_sign_verifying_key(NULL) == NULL, "sign_verifying_key(NULL) should return NULL, not crash");
@@ -662,6 +753,7 @@ int main(void) {
   test_pwhash();
   test_box();
   test_box512();
+  test_box384();
   test_null_misuse();
 
   if (failures == 0) {

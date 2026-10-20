@@ -1,9 +1,10 @@
-//! T-265: the v3 `crypto_box`/`crypto_box512` C ABI (D-239) - `_sealed_len`, the one-shot
+//! T-265: the v3 `crypto_box`/`crypto_box384`/`crypto_box512` C ABI (D-239, 384: T-297) - `_sealed_len`, the one-shot
 //! `_seal`/`_open` over the new format, and `_seal_stream`/`_open_stream`, which hand out the
 //! stream-file codec's own handles. Called from Rust as the .NET/Go/C++ bindings call it: the
 //! shared v3 vectors by status, the streaming round trip, the legacy format refused, null
 //! pointers and undersized buffers.
 
+use dstu_core_capi::box384::*;
 use dstu_core_capi::box512::*;
 use dstu_core_capi::crypto_box::*;
 use dstu_core_capi::secretstream::*;
@@ -254,14 +255,30 @@ macro_rules! box_stream_tests {
             #[test]
             #[cfg_attr(miri, ignore = $miri)]
             fn a_legacy_v2_blob_is_unsupported_version() {
-                let secret = secret_from_vectors(LEGACY_VECTORS);
-                for line in LEGACY_VECTORS.lines().filter(|l| l.contains(CURVE)) {
-                    let sealed = decode_hex(field(line, "sealed_hex"));
-                    assert_eq!(
-                        open(secret, &sealed),
-                        Err(DstuStatus::DSTU_ERR_UNSUPPORTED_VERSION)
-                    );
+                // 256/512 have real 0.4-0.6 files; 384 never had any (T-297), so a
+                // version-2 byte in front of a long enough blob stands in for one.
+                if LEGACY_VECTORS.contains($secret_field) {
+                    let secret = secret_from_vectors(LEGACY_VECTORS);
+                    for line in LEGACY_VECTORS.lines().filter(|l| l.contains(CURVE)) {
+                        let sealed = decode_hex(field(line, "sealed_hex"));
+                        assert_eq!(
+                            open(secret, &sealed),
+                            Err(DstuStatus::DSTU_ERR_UNSUPPORTED_VERSION)
+                        );
+                    }
+                    unsafe { $secret_free(secret) };
                 }
+                let mut secret = ptr::null_mut();
+                assert_eq!(
+                    unsafe { $secret_generate(&mut secret) },
+                    DstuStatus::DSTU_OK
+                );
+                let mut sealed = vec![2u8];
+                sealed.extend_from_slice(&vec![0xAA; $MIN_OVERHEAD + 10]);
+                assert_eq!(
+                    open(secret, &sealed),
+                    Err(DstuStatus::DSTU_ERR_UNSUPPORTED_VERSION)
+                );
                 unsafe { $secret_free(secret) };
             }
 
@@ -401,6 +418,9 @@ trait KeyPair {
 impl KeyPair for DstuBoxSecretKey {
     type Public = DstuBoxPublicKey;
 }
+impl KeyPair for DstuBox384SecretKey {
+    type Public = DstuBox384PublicKey;
+}
 impl KeyPair for DstuBox512SecretKey {
     type Public = DstuBox512PublicKey;
 }
@@ -447,4 +467,26 @@ box_stream_tests!(
     OPEN_PREFIX = DSTU_BOX512_OPEN_STREAM_PREFIX_BYTES,
     MIN_OVERHEAD = DSTU_BOX512_OPEN_MIN_OVERHEAD,
     secret_field = "box512_secret_key_hex",
+);
+
+box_stream_tests!(
+    box384,
+    core = crypto_box384,
+    curve = "384",
+    miri = "l(p)=384 scalar_multiply is too slow to interpret under Miri",
+    Secret = DstuBox384SecretKey,
+    secret_generate = dstu_box384_secretkey_generate,
+    secret_from_bytes = dstu_box384_secretkey_from_bytes,
+    secret_public_key = dstu_box384_secretkey_public_key,
+    secret_free = dstu_box384_secretkey_free,
+    public_free = dstu_box384_publickey_free,
+    seal = dstu_box384_seal,
+    open = dstu_box384_open,
+    sealed_len = dstu_box384_sealed_len,
+    seal_stream = dstu_box384_seal_stream,
+    open_stream = dstu_box384_open_stream,
+    SEAL_PREFIX = DSTU_BOX384_SEAL_STREAM_PREFIX_BYTES,
+    OPEN_PREFIX = DSTU_BOX384_OPEN_STREAM_PREFIX_BYTES,
+    MIN_OVERHEAD = DSTU_BOX384_OPEN_MIN_OVERHEAD,
+    secret_field = "box384_secret_key_hex",
 );

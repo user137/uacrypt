@@ -944,9 +944,10 @@ fn capi() -> bool {
 /// Kept in sync by hand with `crates/dstu-core-capi/examples/*.c` - no single source of truth for
 /// "every example name" short of listing the directory, same manual-sync tradeoff `FUZZ_TARGETS`
 /// already accepts.
-const CAPI_EXAMPLES: [&str; 7] = [
+const CAPI_EXAMPLES: [&str; 8] = [
     "secretbox",
     "box",
+    "box384",
     "box512",
     "secretstream_file",
     "sign",

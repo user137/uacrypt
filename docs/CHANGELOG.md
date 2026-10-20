@@ -22,6 +22,9 @@ All notable changes to this project are documented in this file. Format follows
   E384/1, the `crypto_box`/`crypto_box512` shape with 48-byte keys, format v3 only.
 - **`uacrypt box-keygen384`** (T-297): a key for the `l(p)=384` curve; `box-pubkey`, `box-seal`
   and `box-open` take it like the other two curves. New key kinds `box384-secret`/`box384-public`.
+- **C ABI:** `dstu_box384_*` (T-297), the `dstu_box512_*` set at l(p)=384:
+  `DSTU_BOX384_SECRETKEY_BYTES`/`_PUBLICKEY_BYTES` (48), `DSTU_BOX384_OPEN_MIN_OVERHEAD` (231),
+  `DSTU_BOX384_SEAL_STREAM_PREFIX_BYTES` (210), `DSTU_BOX384_OPEN_STREAM_PREFIX_BYTES` (177).
 - **`dstu-core`: streaming `crypto_box`/`crypto_box512`** (T-265, `docs/DECISIONS.md` D-239):
   `seal_stream`/`open_stream` hand out the stream-file codec's `FileEncryptor`/`FileDecryptor`,
   plus `sealed_len`, `SEAL_STREAM_PREFIX_BYTES`/`OPEN_STREAM_PREFIX_BYTES`, `FORMAT_VERSION`.

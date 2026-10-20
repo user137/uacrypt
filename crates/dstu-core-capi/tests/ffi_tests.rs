@@ -8,6 +8,7 @@
 //! when called with valid arguments constructed in Rust.
 
 use dstu_core_capi::auth::*;
+use dstu_core_capi::box384::*;
 use dstu_core_capi::box512::*;
 use dstu_core_capi::crypto_box::*;
 use dstu_core_capi::generichash::*;
@@ -1339,6 +1340,252 @@ fn box512_publickey_from_bytes_round_trips_and_rejects_degenerate_x() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// crypto_box384 (T-297)
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "l(p)=384 scalar_multiply is too slow to interpret under Miri - box384 sibling of crypto_box's own untimed but noticeably heavier E384/1 ladder"
+)]
+fn box384_seal_open_round_trip_tamper_rejection_and_undersized_buffers() {
+    let mut secret_ptr: *mut DstuBox384SecretKey = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_box384_secretkey_generate(&mut secret_ptr) },
+        DstuStatus::DSTU_OK
+    );
+    let public_ptr = unsafe { dstu_box384_secretkey_public_key(secret_ptr) };
+    assert!(!public_ptr.is_null());
+
+    let message = b"a message for the public key's holder only";
+    let mut sealed = vec![0u8; message.len() + DSTU_BOX384_OPEN_MIN_OVERHEAD];
+    let mut sealed_len = 0usize;
+    assert_eq!(
+        unsafe {
+            dstu_box384_seal(
+                public_ptr,
+                message.as_ptr(),
+                message.len(),
+                sealed.as_mut_ptr(),
+                sealed.len(),
+                &mut sealed_len,
+            )
+        },
+        DstuStatus::DSTU_OK
+    );
+    // Self-check: a message shorter than one chunk seals to exactly message + DSTU_BOX384_OPEN_MIN_OVERHEAD
+    // (one Final record, T-265) - checked against a real seal call, not trusted by hand.
+    assert_eq!(sealed_len, message.len() + DSTU_BOX384_OPEN_MIN_OVERHEAD);
+
+    let mut opened = vec![0u8; message.len()];
+    let mut opened_len = 0usize;
+    assert_eq!(
+        unsafe {
+            dstu_box384_open(
+                secret_ptr,
+                sealed.as_ptr(),
+                sealed_len,
+                opened.as_mut_ptr(),
+                opened.len(),
+                &mut opened_len,
+            )
+        },
+        DstuStatus::DSTU_OK
+    );
+    assert_eq!(&opened[..opened_len], message);
+
+    // rejection: tampered ciphertext
+    let mut tampered = sealed.clone();
+    let last = tampered.len() - 1;
+    tampered[last] ^= 1;
+    let mut garbage = vec![0u8; message.len()];
+    let mut garbage_len = 0usize;
+    assert_eq!(
+        unsafe {
+            dstu_box384_open(
+                secret_ptr,
+                tampered.as_ptr(),
+                tampered.len(),
+                garbage.as_mut_ptr(),
+                garbage.len(),
+                &mut garbage_len,
+            )
+        },
+        DstuStatus::DSTU_ERR_TAG_MISMATCH
+    );
+    assert_eq!(garbage, vec![0u8; message.len()]); // left zeroed, not partially trusted
+
+    // rejection: wrong secret key
+    let mut other_secret_ptr: *mut DstuBox384SecretKey = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_box384_secretkey_generate(&mut other_secret_ptr) },
+        DstuStatus::DSTU_OK
+    );
+    let mut wrong_key_out = vec![0u8; message.len()];
+    let mut wrong_key_len = 0usize;
+    assert_eq!(
+        unsafe {
+            dstu_box384_open(
+                other_secret_ptr,
+                sealed.as_ptr(),
+                sealed.len(),
+                wrong_key_out.as_mut_ptr(),
+                wrong_key_out.len(),
+                &mut wrong_key_len,
+            )
+        },
+        DstuStatus::DSTU_ERR_TAG_MISMATCH
+    );
+    unsafe { dstu_box384_secretkey_free(other_secret_ptr) };
+
+    // misuse: a blob from another format version (T-232/D-202)
+    let mut other_version = sealed.clone();
+    other_version[0] = 1;
+    assert_eq!(
+        unsafe {
+            dstu_box384_open(
+                secret_ptr,
+                other_version.as_ptr(),
+                other_version.len(),
+                garbage.as_mut_ptr(),
+                garbage.len(),
+                &mut garbage_len,
+            )
+        },
+        DstuStatus::DSTU_ERR_UNSUPPORTED_VERSION
+    );
+
+    // misuse: truncated input
+    let mut truncated_out = [0u8; 4];
+    let mut truncated_len = 0usize;
+    assert_eq!(
+        unsafe {
+            dstu_box384_open(
+                secret_ptr,
+                sealed.as_ptr(),
+                4,
+                truncated_out.as_mut_ptr(),
+                truncated_out.len(),
+                &mut truncated_len,
+            )
+        },
+        DstuStatus::DSTU_ERR_TRUNCATED
+    );
+
+    // misuse: undersized output buffer on seal
+    let mut small = [0u8; 4];
+    let mut small_len = 0usize;
+    assert_eq!(
+        unsafe {
+            dstu_box384_seal(
+                public_ptr,
+                message.as_ptr(),
+                message.len(),
+                small.as_mut_ptr(),
+                small.len(),
+                &mut small_len,
+            )
+        },
+        DstuStatus::DSTU_ERR_BUFFER_TOO_SMALL
+    );
+
+    // misuse: undersized output buffer on open
+    let mut small_open = [0u8; 4];
+    let mut small_open_len = 0usize;
+    assert_eq!(
+        unsafe {
+            dstu_box384_open(
+                secret_ptr,
+                sealed.as_ptr(),
+                sealed.len(),
+                small_open.as_mut_ptr(),
+                small_open.len(),
+                &mut small_open_len,
+            )
+        },
+        DstuStatus::DSTU_ERR_BUFFER_TOO_SMALL
+    );
+
+    unsafe { dstu_box384_publickey_free(public_ptr) };
+    unsafe { dstu_box384_secretkey_free(secret_ptr) };
+}
+
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "a valid box key costs a full scalar multiplication since T-287 (cached public key)"
+)]
+fn box384_secretkey_from_bytes_round_trips() {
+    let mut secret_ptr: *mut DstuBox384SecretKey = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_box384_secretkey_generate(&mut secret_ptr) },
+        DstuStatus::DSTU_OK
+    );
+    let mut bytes = [0u8; DSTU_BOX384_SECRETKEY_BYTES];
+    unsafe { dstu_box384_secretkey_bytes(secret_ptr, bytes.as_mut_ptr()) };
+    unsafe { dstu_box384_secretkey_free(secret_ptr) };
+
+    let mut reloaded_ptr: *mut DstuBox384SecretKey = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_box384_secretkey_from_bytes(bytes.as_ptr(), &mut reloaded_ptr) },
+        DstuStatus::DSTU_OK
+    );
+    let mut reloaded_bytes = [0u8; DSTU_BOX384_SECRETKEY_BYTES];
+    unsafe { dstu_box384_secretkey_bytes(reloaded_ptr, reloaded_bytes.as_mut_ptr()) };
+    assert_eq!(reloaded_bytes, bytes);
+    unsafe { dstu_box384_secretkey_free(reloaded_ptr) };
+}
+
+#[test]
+fn box384_secretkey_from_bytes_rejects_invalid_scalar() {
+    // misuse: zero scalar is out of the valid range
+    let zero = [0u8; DSTU_BOX384_SECRETKEY_BYTES];
+    let mut invalid_ptr: *mut DstuBox384SecretKey = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_box384_secretkey_from_bytes(zero.as_ptr(), &mut invalid_ptr) },
+        DstuStatus::DSTU_ERR_INVALID_KEY
+    );
+    assert!(invalid_ptr.is_null());
+}
+
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "l(p)=384 scalar_multiply is too slow to interpret under Miri - box384 sibling of crypto_box's own untimed but noticeably heavier E384/1 ladder"
+)]
+fn box384_publickey_from_bytes_round_trips_and_rejects_degenerate_x() {
+    let mut secret_ptr: *mut DstuBox384SecretKey = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_box384_secretkey_generate(&mut secret_ptr) },
+        DstuStatus::DSTU_OK
+    );
+    let public_ptr = unsafe { dstu_box384_secretkey_public_key(secret_ptr) };
+    let mut bytes = [0u8; DSTU_BOX384_PUBLICKEY_BYTES];
+    unsafe { dstu_box384_publickey_bytes(public_ptr, bytes.as_mut_ptr()) };
+
+    let mut reloaded_ptr: *mut DstuBox384PublicKey = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_box384_publickey_from_bytes(bytes.as_ptr(), &mut reloaded_ptr) },
+        DstuStatus::DSTU_OK
+    );
+    let mut reloaded_bytes = [0u8; DSTU_BOX384_PUBLICKEY_BYTES];
+    unsafe { dstu_box384_publickey_bytes(reloaded_ptr, reloaded_bytes.as_mut_ptr()) };
+    assert_eq!(reloaded_bytes, bytes);
+    unsafe { dstu_box384_publickey_free(reloaded_ptr) };
+    unsafe { dstu_box384_publickey_free(public_ptr) };
+    unsafe { dstu_box384_secretkey_free(secret_ptr) };
+
+    // misuse: x = 0 is explicitly rejected by point_from_x's own gauntlet
+    let zero = [0u8; DSTU_BOX384_PUBLICKEY_BYTES];
+    let mut invalid_ptr: *mut DstuBox384PublicKey = ptr::null_mut();
+    assert_eq!(
+        unsafe { dstu_box384_publickey_from_bytes(zero.as_ptr(), &mut invalid_ptr) },
+        DstuStatus::DSTU_ERR_INVALID_KEY
+    );
+    assert!(invalid_ptr.is_null());
+}
+
+// ---------------------------------------------------------------------------------------------
 // Cross-cutting misuse: null handles on operations that expect one
 // ---------------------------------------------------------------------------------------------
 
@@ -1362,4 +1609,24 @@ fn null_handles_are_rejected_or_return_safe_defaults() {
         DstuStatus::DSTU_ERR_NULL_POINTER
     );
     assert!(unsafe { dstu_box512_secretkey_public_key(ptr::null()) }.is_null());
+    assert_eq!(
+        unsafe { dstu_box384_secretkey_generate(ptr::null_mut()) },
+        DstuStatus::DSTU_ERR_NULL_POINTER
+    );
+    assert!(unsafe { dstu_box384_secretkey_public_key(ptr::null()) }.is_null());
+}
+
+/// T-297: the 384 C constants are the core's own numbers, not a second copy that could drift.
+#[test]
+fn box384_constants_match_the_core() {
+    use dstu_core::crypto_box384 as core;
+    assert_eq!(
+        DSTU_BOX384_SEAL_STREAM_PREFIX_BYTES,
+        core::SEAL_STREAM_PREFIX_BYTES
+    );
+    assert_eq!(
+        DSTU_BOX384_OPEN_STREAM_PREFIX_BYTES,
+        core::OPEN_STREAM_PREFIX_BYTES
+    );
+    assert_eq!(Some(DSTU_BOX384_OPEN_MIN_OVERHEAD), core::sealed_len(0));
 }

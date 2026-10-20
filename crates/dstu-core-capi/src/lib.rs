@@ -55,6 +55,7 @@
 //! design forks this crate resolves, and each module below for its own function-level detail.
 
 pub mod auth;
+pub mod box384;
 pub mod box512;
 pub mod crypto_box;
 pub mod error;
