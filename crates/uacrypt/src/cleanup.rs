@@ -48,6 +48,11 @@ impl Drop for Guard {
 pub(crate) fn register(path: &std::path::Path) -> Option<Guard> {
     #[cfg(any(unix, windows))]
     {
+        // Under Miri nothing is registered: it cannot install the handlers, and it reports the
+        // deliberately leaked strings; the lib tests it runs never interrupt anyway.
+        if cfg!(miri) {
+            return None;
+        }
         INSTALL.call_once(install);
         let raw = encode(path)?;
         for (slot, entry) in PATHS.iter().enumerate() {

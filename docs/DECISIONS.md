@@ -15925,7 +15925,7 @@ not lock or free, and a released string may still be read by a handler on anothe
 
 **Not covered:** `kill -9`/End task/power loss (documented in `docs/CLI.md`), a path registered
 when all slots are taken, and the microseconds between creating a file and registering it.
-`sigint::Ignored` (the passphrase prompt) still sets SIGINT to ignored while it lives and restores
+Under Miri nothing is registered (it cannot call `signal` and reports the leaked strings; checked with a scoped `cargo +nightly miri test -p uacrypt --lib` on the Pi). `sigint::Ignored` (the passphrase prompt) still sets SIGINT to ignored while it lives and restores
 whatever was there; the prompt runs before any output exists.
 
 **Evidence.** `tests/smoke_interrupt.rs`: `decrypt --in -` stopped while waiting for stdin, after

@@ -84,7 +84,8 @@ All notable changes to this project are documented in this file. Format follows
   failed on no_std builds; `Point::is_on_curve` now rejects them, so every entry point (CLI, C ABI,
   bindings) agrees. No API change.
 - **`dstu-core`: `hazmat::dstu9041::encryption*::encrypt` refuses a degenerate recipient point**
-  (T-307, D-248): `EncryptError::InvalidPublicKey` for `q` off the curve or of order 1, 2 or 4.
+  (T-307, D-248): `EncryptError::InvalidPublicKey` for `q` off the curve or of order 1, 2 or 4 -
+  **breaking (hazmat):** a new variant on an exhaustive enum.
   `crypto_box*` was not affected. The docs' group-structure argument is corrected (`Z/2 x Z/2 x
   Z/n`; no point of order 4 exists).
 - **`dstu-core`: key, nonce and seed copies are wiped** (T-302, D-249): Kupyna's state under KMAC,

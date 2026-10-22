@@ -195,7 +195,7 @@ roundtrip_proptest!(k512_512, Kalyna512_512Cmac, 64);
 // doubling, and after one zero block the CBC state is that same `E_K(0)`, so the two cancel:
 // `MAC(0^b || Y) = E_K(Y)[..16]`. With a 128-bit block that is the whole block - the MAC is an
 // encryption oracle, and `tag(X)` also authenticates `0^16 || (X ^ E_K(0))`. Pinned here so the
-// warning in the module docs and `uacrypt kalyna-cmac --help` stays true.
+// warning in the module docs (and the reason `uacrypt` dropped `kalyna-cmac`) stays true.
 #[test]
 fn t298_zero_block_prefix_turns_cmac_into_an_encryption_oracle() {
     use dstu_core::hazmat::kalyna::Kalyna128_128;

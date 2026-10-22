@@ -1,6 +1,7 @@
 /*
  * Byte-for-byte and timing comparison of DSTU 7624 CMAC (Kalyna-CMAC) between this project's own
- * `uacrypt kalyna-cmac compute`/`verify` and UAPKI's prebuilt `uapkic.dll`, for all 5 Kalyna
+ * `uacrypt kalyna-cmac compute`/`verify` (uacrypt 0.6 or earlier: the command was removed in 0.7,
+ * T-298/D-247) and UAPKI's prebuilt `uapkic.dll`, for all 5 Kalyna
  * variants - `docs/TASKS.md` T-133/T-138, `docs/DECISIONS.md` D-78/D-80/D-82 have the full narrative behind
  * why this exists and what it already found (a real UAPKI CMAC-context-reuse quirk, D-82).
  *

@@ -19,7 +19,10 @@ fn listing(dir: &TempDir) -> Vec<String> {
 fn wait_until(what: &str, mut done: impl FnMut() -> bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     while !done() {
-        assert!(std::time::Instant::now() < deadline, "timed out waiting: {what}");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "timed out waiting: {what}"
+        );
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
 }
@@ -55,7 +58,15 @@ fn an_interrupted_decrypt_leaves_no_temp_file_and_no_placeholder() {
     let p = |n: &str| dir.file(n).to_string_lossy().into_owned();
     write_bytes(&dir.file("msg"), &vec![0x5A; 64 * 1024]);
     assert!(uacrypt(["keygen", "--out", &p("k.key")]).success());
-    let r = uacrypt(["encrypt", "--key", &p("k.key"), "--in", &p("msg"), "--out", &p("ct")]);
+    let r = uacrypt([
+        "encrypt",
+        "--key",
+        &p("k.key"),
+        "--in",
+        &p("msg"),
+        "--out",
+        &p("ct"),
+    ]);
     assert!(r.success(), "{}", r.stderr);
     let ct = std::fs::read(dir.file("ct")).expect("read ct");
 
@@ -99,7 +110,9 @@ fn an_interrupted_decrypt_leaves_no_temp_file_and_no_placeholder() {
     assert!(!status.success(), "{status:?}");
     let names = listing(&dir);
     assert!(
-        !names.iter().any(|n| n == "out" || n.starts_with("out.uacrypt-tmp-")),
+        !names
+            .iter()
+            .any(|n| n == "out" || n.starts_with("out.uacrypt-tmp-")),
         "left behind: {names:?}"
     );
 }
