@@ -320,7 +320,10 @@ key-size combinations) and `--iterations` (benchmark timing) flags:
   D-204), exposed here with no message-length cap and no hidden nonce. An empty `--in` with no
   `--aad` is rejected (D-207).
 - `kalyna-cmac compute`/`verify` — Kalyna-CMAC, a 16-byte tag, no encryption. An empty `--in` is
-  rejected (DSTU 7624:2014 §9 does not define CMAC for an empty message, D-206).
+  rejected (DSTU 7624:2014 §9 does not define CMAC for an empty message, D-206). **Not secure
+  against chosen messages**: §9's CMAC gives `MAC(0-block || Y) = E_K(Y)`, so tags can be forged
+  (T-298). Use it only for interop with that text, never on data someone else chooses, never with
+  a key used for anything else.
 - `kalyna-gmac compute`/`verify` — Kalyna-GMAC, a full-block tag, no encryption, no nonce. An empty
   `--in` is rejected (D-207).
 - `kalyna-kw wrap`/`unwrap` — Kalyna key wrap (1..=20 block-aligned blocks in, one block longer

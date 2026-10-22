@@ -190,3 +190,28 @@ roundtrip_proptest!(k128_256, Kalyna128_256Cmac, 32);
 roundtrip_proptest!(k256_256, Kalyna256_256Cmac, 32);
 roundtrip_proptest!(k256_512, Kalyna256_512Cmac, 64);
 roundtrip_proptest!(k512_512, Kalyna512_512Cmac, 64);
+
+// T-298: DSTU 7624 §9's CMAC is not EUF-CMA secure. The final-block key is `E_K(0)` with no GF
+// doubling, and after one zero block the CBC state is that same `E_K(0)`, so the two cancel:
+// `MAC(0^b || Y) = E_K(Y)[..16]`. With a 128-bit block that is the whole block - the MAC is an
+// encryption oracle, and `tag(X)` also authenticates `0^16 || (X ^ E_K(0))`. Pinned here so the
+// warning in the module docs and `uacrypt kalyna-cmac --help` stays true.
+#[test]
+fn t298_zero_block_prefix_turns_cmac_into_an_encryption_oracle() {
+    use dstu_core::hazmat::kalyna::Kalyna128_128;
+    let key = [0x5Au8; 16];
+    let y: [u8; 16] = core::array::from_fn(|i| i as u8);
+    let mut message = [0u8; 32];
+    message[16..].copy_from_slice(&y);
+    let tag = Kalyna128_128Cmac::mac(&key, &message).expect("non-empty");
+    assert_eq!(tag, Kalyna128_128::encrypt(&key, &y));
+
+    let x = [0xC3u8; 16];
+    let l = Kalyna128_128::encrypt(&key, &[0u8; 16]);
+    let mut forged = [0u8; 32];
+    for (f, (a, b)) in forged[16..].iter_mut().zip(x.iter().zip(l.iter())) {
+        *f = a ^ b;
+    }
+    let tag_x = Kalyna128_128Cmac::mac(&key, &x).expect("non-empty");
+    assert_eq!(Kalyna128_128Cmac::verify(&key, &forged, &tag_x), Ok(()));
+}

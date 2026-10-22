@@ -5340,8 +5340,10 @@ EXAMPLE:
 const KALYNA_CMAC_HELP: &str = "\
 uacrypt kalyna-cmac - Kalyna-CMAC message authentication, for benchmarking/interop (docs/DECISIONS.md D-31/D-71).
 
-Computes or verifies a 16-byte tag over a message - no encryption. Do not reuse this key for any
-encryption mode in this crate (see hazmat::kalyna_cmac docs for why).
+Computes or verifies a 16-byte tag over a message - no encryption. WARNING: DSTU 7624 section 9 CMAC
+is not secure against chosen messages - MAC(0-block || Y) equals the block encryption of Y, so
+tags can be forged. Only for interop with that standard text; never authenticate data someone
+else chooses with it, and never reuse the key for anything else (hazmat::kalyna_cmac docs, T-298).
 
 USAGE:
     uacrypt kalyna-cmac compute --variant <v> --key <path> --in <path> --out <path> [--iterations <n>] [--force]

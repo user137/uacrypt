@@ -15774,3 +15774,22 @@ which is exactly the malleability). `uacrypt key-import --kind sign*-public` sti
 **Evidence.** `tests/crypto_sign.rs`/`crypto_sign257.rs` `t299_*` (the red-team recipe: failed
 before the fix on the std build) and `tests/dstu4145_curve.rs`/`dstu4145_curve257.rs` `t299_*`
 (cheap, run in the no_std build and under Miri).
+
+## D-247: Kalyna-CMAC is not EUF-CMA - warn, keep for interop (T-298, 2026-10-22)
+
+**Finding** (red-team wave). DSTU 7624:2014 §9 as written (and as UAPKI `cmac_final` and Bouncy
+Castle `DSTU7624Mac` compute it) XORs the last block with `E_K(0^n)` (or `E_K(01 00..)` when padded)
+and never GF-doubles it. The CBC state after one zero block is the same `E_K(0)`, so
+`MAC(0^b || Y) = E_K(Y)[..16]`: chosen-message queries give a block-encryption oracle (whole block
+at `l = 128`, truncated otherwise), existential forgery (`tag(X)` authenticates
+`0^16 || (X ^ E_K(0))`) and, chained, universal forgery; under a shared key, GCM's `H` and
+CTR/CCM/KW fall too. NIST CMAC's `2L`/`4L` subkeys exist exactly to prevent this.
+
+**Decision (Claude, within the owner's "start fixing").** The construction is the standard's own,
+so the code is not "fixed" into a different MAC (D-47/T-234: the text governs; a changed MAC would
+fail the annex vectors and interop - the module's only reason to exist). Instead: a module-doc
+section and `uacrypt kalyna-cmac --help`/`docs/CLI.md` warnings, a COMPATIBILITY row, and
+`tests/kalyna_cmac.rs` `t298_*` pinning the property so the warning cannot silently go stale. No
+`crypto_*` API uses CMAC (`crypto_auth` is Kupyna-KMAC). **Open for the owner:** keep the
+`uacrypt kalyna-cmac` command (interop/benchmark tool, D-31/D-71, used by `docs/PERFORMANCE.md`)
+or remove it; whether this warrants an advisory, and any report on the standard itself.

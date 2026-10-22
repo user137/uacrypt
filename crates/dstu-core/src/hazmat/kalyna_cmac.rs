@@ -7,6 +7,16 @@
 //! (`dstu7624_alloc`'s `CALLOC_CHECKED`), so the running state starts at the zero block, not an
 //! IV. `docs/DECISIONS.md` D-54 has the full citation, oracle-coverage breakdown, and roadmap context.
 //!
+//! # Not a secure MAC against chosen messages (T-298)
+//!
+//! The final-block key is `E_K(0)` itself, and after one zero block the CBC state is that same
+//! `E_K(0)`, so the two cancel: `MAC(0^b || Y) = E_K(Y)[..16]`. Anyone who can get chosen
+//! messages authenticated gets a block-encryption oracle under `K` (the full block for a 128-bit
+//! block, a truncated one otherwise), forges tags on messages never authenticated, and - under the
+//! same key - learns GCM's hash key `E_K(0)` and breaks CTR/CCM/KW. This is §9 as written (UAPKI
+//! and Bouncy Castle compute the same), kept for interop with that text only. Use
+//! `crypto_auth` (Kupyna-KMAC) for anything new; `tests/kalyna_cmac.rs` pins the property.
+//!
 //! # One-shot, not streaming
 //!
 //! Unlike [`super::kalyna_cbc`]/[`super::kalyna_cfb`]/etc., this module takes the whole message in
