@@ -10568,5 +10568,5 @@ names (`create_new`, 64-bit random), `--force` never over a key, passphrase hand
   (`webpki-root-certs` 1.0.9, build-only via `ext-php-rs` -> `ureq`). Fix: `cargo update -p
   webpki-root-certs` (1.0.10).
 
-**State 2026-10-22: all eleven done, local commits `ff6e2f5`..HEAD, not pushed** (T-298/T-299 embargo-sensitive: the owner decides on an advisory before the push; the CHANGELOG `[Unreleased]` already describes both). **Wave order (Claude, 2026-10-22):** T-308; T-299 (+ capi/bindings); T-298 (docs/test part); T-307;
+**State 2026-10-22: all eleven done, local commits `ff6e2f5`..HEAD, not pushed** (advisory-relevant for released 0.6.0: T-298, T-299, T-300, T-301 - the owner decides on an advisory before the push; the pushed tree would carry D-246..D-252's recipes and the CHANGELOG `[Unreleased]` lines; `5141320`'s subject names the CMAC warning). **Wave order (Claude, 2026-10-22):** T-308; T-299 (+ capi/bindings); T-298 (docs/test part); T-307;
 T-302; then the CLI batch T-300, T-303, T-304, T-305, T-301; T-306 docs. Commit per task.
