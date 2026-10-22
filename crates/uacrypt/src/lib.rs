@@ -3905,7 +3905,17 @@ enum AnyVerifyingKey {
     M257(dstu_core::crypto_sign257::VerifyingKey),
 }
 
+/// The longest signature `verify` accepts: `m=257`'s `r || s`.
+const MAX_SIGNATURE_BYTES: usize = 66;
+
 impl AnyVerifyingKey {
+    fn signature_len(&self) -> usize {
+        match self {
+            AnyVerifyingKey::M163(_) => 42,
+            AnyVerifyingKey::M257(_) => MAX_SIGNATURE_BYTES,
+        }
+    }
+
     fn curve_label(&self) -> &'static str {
         match self {
             AnyVerifyingKey::M163(_) => "m=163",
@@ -3983,10 +3993,32 @@ fn read_verifying_key(path: &std::path::Path) -> Result<AnyVerifyingKey, CliErro
 #[allow(clippy::cast_precision_loss)] // human-readable ops/s diagnostic, not exact at any realistic count
 pub fn run_verify_command(args: &VerifyArgs) -> Result<(), CliError> {
     let verifying_key = read_verifying_key(&args.key_path)?;
-    let sig_bytes = std::fs::read(&args.sig_path).map_err(|e| CliError::Io {
-        path: args.sig_path.clone(),
-        message: e.to_string(),
-    })?;
+    // T-304: a signature is 42 or 66 bytes, so at most 67 are read - never a whole large file.
+    // A longer file reports its own size.
+    let mut sig_bytes = Vec::with_capacity(MAX_SIGNATURE_BYTES + 1);
+    std::fs::File::open(&args.sig_path)
+        .and_then(|file| {
+            std::io::Read::read_to_end(
+                &mut std::io::Read::take(file, MAX_SIGNATURE_BYTES as u64 + 1),
+                &mut sig_bytes,
+            )
+        })
+        .map_err(|e| CliError::Io {
+            path: args.sig_path.clone(),
+            message: e.to_string(),
+        })?;
+    if sig_bytes.len() > MAX_SIGNATURE_BYTES {
+        let actual = std::fs::metadata(&args.sig_path)
+            .ok()
+            .and_then(|meta| usize::try_from(meta.len()).ok())
+            .filter(|&len| len > MAX_SIGNATURE_BYTES)
+            .unwrap_or(sig_bytes.len());
+        return Err(CliError::WrongLength {
+            what: LengthOf::Signature,
+            expected: verifying_key.signature_len(),
+            actual,
+        });
+    }
 
     let digest = hash_file_streamed(&args.in_path)?;
     let iterations = args.iterations.max(1);
@@ -4499,10 +4531,28 @@ fn run_box_open_legacy(
     mut raw: Box<dyn std::io::Read>,
     args: &BoxOpenArgs,
 ) -> Result<(), CliError> {
+    use std::io::Read;
+    // T-304: format 2 has no streaming reader, so it is read whole - only from a regular file,
+    // and no further than the size that file had here. From stdin or a device a leading `0x02`
+    // would otherwise make the read unbounded.
+    let file_len = match &args.in_path {
+        Source::File(path) => std::fs::metadata(path)
+            .ok()
+            .filter(std::fs::Metadata::is_file)
+            .map(|meta| meta.len()),
+        Source::Stdin => None,
+    };
+    let Some(file_len) = file_len else {
+        return Err(args.in_path.io_error(&std::io::Error::other(
+            "a format-2 box (uacrypt 0.4-0.6) is read whole, so it opens only from a regular file, \
+             not stdin or a device",
+        )));
+    };
     let mut sealed = vec![version];
-    raw.read_to_end(&mut sealed)
+    (&mut raw)
+        .take(file_len)
+        .read_to_end(&mut sealed)
         .map_err(|e| args.in_path.io_error(&e))?;
-    drop(raw);
     let opened = zeroize::Zeroizing::new(secret.open(&sealed, true)?);
     let mut out = Output::create(&args.out_path, &args.in_path, args.force)?;
     let written = out.write_all(&opened);

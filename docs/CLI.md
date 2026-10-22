@@ -241,7 +241,9 @@ curve point's `x`-coordinate only) from it, safe to share or publish. Both are t
 `box-seal`/`box-open` stream `--in` in bounded memory like `encrypt`/`decrypt` (0.7.0, T-265,
 `docs/DECISIONS.md` D-239). `box-open` still opens files sealed by 0.4-0.6, but reads those whole
 into memory - and any `--in` starting with byte `02` (for instance an `encrypt` output passed by
-mistake) takes that path, so it is read whole before it fails. 0.6 cannot open 0.7 output.
+mistake) takes that path, so it is read whole before it fails. That path reads only a regular
+file, at most its own size: a version-2 input on stdin (`--in -`) or from a device is refused
+(T-304) - open such a file by its path. 0.6 cannot open 0.7 output.
 
 For DSTU 9041's `l(p)=384` or `l(p)=512` curve (E384/1, T-297, `docs/DECISIONS.md` D-245; E512/1,
 T-193, D-182), generate the key with `box-keygen384` or `box-keygen512` instead; `box-pubkey`,

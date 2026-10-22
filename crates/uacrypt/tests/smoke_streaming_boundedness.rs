@@ -327,3 +327,47 @@ fn box_seal_benchmark_is_not_memory_bounded_control_case() {
          proportional growth for a documented whole-buffer read"
     );
 }
+
+/// T-304: `verify --sig` reads at most 67 bytes, so a huge `--sig` costs no memory and the error
+/// still names its real size (before: the whole file was read, ~200 MiB resident here).
+#[test]
+#[ignore = "expensive: writes large fixture files and needs a release build for realistic timing/memory numbers - run via cargo xtask streaming-bounded, not a plain cargo test"]
+fn verify_reads_a_bounded_prefix_of_sig() {
+    let dir = TempDir::new("bound_verify_sig");
+    let sig = dir.file("huge.sig");
+    write_large_file(&sig, LARGE_FILE_BYTES);
+    let key = dir.file("sign.key");
+    let public = dir.file("sign.pub");
+    let msg = dir.file("msg");
+    std::fs::write(&msg, b"message").unwrap();
+    assert!(uacrypt(["sign-keygen", "--out", key.to_str().unwrap()]).success());
+    assert!(uacrypt([
+        "sign-pubkey",
+        "--key",
+        key.to_str().unwrap(),
+        "--out",
+        public.to_str().unwrap(),
+    ])
+    .success());
+    let (r, peak) = uacrypt_with_peak_rss([
+        "verify",
+        "--key",
+        public.to_str().unwrap(),
+        "--in",
+        msg.to_str().unwrap(),
+        "--sig",
+        sig.to_str().unwrap(),
+    ]);
+    assert!(!r.success());
+    assert!(
+        r.stderr.contains(&format!("got {LARGE_FILE_BYTES}")),
+        "{}",
+        r.stderr
+    );
+    if let Some(peak) = peak {
+        assert!(
+            peak < BOUNDED_THRESHOLD_BYTES,
+            "verify: peak RSS {peak} bytes for a {LARGE_FILE_BYTES}-byte --sig"
+        );
+    }
+}

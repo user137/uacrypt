@@ -625,3 +625,28 @@ fn hash_check_reads_its_list_from_stdin_but_never_a_dash_entry() {
     assert!(out.ends_with("a: OK\n"), "{out}");
     assert!(r.stderr.contains("1 of 2"), "{}", r.stderr);
 }
+
+/// T-304: a leading `0x02` selects the legacy (uacrypt 0.4-0.6) box format, which is read whole.
+/// From stdin that read would have no bound, so it is refused before anything is read past the
+/// version byte; from a regular file the file's own size bounds it.
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
+fn box_open_refuses_a_legacy_box_on_stdin() {
+    let dir = TempDir::new("stdio_legacy_box");
+    keygen(&dir, "box-keygen", "box.key");
+    let r = run(
+        &dir.0,
+        &["box-open", "--key", "box.key", "--in", "-", "--out", "out"],
+        &[0x02; 4096],
+    );
+    assert_ne!(r.code, Some(0));
+    assert!(
+        r.stderr.contains("opens only from a regular file"),
+        "{}",
+        r.stderr
+    );
+    assert!(!dir.file("out").exists());
+}

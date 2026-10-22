@@ -10551,7 +10551,7 @@ names (`create_new`, 64-bit random), `--force` never over a key, passphrase hand
 - [x] **T-303** (Low; **done 2026-10-22**: only a `metadata`-confirmed local regular file is opened; Windows non-drive prefixes refused before any FS call; `smoke_hash.rs` test with a deadline - hung before) `hash --check` opens any path in the list: `CONIN$` waits on the console
   (lib.rs:3351 only refuses `-`); suspected `/dev/tty`, a FIFO, `/dev/zero`, UNC `\\host\x` (SMB
   connect). Fix: open only regular files (metadata before open), refuse device/UNC names.
-- [ ] **T-304** (Low, DoS) Unbounded reads: `verify --sig` (lib.rs:3949 `fs::read`, 512 MiB ->
+- [x] **T-304** (Low, DoS; **done 2026-10-22, D-251**: `--sig` read capped at 67 bytes; legacy v2 only from a regular file, bounded by its size) Unbounded reads: `verify --sig` (lib.rs:3949 `fs::read`, 512 MiB ->
   517 MB peak) and `box-open` with a leading `0x02` (legacy v2 path reads all of `--in`, D-239).
   Fix: bounded read for the signature; a size cap on the legacy path.
 - [ ] **T-305** (Low) A non-UTF-8 argument panics (`main.rs` `env::args()`, exit 101). Fix: a clean

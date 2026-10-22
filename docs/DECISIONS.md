@@ -15879,3 +15879,24 @@ user); also granting `SYSTEM`/`Administrators` (they can take ownership anyway; 
 **Evidence.** `tests/smoke_overwrite.rs` `outputs_are_owner_only_on_windows` (`icacls`: no `(I)`
 entry, exactly one ACE, the current user - failed before the fix) for a key, a fresh output and a
 `--force` replacement; `private_file` unit tests for the path form.
+
+## D-251: bounded `verify --sig` and the legacy box path (T-304, 2026-10-22)
+
+**Finding** (red-team wave). `verify` read `--sig` with `fs::read` (a 512 MiB file: 517 MB peak),
+and `box-open` read all of `--in` once its first byte was `0x02` (D-239's legacy path) - from
+stdin with an endless producer, without any bound.
+
+**Fix.** `verify` reads at most 67 bytes (`MAX_SIGNATURE_BYTES + 1`); a longer file reports its
+real size from `metadata` in the same `WrongLength` error. The legacy path reads only from a
+regular file, at most the size `metadata` gave (`take`), and refuses stdin and devices with an I/O
+error naming the reason.
+
+**Fork decided here (delegated, the owner's "start fixing"):** no fixed size cap on legacy files.
+0.4-0.6 sealed whatever fit in memory, so any cap could refuse a genuine old file; a regular file's
+own size is a bound the user chose by naming it, while stdin was the only unbounded source.
+Rejected: a cap (breaks real files), a new flag (a knob, D-47).
+
+**Evidence.** `tests/smoke_stdio.rs` `box_open_refuses_a_legacy_box_on_stdin` (failed before:
+read everything, then "authentication failed"), `tests/smoke_streaming_boundedness.rs`
+`verify_reads_a_bounded_prefix_of_sig` (ignored, `cargo xtask streaming-bounded`: a 200 MiB
+`--sig` stays under the 60 MiB threshold and is reported as `got 209715200`).
