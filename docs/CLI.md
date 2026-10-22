@@ -318,7 +318,7 @@ fails without writing anything on a mismatch. The standard requires only the non
 `block − N_Б − 1` bytes to be unique per key (11 bytes for a 128-bit block), so a random nonce is good
 for roughly 2^44 messages per key there (`docs/DECISIONS.md` D-40/D-205).
 
-Five more `hazmat`-scoped, per-mode benchmarking/interop commands exist alongside `kalyna-ccm`
+Four more `hazmat`-scoped, per-mode benchmarking/interop commands exist alongside `kalyna-ccm`
 (`docs/DECISIONS.md` D-31/D-71), all with the same `--variant` (one of the five Kalyna block/
 key-size combinations) and `--iterations` (benchmark timing) flags:
 
@@ -326,11 +326,6 @@ key-size combinations) and `--iterations` (benchmark timing) flags:
   construction `crypto_secretbox`/`crypto_secretstream` build on internally (DSTU 7624:2014 §12,
   D-204), exposed here with no message-length cap and no hidden nonce. An empty `--in` with no
   `--aad` is rejected (D-207).
-- `kalyna-cmac compute`/`verify` — Kalyna-CMAC, a 16-byte tag, no encryption. An empty `--in` is
-  rejected (DSTU 7624:2014 §9 does not define CMAC for an empty message, D-206). **Not secure
-  against chosen messages**: §9's CMAC gives `MAC(0-block || Y) = E_K(Y)`, so tags can be forged
-  (T-298). Use it only for interop with that text, never on data someone else chooses, never with
-  a key used for anything else.
 - `kalyna-gmac compute`/`verify` — Kalyna-GMAC, a full-block tag, no encryption, no nonce. An empty
   `--in` is rejected (D-207).
 - `kalyna-kw wrap`/`unwrap` — Kalyna key wrap (1..=20 block-aligned blocks in, one block longer
@@ -342,8 +337,13 @@ Run any of them with no arguments (or `--help`) for the full flag reference and 
 covered here at a summary level since their shape mirrors `kalyna-ccm`/`kalyna-block` above rather
 than needing separate full walkthroughs.
 
-None of `kalyna-block`/`kupyna-digest`/`strumok-crypt`/`kalyna-ccm`/`kalyna-gcm`/`kalyna-cmac`/
-`kalyna-gmac`/`kalyna-kw`/`kalyna-xts` is the `encrypt`/`decrypt`/`hash` surface above - all nine
+`kalyna-cmac` was removed in 0.7 (T-298, `docs/DECISIONS.md` D-247): DSTU 7624:2014 §9's CMAC is
+not secure against chosen messages (`MAC(0-block || Y) = E_K(Y)`, so tags can be forged). Running
+it prints that reason; the construction stays in the library as `hazmat::kalyna_cmac`, for interop
+with the standard's text only.
+
+None of `kalyna-block`/`kupyna-digest`/`strumok-crypt`/`kalyna-ccm`/`kalyna-gcm`/
+`kalyna-gmac`/`kalyna-kw`/`kalyna-xts` is the `encrypt`/`decrypt`/`hash` surface above - all eight
 stay as lower-level, hazmat-scoped tools for anyone who explicitly wants that level of control, or
 is benchmarking a specific primitive directly.
 

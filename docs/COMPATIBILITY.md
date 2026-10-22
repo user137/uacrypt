@@ -40,7 +40,7 @@ Compared against:
 | CCM | AAD not block-aligned, otherwise | standard | same | same | differs (`len‖AAD‖0`, not `len‖0‖AAD`) |
 | CCM | empty plaintext | rejected (outside §13.1's domain) | accepted | rejected | accepted |
 | CMAC | message not block-aligned (annex В.5.2) | standard | same | same | throws |
-| CMAC | security (any input) | not EUF-CMA: `MAC(0^l ‖ Y) = E_K(Y)`, warned, kept for interop (T-298, D-247) | same | same | same (aligned branch) |
+| CMAC | security (any input) | not EUF-CMA: `MAC(0^l ‖ Y) = E_K(Y)`; `hazmat` only, removed from `uacrypt` (T-298, D-247) | same | same | same (aligned branch) |
 | CMAC | empty message | rejected (outside §9's domain) | `MAC(ε) = MAC(0^l)` | rejected (`62a1bdf`, 2026-10-06) | `MAC(ε) = MAC(0^l)` |
 
 Practical consequence: for GCM/GMAC/CCM with arbitrary-length data, UAPKI ≤ 2.0.2, Bouncy Castle and

@@ -1,6 +1,6 @@
 //! T-200 Phase 2 (misuse/malformed-usage matrix), the "rest of it" beyond `--in`==`--out`
 //! (`smoke_misuse.rs`) and `smoke_dispatch.rs`'s representative dispatch-level coverage: a full
-//! per-command missing-required-flag sweep, `kalyna-cmac`/`kalyna-gmac`'s mode-specific `--out`/
+//! per-command missing-required-flag sweep, `kalyna-gmac`'s mode-specific `--out`/
 //! `--tag` requirement (enforced after file I/O, not at parse time - a genuinely different code
 //! path from every other command's flags), directory-as-`--out`, and `--iterations 0`.
 //!
@@ -245,12 +245,12 @@ const CASES: &[Case] = &[
         ],
         required: &["--variant", "--key", "--nonce", "--in", "--out", "--tag"],
     },
-    // kalyna-cmac/kalyna-gmac compute/verify: --out/--tag are each mode-specific, checked after
+    // kalyna-gmac compute/verify: --out/--tag are each mode-specific, checked after
     // file I/O, not by ArgScanner at parse time - covered separately below, not in this table.
     Case {
-        name: "kalyna-cmac compute (parse-time flags)",
+        name: "kalyna-gmac compute (parse-time flags)",
         args: &[
-            "kalyna-cmac",
+            "kalyna-gmac",
             "compute",
             "--variant",
             "128-128",
@@ -441,60 +441,6 @@ fn setup_cmac_fixture(dir: &TempDir) -> (std::path::PathBuf, std::path::PathBuf)
     write_bytes(&key, &[0x11; 16]); // 128-128's key length
     write_bytes(&input, b"a message to authenticate");
     (key, input)
-}
-
-#[test]
-#[cfg_attr(
-    miri,
-    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
-)]
-fn kalyna_cmac_verify_without_tag_is_missing_flag() {
-    let dir = TempDir::new("misuse_cmac_verify_no_tag");
-    let (key, input) = setup_cmac_fixture(&dir);
-    let r = uacrypt([
-        "kalyna-cmac",
-        "verify",
-        "--variant",
-        "128-128",
-        "--key",
-        key.to_str().unwrap(),
-        "--in",
-        input.to_str().unwrap(),
-        // --tag deliberately omitted
-    ]);
-    assert!(r.failure());
-    assert!(
-        r.stderr.contains("missing required flag: --tag"),
-        "stderr={}",
-        r.stderr
-    );
-}
-
-#[test]
-#[cfg_attr(
-    miri,
-    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
-)]
-fn kalyna_cmac_compute_without_out_is_missing_flag() {
-    let dir = TempDir::new("misuse_cmac_compute_no_out");
-    let (key, input) = setup_cmac_fixture(&dir);
-    let r = uacrypt([
-        "kalyna-cmac",
-        "compute",
-        "--variant",
-        "128-128",
-        "--key",
-        key.to_str().unwrap(),
-        "--in",
-        input.to_str().unwrap(),
-        // --out deliberately omitted
-    ]);
-    assert!(r.failure());
-    assert!(
-        r.stderr.contains("missing required flag: --out"),
-        "stderr={}",
-        r.stderr
-    );
 }
 
 #[test]

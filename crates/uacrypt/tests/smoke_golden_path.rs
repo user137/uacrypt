@@ -177,42 +177,24 @@ fn kalyna_gcm_encrypt_decrypt_round_trips() {
     miri,
     ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
 )]
-fn kalyna_cmac_compute_verify_round_trips() {
-    let dir = TempDir::new("golden_kalyna_cmac");
-    let key = dir.file("key.bin");
-    let msg = dir.file("msg.bin");
-    let tag = dir.file("tag.bin");
-    write_bytes(&key, &[0x55; 16]);
-    write_bytes(&msg, b"cmac smoke test message");
-
-    ok(&uacrypt([
-        "kalyna-cmac",
-        "compute",
-        "--variant",
-        "128-128",
-        "--key",
-        key.to_str().unwrap(),
-        "--in",
-        msg.to_str().unwrap(),
-        "--out",
-        tag.to_str().unwrap(),
-    ]));
-    assert!(tag.exists());
-
-    let r = uacrypt([
-        "kalyna-cmac",
-        "verify",
-        "--variant",
-        "128-128",
-        "--key",
-        key.to_str().unwrap(),
-        "--in",
-        msg.to_str().unwrap(),
-        "--tag",
-        tag.to_str().unwrap(),
-    ]);
-    ok(&r);
-    assert_eq!(r.stdout, "");
+fn kalyna_cmac_is_removed_and_says_why() {
+    // T-298 (D-247): DSTU 7624 section 9 CMAC is forgeable, so the binary no longer offers it;
+    // `hazmat::kalyna_cmac` stays in the library.
+    for args in [
+        &["kalyna-cmac"][..],
+        &["kalyna-cmac", "compute", "--variant", "128-128"],
+    ] {
+        let r = uacrypt(args.iter().copied());
+        assert_eq!(r.code, Some(2), "{}", r.stderr);
+        assert!(
+            r.stderr.contains("was removed in uacrypt 0.7"),
+            "{}",
+            r.stderr
+        );
+        assert!(r.stderr.contains("hazmat::kalyna_cmac"), "{}", r.stderr);
+    }
+    let r = uacrypt(["help"]);
+    assert!(!r.stdout.contains("kalyna-cmac"), "{}", r.stdout);
 }
 
 #[test]

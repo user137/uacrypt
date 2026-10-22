@@ -52,6 +52,10 @@ All notable changes to this project are documented in this file. Format follows
 
 ### Changed
 
+- **Breaking: `uacrypt kalyna-cmac` removed** (T-298, `docs/DECISIONS.md` D-247): DSTU 7624 §9's
+  CMAC can be forged from chosen messages (`MAC(0-block || Y)` is the block encryption of `Y`).
+  Running it prints the reason. `hazmat::kalyna_cmac` stays in `dstu-core` for interop with the
+  standard's text, with the warning in its docs.
 - **Breaking: `crypto_box` format v3** (D-239): `0x03 || KEM ciphertext || <stream file>`.
   `seal` writes it and `open` reads only it, in the core, the C ABI and every binding; a blob from
   0.4-0.6 is refused as an unsupported version, and 0.6 cannot open 0.7 output.

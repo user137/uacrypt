@@ -218,53 +218,6 @@ fn kalyna_gcm_tampered_tag_does_not_leak_key() {
     miri,
     ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
 )]
-fn kalyna_cmac_tampered_tag_does_not_leak_key() {
-    let dir = TempDir::new("nosecret_kalyna_cmac");
-    let key = dir.file("key.bin");
-    let msg = dir.file("msg.bin");
-    let tag = dir.file("tag.bin");
-    write_bytes(&key, &SECRET[..16]);
-    write_bytes(&msg, b"cmac no-secret-leak test message");
-
-    assert!(uacrypt([
-        "kalyna-cmac",
-        "compute",
-        "--variant",
-        "128-128",
-        "--key",
-        key.to_str().unwrap(),
-        "--in",
-        msg.to_str().unwrap(),
-        "--out",
-        tag.to_str().unwrap(),
-    ])
-    .success());
-    let mut tag_bytes = support::read_bytes(&tag);
-    tag_bytes[0] ^= 0xFF;
-    write_bytes(&tag, &tag_bytes);
-
-    let args = [
-        "kalyna-cmac",
-        "verify",
-        "--variant",
-        "128-128",
-        "--key",
-        key.to_str().unwrap(),
-        "--in",
-        msg.to_str().unwrap(),
-        "--tag",
-        tag.to_str().unwrap(),
-    ];
-    let r = uacrypt(args);
-    assert!(r.failure(), "expected CmacVerifyFailed, got success");
-    assert_no_secret_leak("kalyna-cmac", &raw_stderr(args), &SECRET[..16]);
-}
-
-#[test]
-#[cfg_attr(
-    miri,
-    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
-)]
 fn kalyna_gmac_tampered_tag_does_not_leak_key() {
     let dir = TempDir::new("nosecret_kalyna_gmac");
     let key = dir.file("key.bin");

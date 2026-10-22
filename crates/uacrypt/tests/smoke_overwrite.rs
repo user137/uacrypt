@@ -173,7 +173,7 @@ const CASES: &[Case] = &[
     },
     Case {
         argv: &[
-            "kalyna-cmac",
+            "kalyna-gmac",
             "compute",
             "--variant",
             "128-128",
@@ -550,7 +550,8 @@ fn decrypt_side_nonce_and_tag_are_inputs_not_outputs() {
             std::fs::remove_file(dir.file(n)).expect("clean up");
         }
     }
-    for mode in ["kalyna-cmac", "kalyna-gmac"] {
+    {
+        let mode = "kalyna-gmac";
         let base = [
             mode,
             "--variant",
@@ -886,7 +887,7 @@ fn an_output_naming_a_key_input_is_refused_even_with_force() {
         ),
         (
             &[
-                "kalyna-cmac",
+                "kalyna-gmac",
                 "compute",
                 "--variant",
                 "128-128",

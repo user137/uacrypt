@@ -10510,7 +10510,7 @@ per box variant, cross-variant/version confusion refused; DSTU 4145 small-subgro
 T4, Q+T*), r/s ranges, nonce bias, ladders branchless; CLI key-type confusion, truncation, temp
 names (`create_new`, 64-bit random), `--force` never over a key, passphrase handling, exit codes.
 
-- [ ] **T-298** (Medium, security, **embargo-sensitive**; **docs/test part done 2026-10-22, D-247**; open: the owner's keep-or-remove call on `uacrypt kalyna-cmac`) Kalyna-CMAC (DSTU 7624 §9 as written) is
+- [x] **T-298** (Medium, security, **embargo-sensitive**; **done 2026-10-22, D-247**: warning + pinning test in `hazmat`; owner 2026-10-22: remove from the binary, keep in `hazmat` - `uacrypt kalyna-cmac` now refuses with the reason) Kalyna-CMAC (DSTU 7624 §9 as written) is
   not EUF-CMA. `hazmat/kalyna_cmac.rs:104-106`: the final-block key is `E_K(0^n)` (aligned) with no
   GF doubling, and the CBC state after one zero block is the same `E_K(0)`, so
   `MAC(0^b || Y) = E_K(Y)[..16]`. Recipe: `Kalyna128_128Cmac::mac(k, &[0; 32]) ==

@@ -227,7 +227,7 @@ fn unknown_subcommand_suggests_the_closest_one() {
     assert_code(&r, 2);
     assert!(r.stderr.contains("did you mean `encrypt`?"), "{}", r.stderr);
 
-    let r = uacrypt(["kalyna-cmac", "verfy"]);
+    let r = uacrypt(["kalyna-gmac", "verfy"]);
     assert!(r.stderr.contains("did you mean `verify`?"), "{}", r.stderr);
 }
 
@@ -398,7 +398,7 @@ fn wrong_length_tag_is_a_rejection_not_a_file_problem() {
     write_bytes(&msg, b"message");
     write_bytes(&tag, &[0u8; 3]);
     let r = uacrypt([
-        "kalyna-cmac",
+        "kalyna-gmac",
         "verify",
         "--variant",
         "128-128",

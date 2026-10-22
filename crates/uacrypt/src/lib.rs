@@ -37,9 +37,6 @@ use dstu_core::hazmat::kalyna::{
 use dstu_core::hazmat::kalyna_ccm::{
     Kalyna128_128Ccm, Kalyna128_256Ccm, Kalyna256_256Ccm, Kalyna256_512Ccm, Kalyna512_512Ccm,
 };
-use dstu_core::hazmat::kalyna_cmac::{
-    Kalyna128_128Cmac, Kalyna128_256Cmac, Kalyna256_256Cmac, Kalyna256_512Cmac, Kalyna512_512Cmac,
-};
 use dstu_core::hazmat::kalyna_gcm::{
     Kalyna128_128Gcm, Kalyna128_256Gcm, Kalyna256_256Gcm, Kalyna256_512Gcm, Kalyna512_512Gcm,
 };
@@ -115,6 +112,8 @@ pub enum CliError {
         command: String,
         replacement: &'static str,
     },
+    /// `kalyna-cmac`, removed in 0.7 because DSTU 7624 §9's CMAC can be forged (T-298, D-247).
+    RemovedForgeableCmac,
     MissingSubcommand(&'static str),
     UnknownVariant(String),
     MissingFlag(&'static str),
@@ -137,13 +136,12 @@ pub enum CliError {
         actual: usize,
     },
     /// The mode's DSTU 7624:2014 domain excludes an empty message (`kalyna-ccm` §13.1,
-    /// `kalyna-cmac` §9, `kalyna-gcm`/`kalyna-gmac` §12.1 - `docs/DECISIONS.md` D-205..D-207).
+    /// `kalyna-gcm`/`kalyna-gmac` §12.1 - `docs/DECISIONS.md` D-205/D-207).
     EmptyInput(&'static str),
     PlaintextTooLong,
     AadTooLong,
     CcmVerifyFailed,
     GcmVerifyFailed,
-    CmacVerifyFailed,
     GmacVerifyFailed,
     KwInvalidLength,
     KwChecksumMismatch,
@@ -296,6 +294,12 @@ impl fmt::Display for CliError {
                 "`{command}` was removed in uacrypt 0.5 - use `uacrypt {replacement}`, it reads \
                  the curve from the key"
             ),
+            CliError::RemovedForgeableCmac => write!(
+                f,
+                "`kalyna-cmac` was removed in uacrypt 0.7: DSTU 7624 section 9 CMAC tags can be \
+                 forged from chosen messages (docs/DECISIONS.md D-247). The construction stays in \
+                 the dstu-core library (hazmat::kalyna_cmac) for interop with that text only"
+            ),
             CliError::MissingSubcommand(choices) => {
                 write!(f, "missing subcommand: expected one of {choices}")
             }
@@ -414,9 +418,6 @@ impl fmt::Display for CliError {
             }
             CliError::GcmVerifyFailed => {
                 write!(f, "kalyna-gcm: authentication failed - ciphertext, tag, AAD, nonce, or key do not match")
-            }
-            CliError::CmacVerifyFailed => {
-                write!(f, "kalyna-cmac: authentication failed - message, tag, or key do not match")
             }
             CliError::GmacVerifyFailed => {
                 write!(f, "kalyna-gmac: authentication failed - message, tag, or key do not match")
@@ -649,6 +650,7 @@ impl CliError {
         match self {
             CliError::UnknownCommand { .. }
             | CliError::RemovedCommand { .. }
+            | CliError::RemovedForgeableCmac
             | CliError::MissingSubcommand(_)
             | CliError::UnknownVariant(_)
             | CliError::MissingFlag(_)
@@ -710,7 +712,6 @@ impl CliError {
             | CliError::AadTooLong
             | CliError::CcmVerifyFailed
             | CliError::GcmVerifyFailed
-            | CliError::CmacVerifyFailed
             | CliError::GmacVerifyFailed
             | CliError::KwInvalidLength
             | CliError::KwChecksumMismatch
@@ -756,17 +757,6 @@ impl From<dstu_core::hazmat::kalyna_gmac::GmacError> for CliError {
             }
             dstu_core::hazmat::kalyna_gmac::GmacError::InvalidLength
             | dstu_core::hazmat::kalyna_gmac::GmacError::TagMismatch => Self::GmacVerifyFailed,
-        }
-    }
-}
-
-impl From<dstu_core::hazmat::kalyna_cmac::CmacError> for CliError {
-    fn from(err: dstu_core::hazmat::kalyna_cmac::CmacError) -> Self {
-        match err {
-            dstu_core::hazmat::kalyna_cmac::CmacError::EmptyMessage => {
-                Self::EmptyInput("kalyna-cmac")
-            }
-            dstu_core::hazmat::kalyna_cmac::CmacError::TagMismatch => Self::CmacVerifyFailed,
         }
     }
 }
@@ -1549,150 +1539,6 @@ pub fn run_gcm_command(decrypt: bool, args: &GcmArgs) -> Result<(), CliError> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct CmacArgs {
-    pub variant: KalynaVariant,
-    pub key_path: PathBuf,
-    pub in_path: PathBuf,
-    /// `compute`: OUTPUT, the 16-byte tag is written here. `verify`: unused (see `tag_path`).
-    pub out_path: Option<PathBuf>,
-    /// `verify`: INPUT, the tag to check against. `compute`: unused (see `out_path`).
-    pub tag_path: Option<PathBuf>,
-    pub iterations: u32,
-    /// Replace an existing output (T-258, D-214).
-    pub force: bool,
-}
-
-/// Parses `kalyna-cmac compute`/`verify`'s flags: `--variant`/`--key`/`--in` required, plus
-/// `--out` (compute) or `--tag` (verify) depending on the subcommand - [`run_cmac_command`]
-/// decides which one is actually required, since the parser alone can't know which subcommand
-/// called it.
-///
-/// # Errors
-///
-/// [`CliError::MissingFlag`]/[`CliError::UnknownVariant`]/[`CliError::InvalidIterations`]/
-/// [`CliError::UnknownFlag`], same cases as [`parse_block_args`].
-pub fn parse_cmac_args(args: &[String]) -> Result<CmacArgs, CliError> {
-    let scanner = ArgScanner::scan(
-        args,
-        &[
-            "--variant",
-            "--key",
-            "--in",
-            "--out",
-            "--tag",
-            "--iterations",
-        ],
-        &["--force"],
-    )?;
-    Ok(CmacArgs {
-        variant: scanner.variant(KalynaVariant::parse)?,
-        key_path: scanner.path("--key")?,
-        in_path: scanner.path("--in")?,
-        out_path: scanner.path_opt("--out")?,
-        tag_path: scanner.path_opt("--tag")?,
-        iterations: scanner.iterations()?,
-        force: scanner.bool_flag("--force"),
-    })
-}
-
-/// Runs `kalyna-cmac compute` (`verify = false`, writes the 16-byte tag to `args.out_path`) or
-/// `kalyna-cmac verify` (`verify = true`, checks `args.tag_path` and returns
-/// [`CliError::CmacVerifyFailed`] on mismatch) - `hazmat::kalyna_cmac`, benchmark-scoped
-/// (`docs/DECISIONS.md` D-31/D-71).
-///
-/// # Errors
-///
-/// [`CliError::Io`]/[`CliError::WrongLength`] for file problems, [`CliError::MissingFlag`] if
-/// `compute` is missing `--out` or `verify` is missing `--tag`, or
-/// [`CliError::CmacVerifyFailed`] if `verify` fails to authenticate.
-pub fn run_cmac_command(verify: bool, args: &CmacArgs) -> Result<(), CliError> {
-    let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
-    let tag_out = if verify {
-        None
-    } else {
-        let out_path = args.out_path.as_ref().ok_or(CliError::MissingFlag("out"))?;
-        check_outputs(&[("--out", out_path)], &[("--key", &args.key_path)])?;
-        Some(OutputFile::create(
-            out_path,
-            Some(&args.in_path),
-            args.force,
-        )?)
-    };
-    let message = std::fs::read(&args.in_path).map_err(|e| CliError::Io {
-        path: args.in_path.clone(),
-        message: e.to_string(),
-    })?;
-    let tag_in = if verify {
-        Some(read_exact_file(
-            args.tag_path.as_ref().ok_or(CliError::MissingFlag("tag"))?,
-            LengthOf::Tag,
-            16,
-        )?)
-    } else {
-        None
-    };
-
-    let iterations = args.iterations.max(1);
-    // `_with_cipher` (`docs/DECISIONS.md` D-76 / `docs/TASKS.md` T-127): the key schedule is expanded once
-    // outside this loop, matching `kalyna-block`/`kalyna-gcm`/`kalyna-xts`'s own cached-schedule
-    // convention - `<$mac>::mac`'s raw-key-bytes form would otherwise re-expand it every iteration.
-    macro_rules! run_cmac_variant {
-        ($mac:ty, $expanded:ty, $key_len:literal) => {{
-            let mut key_arr = [0u8; $key_len];
-            key_arr.copy_from_slice(&key);
-            let cipher = <$expanded>::new(&key_arr);
-
-            let start = std::time::Instant::now();
-            let mut tag = [0u8; 16];
-            for _ in 0..iterations {
-                if verify {
-                    let mut expected = [0u8; 16];
-                    expected.copy_from_slice(tag_in.as_ref().unwrap());
-                    <$mac>::verify_with_cipher(&cipher, &message, &expected)?;
-                } else {
-                    tag = <$mac>::mac_with_cipher(&cipher, &message)?;
-                }
-            }
-            (tag, start.elapsed())
-        }};
-    }
-
-    let (tag, elapsed) = match args.variant {
-        KalynaVariant::K128_128 => {
-            run_cmac_variant!(Kalyna128_128Cmac, Kalyna128_128ExpandedKey, 16)
-        }
-        KalynaVariant::K128_256 => {
-            run_cmac_variant!(Kalyna128_256Cmac, Kalyna128_256ExpandedKey, 32)
-        }
-        KalynaVariant::K256_256 => {
-            run_cmac_variant!(Kalyna256_256Cmac, Kalyna256_256ExpandedKey, 32)
-        }
-        KalynaVariant::K256_512 => {
-            run_cmac_variant!(Kalyna256_512Cmac, Kalyna256_512ExpandedKey, 64)
-        }
-        KalynaVariant::K512_512 => {
-            run_cmac_variant!(Kalyna512_512Cmac, Kalyna512_512ExpandedKey, 64)
-        }
-    };
-
-    if let Some((tag_out, tag_file)) = tag_out {
-        tag_out.write_all_and_commit(tag_file, &tag)?;
-    }
-
-    if args.iterations > 1 {
-        let per_op_ns = elapsed.as_nanos() / u128::from(args.iterations);
-        eprintln!(
-            "iterations={} total_ns={} per_op_ns={}",
-            args.iterations,
-            elapsed.as_nanos(),
-            per_op_ns
-        );
-    }
-
-    Ok(())
-}
-
-#[derive(Debug, PartialEq, Eq)]
 pub struct GmacArgs {
     pub variant: KalynaVariant,
     pub key_path: PathBuf,
@@ -1704,14 +1550,16 @@ pub struct GmacArgs {
     pub force: bool,
 }
 
-/// Parses `kalyna-gmac compute`/`verify`'s flags - same shape as [`parse_cmac_args`]. **No
+/// Parses `kalyna-gmac compute`/`verify`'s flags: `--variant`/`--key`/`--in` required, plus
+/// `--out` (compute) or `--tag` (verify) - [`run_gmac_command`] decides which. **No
 /// `--nonce`**: unlike [`kalyna_gmac`](dstu_core::hazmat::kalyna_gmac), GCM's other MAC-only
 /// sibling, `hazmat::kalyna_gmac::mac`/`verify` take no IV at all (confirmed by reading the
 /// module, not assumed from GCM's shape) - so there is nothing here for a `--nonce` flag to pass.
 ///
 /// # Errors
 ///
-/// Same cases as [`parse_cmac_args`].
+/// [`CliError::MissingFlag`]/[`CliError::UnknownVariant`]/[`CliError::InvalidIterations`]/
+/// [`CliError::UnknownFlag`], same cases as [`parse_block_args`].
 pub fn parse_gmac_args(args: &[String]) -> Result<GmacArgs, CliError> {
     let scanner = ArgScanner::scan(
         args,
@@ -1742,7 +1590,9 @@ pub fn parse_gmac_args(args: &[String]) -> Result<GmacArgs, CliError> {
 ///
 /// # Errors
 ///
-/// Same cases as [`run_cmac_command`], plus [`CliError::GmacVerifyFailed`] on a failed `verify`.
+/// [`CliError::Io`]/[`CliError::WrongLength`] for file problems, [`CliError::MissingFlag`] if
+/// `compute` is missing `--out` or `verify` is missing `--tag`, or [`CliError::GmacVerifyFailed`]
+/// on a failed `verify`.
 pub fn run_gmac_command(verify: bool, args: &GmacArgs) -> Result<(), CliError> {
     let key = read_exact_file(&args.key_path, LengthOf::Key, args.variant.key_len())?;
     let tag_out = if verify {
@@ -1775,7 +1625,7 @@ pub fn run_gmac_command(verify: bool, args: &GmacArgs) -> Result<(), CliError> {
 
     let iterations = args.iterations.max(1);
     // `_with_cipher` (`docs/DECISIONS.md` D-76 / `docs/TASKS.md` T-127) - same cached-schedule convention as
-    // `run_cmac_command` above.
+    // `kalyna-block`/`kalyna-gcm`/`kalyna-xts`.
     macro_rules! run_gmac_variant {
         ($mac:ty, $expanded:ty, $key_len:literal, $block_len:literal) => {{
             let mut key_arr = [0u8; $key_len];
@@ -1885,7 +1735,7 @@ pub fn run_kw_command(unwrap: bool, args: &KwArgs) -> Result<(), CliError> {
 
     let iterations = args.iterations.max(1);
     // `_with_cipher` (`docs/DECISIONS.md` D-76 / `docs/TASKS.md` T-127) - same cached-schedule convention as
-    // `run_cmac_command`/`run_gmac_command` above; this is the one benchmark T-127 identified where
+    // `run_gmac_command` above; this is the one benchmark T-127 identified where
     // the redone-every-call schedule cost isn't amortized by message size (KW's input is at most
     // `MAX_R` blocks), so this fix has the most direct effect on KW's own reported numbers.
     macro_rules! run_kw_variant {
@@ -4885,7 +4735,6 @@ LOWER-LEVEL COMMANDS (benchmarking and interop with other DSTU implementations):
     kalyna-block    Single Kalyna block encrypt/decrypt - exactly one block, no file support.
     kalyna-ccm      Kalyna-CCM authenticated encryption - messages/AAD capped at 255 bytes.
     kalyna-gcm      Kalyna-GCM authenticated encryption - no message-length cap.
-    kalyna-cmac     Kalyna-CMAC message authentication (compute/verify a tag, no encryption).
     kalyna-gmac     Kalyna-GMAC message authentication (compute/verify a tag, no encryption).
     kalyna-kw       Kalyna key wrap/unwrap - wraps block-aligned key material, not a general cipher.
     kalyna-xts      Kalyna-XTS disk-sector mode - confidentiality only, no tag, by design.
@@ -5424,31 +5273,6 @@ EXAMPLE:
         --out msg.enc --tag tag.bin
 ";
 
-const KALYNA_CMAC_HELP: &str = "\
-uacrypt kalyna-cmac - Kalyna-CMAC message authentication, for benchmarking/interop (docs/DECISIONS.md D-31/D-71).
-
-Computes or verifies a 16-byte tag over a message - no encryption. WARNING: DSTU 7624 section 9 CMAC
-is not secure against chosen messages - MAC(0-block || Y) equals the block encryption of Y, so
-tags can be forged. Only for interop with that standard text; never authenticate data someone
-else chooses with it, and never reuse the key for anything else (hazmat::kalyna_cmac docs, T-298).
-
-USAGE:
-    uacrypt kalyna-cmac compute --variant <v> --key <path> --in <path> --out <path> [--iterations <n>] [--force]
-    uacrypt kalyna-cmac verify --variant <v> --key <path> --in <path> --tag <path> [--iterations <n>]
-
-FLAGS:
-    --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
-    --key <path>     key file - must be exactly the variant's key length
-    --in <path>      message to authenticate (must not be empty, D-206)
-    --out <path>     compute: OUTPUT, where to write the 16-byte tag
-    --tag <path>     verify: INPUT, the tag to check against
-    --force          replace --out if it already exists (without it: refused; never a key file)
-    --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
-
-EXAMPLE:
-    uacrypt kalyna-cmac compute --variant 128-128 --key key.bin --in msg.bin --out tag.bin
-";
-
 const KALYNA_GMAC_HELP: &str = "\
 uacrypt kalyna-gmac - Kalyna-GMAC message authentication, for benchmarking/interop (docs/DECISIONS.md D-31/D-71).
 
@@ -5591,7 +5415,6 @@ const COMMANDS: &[(&str, &str)] = &[
     ("kalyna-block", KALYNA_BLOCK_HELP),
     ("kalyna-ccm", KALYNA_CCM_HELP),
     ("kalyna-gcm", KALYNA_GCM_HELP),
-    ("kalyna-cmac", KALYNA_CMAC_HELP),
     ("kalyna-gmac", KALYNA_GMAC_HELP),
     ("kalyna-kw", KALYNA_KW_HELP),
     ("kalyna-xts", KALYNA_XTS_HELP),
@@ -5617,6 +5440,9 @@ const REMOVED_COMMANDS: &[(&str, &str)] = &[
 ];
 
 fn unknown_command(command: &str) -> CliError {
+    if command == "kalyna-cmac" {
+        return CliError::RemovedForgeableCmac;
+    }
     if let Some(&(_, replacement)) = REMOVED_COMMANDS.iter().find(|(old, _)| *old == command) {
         return CliError::RemovedCommand {
             command: command.to_string(),
@@ -5726,9 +5552,9 @@ fn dispatch_box_command(cmd: &str, rest: &[String]) -> Result<(), CliError> {
     }
 }
 
-/// Dispatches `kalyna-gcm`/`kalyna-cmac`/`kalyna-gmac`/`kalyna-kw`/`kalyna-xts` - split out of
+/// Dispatches `kalyna-gcm`/`kalyna-gmac`/`kalyna-kw`/`kalyna-xts` - split out of
 /// [`run`] purely to keep that function under `clippy::pedantic`'s line-count lint (`docs/DECISIONS.md`
-/// D-71); `cmd` is always one of the five literals [`run`]'s own match arm already narrowed it to.
+/// D-71); `cmd` is always one of the four literals [`run`]'s own match arm already narrowed it to.
 /// `rest` excludes both the program name and `cmd` itself.
 fn dispatch_kalyna_mode(cmd: &str, rest: &[String]) -> Result<(), CliError> {
     if rest.iter().any(|a| is_help_flag(a)) {
@@ -5746,16 +5572,6 @@ fn dispatch_kalyna_mode(cmd: &str, rest: &[String]) -> Result<(), CliError> {
                 &["encrypt", "decrypt"],
             )),
             None => Err(CliError::MissingSubcommand("encrypt|decrypt")),
-        },
-        "kalyna-cmac" => match sub {
-            Some("compute") => run_cmac_command(false, &parse_cmac_args(&rest[1..])?),
-            Some("verify") => run_cmac_command(true, &parse_cmac_args(&rest[1..])?),
-            Some(other) => Err(unknown_subcommand(
-                "kalyna-cmac",
-                other,
-                &["compute", "verify"],
-            )),
-            None => Err(CliError::MissingSubcommand("compute|verify")),
         },
         "kalyna-gmac" => match sub {
             Some("compute") => run_gmac_command(false, &parse_gmac_args(&rest[1..])?),
@@ -5848,7 +5664,7 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
                 None => Err(CliError::MissingSubcommand("encrypt|decrypt")),
             }
         }
-        Some(cmd @ ("kalyna-gcm" | "kalyna-cmac" | "kalyna-gmac" | "kalyna-kw" | "kalyna-xts")) => {
+        Some(cmd @ ("kalyna-gcm" | "kalyna-gmac" | "kalyna-kw" | "kalyna-xts")) => {
             dispatch_kalyna_mode(cmd, &args[1..])
         }
         Some("kupyna-digest") => dispatch_simple(
@@ -7795,123 +7611,6 @@ mod tests {
         assert!(!dir.file("out.bin").exists());
     }
 
-    // --- kalyna-cmac (T-120/D-71) ---
-
-    #[test]
-    fn run_cmac_command_round_trip_matches_dstu_core_directly() {
-        let dir = TempDir::new("kalyna_cmac");
-        let key = [0x44u8; 16];
-        let message = b"authenticate me".to_vec();
-        std::fs::write(dir.file("key.bin"), key).expect("write key");
-        std::fs::write(dir.file("in.bin"), &message).expect("write message");
-
-        let compute_args = CmacArgs {
-            variant: KalynaVariant::K128_128,
-            key_path: dir.file("key.bin"),
-            in_path: dir.file("in.bin"),
-            out_path: Some(dir.file("tag.bin")),
-            tag_path: None,
-            iterations: 1,
-            force: false,
-        };
-        run_cmac_command(false, &compute_args).expect("compute should succeed");
-
-        let expected_tag = Kalyna128_128Cmac::mac(&key, &message).expect("non-empty message");
-        assert_eq!(
-            std::fs::read(dir.file("tag.bin")).expect("read"),
-            expected_tag.to_vec()
-        );
-
-        let verify_args = CmacArgs {
-            out_path: None,
-            tag_path: Some(dir.file("tag.bin")),
-            ..compute_args
-        };
-        run_cmac_command(true, &verify_args).expect("verify should succeed against its own tag");
-    }
-
-    /// "Fool" test (T-236/D-206): DSTU 7624:2014 §9 does not define CMAC for an empty message, so an
-    /// empty `--in` is rejected on both compute and verify instead of producing `MAC(0^l)`.
-    #[test]
-    fn run_cmac_command_empty_input_is_rejected() {
-        let dir = TempDir::new("kalyna_cmac_empty");
-        std::fs::write(dir.file("key.bin"), [0x55u8; 16]).expect("write key");
-        std::fs::write(dir.file("in.bin"), []).expect("write empty input");
-        std::fs::write(dir.file("tag_in.bin"), [0u8; 16]).expect("write tag");
-        let compute_args = CmacArgs {
-            variant: KalynaVariant::K128_128,
-            key_path: dir.file("key.bin"),
-            in_path: dir.file("in.bin"),
-            out_path: Some(dir.file("tag.bin")),
-            tag_path: None,
-            iterations: 1,
-            force: false,
-        };
-        assert_eq!(
-            run_cmac_command(false, &compute_args),
-            Err(CliError::EmptyInput("kalyna-cmac"))
-        );
-        assert!(!dir.file("tag.bin").exists());
-
-        let verify_args = CmacArgs {
-            out_path: None,
-            tag_path: Some(dir.file("tag_in.bin")),
-            ..compute_args
-        };
-        assert_eq!(
-            run_cmac_command(true, &verify_args),
-            Err(CliError::EmptyInput("kalyna-cmac"))
-        );
-    }
-
-    #[test]
-    fn run_cmac_command_verify_rejects_tampered_tag() {
-        let dir = TempDir::new("kalyna_cmac_tamper");
-        let key = [0x55u8; 16];
-        let message = b"do not forge me".to_vec();
-        std::fs::write(dir.file("key.bin"), key).expect("write key");
-        std::fs::write(dir.file("in.bin"), &message).expect("write message");
-
-        let mut tag = Kalyna128_128Cmac::mac(&key, &message).expect("non-empty message");
-        tag[0] ^= 0x01;
-        std::fs::write(dir.file("tag.bin"), tag).expect("write tampered tag");
-
-        let verify_args = CmacArgs {
-            variant: KalynaVariant::K128_128,
-            key_path: dir.file("key.bin"),
-            in_path: dir.file("in.bin"),
-            out_path: None,
-            tag_path: Some(dir.file("tag.bin")),
-            iterations: 1,
-            force: false,
-        };
-        assert_eq!(
-            run_cmac_command(true, &verify_args),
-            Err(CliError::CmacVerifyFailed)
-        );
-    }
-
-    #[test]
-    fn run_cmac_command_verify_without_tag_flag_is_rejected() {
-        let dir = TempDir::new("kalyna_cmac_missing_tag");
-        std::fs::write(dir.file("key.bin"), [0u8; 16]).expect("write key");
-        std::fs::write(dir.file("in.bin"), b"data").expect("write message");
-
-        let args = CmacArgs {
-            variant: KalynaVariant::K128_128,
-            key_path: dir.file("key.bin"),
-            in_path: dir.file("in.bin"),
-            out_path: None,
-            tag_path: None,
-            iterations: 1,
-            force: false,
-        };
-        assert_eq!(
-            run_cmac_command(true, &args),
-            Err(CliError::MissingFlag("tag"))
-        );
-    }
-
     // --- kalyna-gmac (T-120/D-71) ---
 
     #[test]
@@ -8140,13 +7839,7 @@ mod tests {
 
     #[test]
     fn run_dispatches_all_five_new_kalyna_mode_commands_help() {
-        for cmd in [
-            "kalyna-gcm",
-            "kalyna-cmac",
-            "kalyna-gmac",
-            "kalyna-kw",
-            "kalyna-xts",
-        ] {
+        for cmd in ["kalyna-gcm", "kalyna-gmac", "kalyna-kw", "kalyna-xts"] {
             assert!(
                 run(&[cmd.to_string(), "--help".to_string()]).is_ok(),
                 "{cmd} --help should succeed"
@@ -8210,13 +7903,7 @@ mod tests {
 
     #[test]
     fn run_unknown_subcommand_for_each_new_mode_is_rejected() {
-        for cmd in [
-            "kalyna-gcm",
-            "kalyna-cmac",
-            "kalyna-gmac",
-            "kalyna-kw",
-            "kalyna-xts",
-        ] {
+        for cmd in ["kalyna-gcm", "kalyna-gmac", "kalyna-kw", "kalyna-xts"] {
             let result = run(&[cmd.to_string(), "not-a-real-subcommand".to_string()]);
             assert!(
                 matches!(result, Err(CliError::UnknownCommand { .. })),

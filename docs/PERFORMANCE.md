@@ -783,7 +783,8 @@ per-call setup cost dominating small inputs and raw per-byte throughput dominati
 though the exact per-byte cause (table layout, compiler codegen, etc.) isn't isolated further here.
 
 **Reproducing**: `target/release/uacrypt kalyna-cmac compute --variant <v> --key <path> --in <path>
---out <path> --iterations <N>`.
+--out <path> --iterations <N>` - with a uacrypt 0.6 or earlier binary: the command was removed in
+0.7 (T-298, D-247; `hazmat::kalyna_cmac` itself is unchanged, so the numbers still describe it).
 
 **Updated 2026-07-26, 10 MiB, N = 50** (T-128's const-generic round-function fix —
 CMAC is pure block-cipher chaining with no other bottleneck diluting it, unlike GCM's field

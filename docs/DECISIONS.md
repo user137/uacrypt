@@ -15795,9 +15795,13 @@ so the code is not "fixed" into a different MAC (D-47/T-234: the text governs; a
 fail the annex vectors and interop - the module's only reason to exist). Instead: a module-doc
 section and `uacrypt kalyna-cmac --help`/`docs/CLI.md` warnings, a COMPATIBILITY row, and
 `tests/kalyna_cmac.rs` `t298_*` pinning the property so the warning cannot silently go stale. No
-`crypto_*` API uses CMAC (`crypto_auth` is Kupyna-KMAC). **Open for the owner:** keep the
-`uacrypt kalyna-cmac` command (interop/benchmark tool, D-31/D-71, used by `docs/PERFORMANCE.md`)
-or remove it; whether this warrants an advisory, and any report on the standard itself.
+`crypto_*` API uses CMAC (`crypto_auth` is Kupyna-KMAC). **Owner, 2026-10-22: remove it from
+the binary, keep it in `hazmat`.** `uacrypt kalyna-cmac` (any arguments) now exits 2 with
+`CliError::RemovedForgeableCmac`, naming the reason and `hazmat::kalyna_cmac`; it is gone from
+help and the command table, and its smoke tests moved to `kalyna-gmac` (same shape) or became the
+removal check (`tests/smoke_golden_path.rs` `kalyna_cmac_is_removed_and_says_why`). The CMAC fuzz
+target stays (it fuzzes `hazmat`). Still open for the owner: whether this warrants an advisory, and
+any report on the standard itself.
 
 ## D-248: dstu9041 `encrypt` refuses a degenerate recipient; the group is `Z/2 x Z/2 x Z/n` (T-307, 2026-10-22)
 
