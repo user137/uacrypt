@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-23
+
 ### Added
 
 - **`dstu-core`: Kupyna-384** (T-254, `docs/DECISIONS.md` D-242): `hazmat::kupyna::Kupyna384` and

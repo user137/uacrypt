@@ -10277,9 +10277,22 @@ writer onto it. Superseded in detail by the plan below.
   5. T-297 capi `box384`. 6. T-297 all eight bindings (T-204 order). 7. Perf + doc sweep.
   Push points for the owner: after phase 3 and after phase 6.
 - Step 3b (owner 2026-10-22): the red-team wave T-298..T-308 ("Red-team remediation wave" below).
-- Step 4: T-264 (the parser is hand-written, no `clap`; no new dependency without the owner).
-- Step 5: T-249 + the T-223/T-225 fuzz additions.
-- Release: version bumps incl. every published binding's minor (v3 box, C ABI break), the D-238
+- **Owner 2026-10-23: release 0.7.0 now with what is done, plus one combined GitHub advisory**
+  (T-298, T-299, T-300, T-301, T-303 - T-303 added by Claude: 0.6.0's `hash --check` reached UNC
+  hosts too). Steps 4 and 5 move to after 0.7.0. Release order (each outward step owner-gated):
+  1. Local: version bumps (`dstu-core`/`uacrypt` 0.7.0; Python/npm/Ruby 0.5.0), CHANGELOG
+     `[0.7.0]`, README marker; `cargo xtask ci`; Pi workspace clippy + test + `cargo xtask php`.
+  2. Advisory text `.claude/disclosure-drafts/advisory_070.md` - owner confirms; then the GHSA is
+     created as a private draft.
+  3. Owner pushes; CI + Sonar gate + `miri.yml` green on HEAD; the D-238 `workflow_dispatch` dry run.
+  4. Tag `v0.7.0`, release.yml with env approvals; verify the live registry pages.
+  5. Publish the GHSA; CHANGELOG gets its ID; gh-pages marker; winget 0.7.0 without VCRedist.
+  Open for the owner: yank/deprecate 0.6.0 and bindings 0.4.0 (T-251 precedent) or GHSA only.
+  The pushed tree shows the fixes from the push until the release is live - push and tag the same
+  day.
+- Step 4 (after 0.7.0): T-264 (the parser is hand-written, no `clap`; no new dependency without the owner).
+- Step 5 (after 0.7.0): T-249 + the T-223/T-225 fuzz additions.
+- Release (applied by the order above): version bumps incl. every published binding's minor (v3 box, C ABI break), the D-238
   `workflow_dispatch` dry run, green Miri on the tagged commit, winget 0.7.0 without VCRedist.
 - After 0.7.0 ("хвиля", Claude's reading, owner to correct): prepare the remaining T-164
   registries (Packagist, NuGet, Maven Central, pkg.go.dev, vcpkg) - each publish owner-gated.
