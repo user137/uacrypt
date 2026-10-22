@@ -15957,3 +15957,21 @@ any file-system call. Also corrected: on Windows `std::fs::metadata` opens a dev
 no access rights to query it, so the docs now say "not read", not "not opened". Not fixed: a
 disk-letter path that is a symlink to a UNC target is followed by `metadata`; creating such a link
 needs the victim's own disk and (by default) admin rights, which a check list does not give.
+
+## D-253: 0.7.0 now, one advisory, no yank (2026-10-23)
+
+**Owner, 2026-10-23:** release 0.7.0 now with what is done (T-264 and T-249 move after it), with
+one combined GitHub advisory. **Delegated to Claude ("питання на тобі"), decided by D-247's order -
+project rules, then safety, then compatibility:**
+
+- **Advisory text** `.claude/disclosure-drafts/advisory_070.md` as drafted: T-298, T-299, T-300,
+  T-301 and T-303 (T-303 added: 0.6.0's `hash --check` reached UNC hosts, an NTLM leak - the same
+  class T-309 closed for `\??\`). Medium, CVSS 3.1 5.5 scored on T-300 (another local account reads
+  a key or plaintext); the rest scored in the text. Created as private draft
+  **GHSA-6x5f-x3rf-6r48**, published only after 0.7.0 is live on every registry it names. T-302,
+  T-304..T-307 stay CHANGELOG-only (hardening, DoS bounded by a local file, hazmat misuse).
+- **No yank of 0.6.0 or bindings 0.4.0** (unlike T-251/D-233). 0.7.0 breaks compatibility (box
+  v3, the C ABI, the CMAC command), so a yank would push every user onto a breaking upgrade; parts
+  1-3 are CLI-only and part 4 is the standard's own construction, still in `hazmat`; part 5 allows
+  no forgery. The advisory reaches Dependabot/OSV, which is the notice that matters here. RustSec:
+  not filed (rejected on notability 2026-10-09).

@@ -81,6 +81,8 @@ All notable changes to this project are documented in this file. Format follows
 
 ### Fixed
 
+Security advisory GHSA-6x5f-x3rf-6r48 covers T-298, T-299, T-300, T-301 and T-303 below.
+
 - **`dstu-core`: DSTU 4145 verifying keys with a coordinate >= 2^m are refused** (T-299,
   `docs/DECISIONS.md` D-246). Such bytes verified on std builds (several encodings of one key) and
   failed on no_std builds; `Point::is_on_curve` now rejects them, so every entry point (CLI, C ABI,

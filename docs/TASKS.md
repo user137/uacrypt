@@ -10287,7 +10287,8 @@ writer onto it. Superseded in detail by the plan below.
   3. Owner pushes; CI + Sonar gate + `miri.yml` green on HEAD; the D-238 `workflow_dispatch` dry run.
   4. Tag `v0.7.0`, release.yml with env approvals; verify the live registry pages.
   5. Publish the GHSA; CHANGELOG gets its ID; gh-pages marker; winget 0.7.0 without VCRedist.
-  Open for the owner: yank/deprecate 0.6.0 and bindings 0.4.0 (T-251 precedent) or GHSA only.
+  Delegated to Claude (D-253): text as drafted, draft GHSA-6x5f-x3rf-6r48 created 2026-10-23;
+  no yank. Steps 1-2 done (`410ac8e`, gh-pages local `6268788`, not pushed).
   The pushed tree shows the fixes from the push until the release is live - push and tag the same
   day.
 - Step 4 (after 0.7.0): T-264 (the parser is hand-written, no `clap`; no new dependency without the owner).
