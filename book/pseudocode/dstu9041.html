@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-1f28d178.js";
+            window.path_to_searchindex_js = "../searchindex-840787e1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-bc9924e8.js"></script>
@@ -521,9 +521,9 @@ same day as T-174’s first pass, just not reflected in this list until now. Д�
 (<code>l(p)=512</code>) is now verified too (T-192, D-180) - <code>Q</code>/<code>R</code>/<code>T</code>/<code>kappa</code>/<code>H</code> all match the document’s
 own printed hex exactly, <code>t</code>/<code>C</code> match to within a 2-hex-digit discrepancy attributed to the same
 printing-erratum pattern already documented for Додаток Г.1’s own <code>t</code> (<code>g1-worked-example.json</code>’s
-<code>t_ciphertext_note</code>). What’s still unverified is Додаток Г.2 (<code>l(p)=384</code>) - present in the scan
-(curve params, <code>Q</code>/<code>R</code>/<code>T</code> etc.) but its own <code>t</code>/<code>C</code> can’t be checked yet regardless
-(<code>hazmat::kalyna_kw_p</code> doesn’t exist, see below).</li>
+<code>t_ciphertext_note</code>). Додаток Г.2 (<code>l(p)=384</code>) is checked too (T-297, D-241): <code>Q</code>/<code>R</code>/<code>T</code>/
+<code>kappa</code>/<code>H</code>/<code>M'</code> exactly; its printed <code>t</code> (one dropped <code>0</code> restored) inverts to a KW input that
+is not DSTU 7624 §15.4’s KW-p padding - recorded as a divergence, not reproduced.</li>
 <li><strong>No worked example exists for <code>l(p)=768</code> (<code>λ=383</code>) anywhere in this standard — confirmed
 2026-08-06, owner-supplied photos of the document’s final pages.</strong> The document is genuinely 36
 pages total (not the 40 the store listing implies, <code>docs/ORACLES.md</code>); page 36 is the last page,
@@ -564,13 +564,15 @@ over (same <code>r=p-1</code> order-2 point, same cofactor-4 order-4 subgroup - 
 Hasse-interval method, not copied). <code>l(p)=512</code> needed no new Kalyna-KW variant
 (<code>Kalyna512_512Kw</code> already existed) since its <code>M'</code> lands exactly block-aligned (Table 1) - unlike
 <code>l(p)=384</code> below.</p>
-<p><strong>Still not done, deliberately out of scope for T-192</strong>: <code>l(p)=384</code> (needs <code>hazmat::kalyna_kw_p</code>
-for its non-block-aligned <code>M'</code> padding case, a genuinely new primitive) and <code>l(p)=768</code> (no
-worked-example oracle exists at all in the standard, confirmed 2026-08-06, not just missing from
-this scan — see “Open gaps” above). Per this project’s own Tier C precedent (T-172 and earlier: any
-new primitive gets its own <code>advisor()</code> consultation and plan-mode pass before code is written, not
-after), picking either of these up should follow the same phased/tested-first pattern T-177/T-192
-used, not be treated as a small parameter tweak.</p>
+<p><strong><code>l(p)=384</code>/E384/1 is implemented too (T-297, 2026-10-19)</strong>: <code>message384.rs</code>/<code>fp384.rs</code>/
+<code>curve384.rs</code>/<code>encryption384.rs</code> (<code>docs/DECISIONS.md</code> D-241/D-244), with <code>hazmat::kalyna_kw_p</code>
+(T-253, D-243) as its KW stage: <code>t = Kalyna-256/256-KW-p(x_T^(256), M')</code> over the 48-byte <code>M'</code>,
+<code>C = r || t</code> = 176 bytes. Додаток Г.2 confirms <code>Q</code>/<code>R</code>/<code>T</code>/<code>kappa</code>/<code>H</code>/<code>M'</code> exactly; its printed
+<code>t</code> is KW over <code>M' || 00×11 01 10 00×3 || 00×32</code>, not DSTU 7624 §15.4’s padding, so this crate
+does not reproduce it (owner’s choice, D-241).</p>
+<p><strong>Still not done</strong>: <code>l(p)=768</code> (no worked-example oracle exists at all in the standard, confirmed
+2026-08-06, not just missing from this scan — see “Open gaps” above). Picking it up should follow
+the same phased, test-first pattern T-177/T-192/T-297 used, with its own plan and <code>advisor()</code> pass.</p>
 
                     </main>
 

@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1f28d178.js";
+            window.path_to_searchindex_js = "searchindex-840787e1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -2789,6 +2789,25 @@ machine, release binary, 3 rounds each:</p>
 wash for a caller that rebuilds the key for every call (the Python, Node.js, Ruby, PHP and Java
 bindings take the secret key as bytes per call), and a gain for one that keeps it (the C ABI
 handle, so .NET, Go and C++).</p>
+<h3 id="crypto_box384-next-to-the-other-two-curves--t-297-2026-10-20"><a class="header" href="#crypto_box384-next-to-the-other-two-curves--t-297-2026-10-20"><code>crypto_box384</code> next to the other two curves — T-297 (2026-10-20)</a></h3>
+<p><code>uacrypt box-seal</code>/<code>box-open --iterations</code> (keys loaded once, 1 KiB message), release binary, 3
+interleaved rounds per curve; Windows dev machine (200 iterations) and the Raspberry Pi 5 (aarch64,
+100 iterations). ms/op:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Curve</th><th>Windows seal</th><th>Windows open</th><th>Pi seal</th><th>Pi open</th></tr>
+</thead>
+<tbody>
+<tr><td>E256/1 (<code>crypto_box</code>)</td><td>0.96</td><td>1.10-1.11</td><td>1.64</td><td>1.89</td></tr>
+<tr><td>E384/1 (<code>crypto_box384</code>)</td><td>2.63-2.68</td><td>3.04-3.05</td><td>4.47</td><td>5.11-5.12</td></tr>
+<tr><td>E512/1 (<code>crypto_box512</code>)</td><td>5.64-5.68</td><td>6.48-6.57</td><td>9.53</td><td>10.87-11.14</td></tr>
+</tbody>
+</table>
+</div>
+<p>E384/1 sits where its field size puts it: about 2.8x E256/1 and half of E512/1 on both machines
+(a 6-limb field multiply over a 384-step ladder). The KW-p step (one 128-byte wrap) does not show
+at this scale.</p>
 
                     </main>
 

@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1f28d178.js";
+            window.path_to_searchindex_js = "searchindex-840787e1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -208,6 +208,9 @@ modes”), not yet in a tagged release. Built from <code>master</code> <code>0bf
 </thead>
 <tbody>
 <tr><td>Block cipher, ECB, CBC, CFB, OFB, CTR, XTS, KW</td><td>annex В examples</td><td>standard</td><td>same</td><td>same (self-test)</td><td>same where tested</td></tr>
+<tr><td>KW-p</td><td><code>|M| + l/2</code> not block-aligned (all annex В.11 examples)</td><td>standard (<code>kalyna_kw_p</code>, T-253)</td><td>same <code>encrypt_kw</code> code (read, not run)</td><td>same (run: 4/4 annex vectors)</td><td>no padded mode</td></tr>
+<tr><td>KW-p</td><td><code>|M| + l/2</code> block-aligned (DSTU 9041 <code>l(p)=384</code>)</td><td>Б.2 pads a full block (D-241)</td><td>same <code>encrypt_kw</code> code (read, not run)</td><td>no padding block: 96 bytes where the text gives 128 (run on Г.2’s <code>M'</code>)</td><td>no padded mode</td></tr>
+<tr><td>KW-p unwrap</td><td>a padding <code>wrap</code> does not produce</td><td>refused as an integrity error (D-243)</td><td>strips trailing zeros, length field unchecked (read)</td><td>same code (read)</td><td>-</td></tr>
 <tr><td>GCM / GMAC</td><td>AAD and ciphertext block-aligned, not both empty (all annex examples)</td><td>standard</td><td>same</td><td>same</td><td>same</td></tr>
 <tr><td>GCM / GMAC</td><td>AAD <strong>and</strong> data both empty</td><td>rejected (§12.1: AAD and data must not both be empty)</td><td>accepted: the tag is <code>E_K(0)</code>, the GHASH key itself</td><td>rejected</td><td>same as UAPKI ≤ 2.0.2</td></tr>
 <tr><td>GCM / GMAC</td><td>AAD not block-aligned</td><td><code>0x80</code> pad, true length (§12.2)</td><td>zero pad</td><td>same as dstu-core</td><td>zero pad</td></tr>
@@ -238,7 +241,8 @@ doesn’t matter for them: these are this library’s own formats, not a standar
 </thead>
 <tbody>
 <tr><td>Kupyna-256/512 (byte input, annex Б examples)</td><td>standard</td><td>same</td><td>same where tested</td></tr>
-<tr><td>Kupyna-48/304/384 (annex Б)</td><td>rightmost bytes of the 256/512 cores match; no public API yet (T-254)</td><td>-</td><td>-</td></tr>
+<tr><td>Kupyna-384 (annex Б, N = 760)</td><td>standard, <code>hazmat::kupyna::Kupyna384</code> (T-254)</td><td>-</td><td>same (<code>DSTU7564Digest(384)</code>)</td></tr>
+<tr><td>Kupyna-48/304 (annex Б)</td><td>rightmost bytes of the 256/512 cores match; no public API</td><td>-</td><td>-</td></tr>
 <tr><td>Kupyna-KMAC 256/384/512 (annex В.5)</td><td>standard</td><td>same</td><td>same</td></tr>
 </tbody>
 </table>

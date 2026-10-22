@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1f28d178.js";
+            window.path_to_searchindex_js = "searchindex-840787e1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -186,6 +186,28 @@
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
 <h3 id="added"><a class="header" href="#added">Added</a></h3>
 <ul>
+<li><strong><code>dstu-core</code>: Kupyna-384</strong> (T-254, <code>docs/DECISIONS.md</code> D-242): <code>hazmat::kupyna::Kupyna384</code> and
+<code>Kupyna384Hasher</code>, checked against DSTU 7564 annex Б and Bouncy Castle. <code>hazmat</code> only:
+<code>crypto_generichash</code> keeps Kupyna-256/512.</li>
+<li><strong><code>dstu-core</code>: Kalyna-KW-p</strong> (T-253, <code>docs/DECISIONS.md</code> D-243): <code>hazmat::kalyna_kw_p</code>, DSTU 7624
+key wrap with padding for messages that are not a multiple of the block, all five Kalyna sizes,
+checked against the standard’s annex В.11. Unwrap refuses any padding the standard does not
+produce, with the same error as a bad checksum.</li>
+<li><strong><code>dstu-core</code>: DSTU 9041 at <code>l(p)=384</code></strong> (T-297, <code>docs/DECISIONS.md</code> D-241/D-244):
+<code>hazmat::dstu9041::{fp384, curve384, message384, encryption384}</code> over the recommended curve
+E384/1. Its key-wrap step follows DSTU 7624; the standard’s worked example Г.2 prints a different
+ciphertext, so the example’s <code>C</code> is not accepted (everything before the key wrap matches it).</li>
+<li><strong><code>dstu-core</code>: <code>crypto_box384</code></strong> (T-297, <code>docs/DECISIONS.md</code> D-245): public-key encryption over
+E384/1, the <code>crypto_box</code>/<code>crypto_box512</code> shape with 48-byte keys, format v3 only.</li>
+<li><strong><code>uacrypt box-keygen384</code></strong> (T-297): a key for the <code>l(p)=384</code> curve; <code>box-pubkey</code>, <code>box-seal</code>
+and <code>box-open</code> take it like the other two curves. New key kinds <code>box384-secret</code>/<code>box384-public</code>.</li>
+<li><strong>C ABI:</strong> <code>dstu_box384_*</code> (T-297), the <code>dstu_box512_*</code> set at l(p)=384:
+<code>DSTU_BOX384_SECRETKEY_BYTES</code>/<code>_PUBLICKEY_BYTES</code> (48), <code>DSTU_BOX384_OPEN_MIN_OVERHEAD</code> (231),
+<code>DSTU_BOX384_SEAL_STREAM_PREFIX_BYTES</code> (210), <code>DSTU_BOX384_OPEN_STREAM_PREFIX_BYTES</code> (177).</li>
+<li><strong>All 8 bindings</strong> (T-297): <code>crypto_box384</code> with the same names as each binding’s
+<code>crypto_box512</code> wrapper at 384 (for example Python <code>box384_seal</code>/<code>Box384Encryptor</code>, .NET
+<code>Box384SecretKey</code>/<code>ForBox384</code>, Go <code>Box384SecretKey</code>/<code>NewBox384EncryptWriter</code>), streaming
+included, tested against the shared <code>box/v3.json</code>.</li>
 <li><strong><code>dstu-core</code>: streaming <code>crypto_box</code>/<code>crypto_box512</code></strong> (T-265, <code>docs/DECISIONS.md</code> D-239):
 <code>seal_stream</code>/<code>open_stream</code> hand out the stream-file codec’s <code>FileEncryptor</code>/<code>FileDecryptor</code>,
 plus <code>sealed_len</code>, <code>SEAL_STREAM_PREFIX_BYTES</code>/<code>OPEN_STREAM_PREFIX_BYTES</code>, <code>FORMAT_VERSION</code>.

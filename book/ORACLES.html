@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1f28d178.js";
+            window.path_to_searchindex_js = "searchindex-840787e1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -303,7 +303,9 @@ GCM/GMAC/CCM/CMAC vector except CCM with an empty AAD, which it reads as a liter
 (78/93, <code>tests/oracle-harness/uapki-kalyna-modes/</code>, manual, not CI). It is a partly independent
 second transcription, not an unrelated oracle (D-231). Older uapkic (≤ 2.0.2) is not an oracle
 for these modes.</li>
-<li>KW-p (В.11.x.3/4) vectors exist for a future <code>kalyna_kw_p</code> (T-253).</li>
+<li>KW-p (В.11.x.3/4): <code>tests/vectors/kalyna-kw-p/</code> (four variants; 128/256’s example is not whole
+bytes), run by <code>tests/kalyna_kw_p.rs</code> (T-253). The annex is the only oracle: Bouncy Castle has
+no padded KW, and UAPKI’s differs from the text when <code>|M| + l/2</code> is aligned (D-241).</li>
 </ul>
 </li>
 <li><strong>Pseudocode:</strong> <code>docs/pseudocode/kalyna.md</code> — transcribed from the paper below, cross-checked
@@ -427,8 +429,8 @@ cross-architecture, per D-33’s standing pattern).</li>
 <li><strong>Primary text (T-234, 2026-09-23): DSTU 7564:2014, draft edition.</strong>
 <ul>
 <li>Annex Б: all 15 byte-level hashing examples pass (Kupyna-256/512, and 48/304/384 as the rightmost
-bytes of the 256/512 cores). Kupyna-384 N=760 is a new vector, waiting for a public Kupyna-384
-API (T-254).</li>
+bytes of the 256/512 cores). Kupyna-384 N=760 is <code>tests/vectors/kupyna/kupyna-384.json</code>, run
+against the public <code>Kupyna384</code> and by both Bouncy Castle harnesses (<code>DSTU7564Digest(384)</code>, T-254).</li>
 <li>The six bit-length examples (N = 510/655 for 256/512, N = 33/1 for 384), which the byte API cannot
 take, pass too: a unit test in <code>hazmat::kupyna</code> feeds the annex’s own padded blocks into the
 compression function and matches every intermediate state and the final hash
@@ -661,7 +663,9 @@ curve (E256/1) end-to-end, including Додаток Г’s own worked example (<
 directly — the sole oracle for this primitive, same single-source caveat as the rest of this
 section (no independent reference implementation exists anywhere, confirmed again as part of
 T-177’s own closure, not just the 2026-07-21 search above), but now a primary-source vector
-rather than a secondary thesis transcription. The <code>l(p)=384/512/768</code> cases remain unimplemented.
+rather than a secondary thesis transcription. <code>l(p)=512</code> (T-192, Додаток Г.3) and <code>l(p)=384</code>
+(T-297, Додаток Г.2 - up to <code>kappa</code>/<code>H</code>/<code>M'</code>, its <code>t</code> does not follow DSTU 7624 KW-p, D-241)
+followed; <code>l(p)=768</code> has no worked example and remains unimplemented.
 <strong>Confirmed 2026-08-06 (owner-supplied photos of the document’s final pages): the standard is
 genuinely 36 pages total, not the 40 the store listing states — page 36 is the last page,
 finishing Додаток Г.3’s <code>l(p)=512</code> decryption steps and then Додаток Д’s bibliography.</strong> Table

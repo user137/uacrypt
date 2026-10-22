@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1f28d178.js";
+            window.path_to_searchindex_js = "searchindex-840787e1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -9066,14 +9066,38 @@ breaking bump. Apply the publishing runbook memory and verify the live registry 
 each step.</p>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-253</strong> (from T-234) <code>hazmat::kalyna_kw_p</code> - DSTU 7624:2014 §15.4/15.5 KW with padding,
+<p><input disabled="" type="checkbox" checked=""> <strong>T-253</strong> (<strong>done 2026-10-19, D-241/D-243</strong>: five variants, annex vectors for four, strict
+constant-time unwrap with one integrity error, fuzz target <code>kalyna_kw_p</code>) (from T-234)
+<code>hazmat::kalyna_kw_p</code> - DSTU 7624:2014 §15.4/15.5 KW with padding,
 needed for DSTU 9041 <code>l(p) = 384</code>. Annex В.11.x.3/4 vectors exist (byte-level for 128/128, 256/256,
 256/512, 512/512; 128/256’s is bit-level). Plain KW unwrap already strips their outer layer; the
 padded form looks like <code>pt || N (LE) || 0x80..</code> (read §15.4 before implementing).</p>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-254</strong> (from T-234) Public Kupyna-384 digest (<code>R_384</code> of the 1024-bit-state core, as
-<code>Kupyna384Kmac</code> already uses internally) plus the DSTU 7564 annex Б vector (N = 760).</p>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-254</strong> (<strong>done 2026-10-19, D-242</strong>: <code>hazmat::kupyna::Kupyna384</code>/<code>Kupyna384Hasher</code>, annex Б
+N = 760 vector, both BC harnesses green; <code>hazmat</code> only per the owner) (from T-234) Public
+Kupyna-384 digest (<code>R_384</code> of the 1024-bit-state core, as <code>Kupyna384Kmac</code> already uses
+internally) plus the DSTU 7564 annex Б vector (N = 760).</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox"> <strong>T-297</strong> (owner 2026-10-19, 0.7.0 step 3; depends: T-253) DSTU 9041 <code>l(p)=384</code> end to end:
+<code>hazmat::dstu9041</code> E384/1 (<code>fp384</code>/<code>curve384</code>/<code>message384</code>/<code>encryption384</code>), <code>crypto_box384</code>,
+<code>uacrypt box-keygen384</code> + <code>KeyKind::Box384*</code>, capi <code>box384</code>, all eight bindings, docs. Sources and
+the Г.2 <code>t</code> divergence: D-241. Phase plan: the 0.7.0 detailed plan, step 3.
+Progress: hazmat (5c02fed, D-244), <code>crypto_box384</code> + CLI (acae0a8, D-245), capi (46b1dc9),
+all eight bindings (964191c..79e91ed, 2026-10-20; each runner reads <code>curve: 384</code>). Local checks
+green per binding. Pi (aarch64, 2026-10-20): workspace clippy + <code>cargo test --workspace --all-features</code>, <code>xtask cpp</code>, clang-tidy on the C++ binding, all clean. Perf: docs/PERFORMANCE.md.
+Left: CI after the owner’s push (Miri timing of the new 384 files incl. the 3-way
+<code>dstu9041_encryption_384</code> shards, Sonar gate via api/qualitygates, asm-check and Kani on CI’s
+rustc, cppcheck - installed neither here nor on the Pi). UAPKI 2.0.3 run on KW-p (4f6b331).
+RESUME (2026-10-22): 19 local commits c14c83d..4f6b331 not pushed; after the push check
+<code>gh run list</code>, record Miri times here, then close T-297 and move to step 4 (T-264). Open offer to
+the owner: one independent read-only review on the strongest model (crypto + parser change), spawn
+only on a yes. Forks decided without asking (reported 2026-10-20): KW-p refuses block-aligned
+input; padding errors reuse <code>ChecksumMismatch</code>; no v2 at 384; KDF label <code>cryptbx3</code>; <code>box/v3.json</code>
+regenerated (256/512 cases re-sealed, v3 unreleased). Machine-local, not in git: <code>rustup override</code>
+for <code>bindings/php</code> (old one was on the <code>cipher_ua</code> path), noted in <code>.claude.local.md</code>. <code>46b1dc9</code>
+alone fails clippy, <code>e009e06</code> fixes it.</p>
 </li>
 <li>
 <p><input disabled="" type="checkbox" checked=""> <strong>T-252</strong> (<strong>done locally 2026-09-24, not yet run in CI</strong> - <code>release.yml</code>: <code>cargo auditable build --locked</code>, a CycloneDX SBOM job, <code>assemble-release-assets</code> with provenance attestations and a
@@ -10505,8 +10529,9 @@ round-trip or generate keys got slow under Miri (local Windows Miri: one E256/1 
 capi <code>box512_secretkey_from_bytes_round_trips_and_rejects_invalid_scalar</code> 1210 s). The capi
 box/box512 tests are split (the invalid-scalar refusal stays live) and the round trip plus
 <code>crypto_box512</code>’s <code>truncated_input_is_rejected_not_a_panic</code>, <code>uacrypt</code>’s
-<code>run_box_open_command_truncated_input_is_rejected</code>/<code>run_box_keygen_command_produces_ distinct_keys_each_call</code> are <code>cfg_attr(miri, ignore)</code>, about 50 Miri-minutes in all. Confirm on
-the next CI run (baseline 40d7d2b: uacrypt 51.4 min, capi 25.3 min).
+<code>run_box_open_command_truncated_input_is_rejected</code>/<code>run_box_keygen_command_produces_ distinct_keys_each_call</code> are <code>cfg_attr(miri, ignore)</code>, about 50 Miri-minutes in all. Confirmed in
+CI on c14c83d (run 39275285001, all green): uacrypt 47.5 min (was 51.4), capi 19.5 (25.3),
+<code>crypto_box512</code> 38.6 (43.1).
 Original finding: <code>crypto_box::open</code>/<code>crypto_box512::open</code> recompute the recipient public key
 (<code>secret.public_key()</code>, one full ladder; <code>crypto_box.rs:364</code>, <code>crypto_box512.rs:329</code>) on every
 call for the T-248 KDF binding.
@@ -10703,9 +10728,26 @@ loops. (2) capi: <code>derive_key</code> + passphrase-file handles. (3) 8 bindin
 <code>box/legacy_v2.json</code>, <code>pwhash/*.json</code>; D-118 pitfalls; the T-265 C++/.NET/Go “too short” fix;
 new capi statuses in the .NET/Go/C++ enums. (4) docs. Own plan mode + advisor first.</li>
 <li>Step 2: T-286, T-287 (first check which bindings keep a <code>SecretKey</code> handle), T-293 (own plan).</li>
-<li>Step 3: T-254 (2nd oracle: BC <code>DSTU7564Digest(384)</code>, else provisional; check whether it lands in
-<code>crypto_generichash</code> -&gt; binding gate), T-253 (own plan; BC <code>DSTU7624WrapEngine</code> if it pads;
-constant-time unwrap check). <strong>Owner decision open:</strong> DSTU 9041 <code>l(p)=384</code> in 0.7.0 or later.</li>
+<li>Step 3 (<strong>owner 2026-10-19: DSTU 9041 <code>l(p)=384</code> in 0.7.0, end to end</strong>; plan-mode + advisor
+plan, phases each their own commit):
+0. Sources (done, D-241): E384/1 from both Table В.2 columns, every check green; Додаток Г.2
+<code>Q</code>/<code>R</code>/<code>T</code>/<code>kappa</code>/<code>H</code> exact; DSTU 7624 §15.4/15.5 + Б.2 read (KW-p always pads; length field
+<code>μ_{l/2}</code> LE bits). Г.2’s <code>t</code> does <strong>not</strong> follow §15.4 - owner chose (a): follow the 7624
+text, record Г.2’s <code>t</code> as a discrepancy (D-241).
+<ol>
+<li>T-254 Kupyna-384 in <code>hazmat</code> only (owner: not in <code>crypto_generichash</code>, no binding gate);
+2nd oracle BC <code>DSTU7564Digest(384)</code>.</li>
+<li>T-253 <code>hazmat::kalyna_kw_p</code>: pad (§15.4) + the existing KW; constant-time strict unwrap
+(§15.5 + Б.3); vectors В.11.x.3/4; fuzz target (3 places); oracle independence stated.</li>
+<li><code>hazmat::dstu9041</code> <code>fp384</code>/<code>curve384</code>/<code>message384</code>/<code>encryption384</code> - a third sibling set
+(owner: no const-generic merge, D-181 revisited); constants generated by script from the
+JSON; Miri-ignore ladders; <code>asm_check.rs</code>; Sonar CPD in the same commit.</li>
+<li>T-297 <code>crypto_box384</code> (v3 only, 32-byte seed per D-182, D-201 KDF, cached public key) +
+<code>box-keygen384</code> and <code>KeyKind::Box384*</code> (D-212/D-213: other box commands dispatch by key).</li>
+<li>T-297 capi <code>box384</code>. 6. T-297 all eight bindings (T-204 order). 7. Perf + doc sweep.
+Push points for the owner: after phase 3 and after phase 6.</li>
+</ol>
+</li>
 <li>Step 4: T-264 (the parser is hand-written, no <code>clap</code>; no new dependency without the owner).</li>
 <li>Step 5: T-249 + the T-223/T-225 fuzz additions.</li>
 <li>Release: version bumps incl. every published binding’s minor (v3 box, C ABI break), the D-238

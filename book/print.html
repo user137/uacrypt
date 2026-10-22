@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1f28d178.js";
+            window.path_to_searchindex_js = "searchindex-840787e1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -505,11 +505,12 @@ curve point’s <code>x</code>-coordinate only) from it, safe to share or publis
 <code>docs/DECISIONS.md</code> D-239). <code>box-open</code> still opens files sealed by 0.4-0.6, but reads those whole
 into memory - and any <code>--in</code> starting with byte <code>02</code> (for instance an <code>encrypt</code> output passed by
 mistake) takes that path, so it is read whole before it fails. 0.6 cannot open 0.7 output.</p>
-<p>For DSTU 9041’s <code>l(p)=512</code> curve (E512/1, <code>docs/TASKS.md</code> T-193, <code>docs/DECISIONS.md</code> D-182),
-generate the key with <code>box-keygen512</code> instead; <code>box-pubkey</code>, <code>box-seal</code> and <code>box-open</code> read the
-curve from the key (T-257, D-213). Keys are 64 bytes instead of 32, and a sealed file has 305
-bytes of overhead instead of 177. A file sealed to one curve’s key is refused by the other
-curve’s key like any other wrong key:</p>
+<p>For DSTU 9041’s <code>l(p)=384</code> or <code>l(p)=512</code> curve (E384/1, T-297, <code>docs/DECISIONS.md</code> D-245; E512/1,
+T-193, D-182), generate the key with <code>box-keygen384</code> or <code>box-keygen512</code> instead; <code>box-pubkey</code>,
+<code>box-seal</code> and <code>box-open</code> read the curve from the key (T-257, D-213). Keys are 48 or 64 bytes
+instead of 32, and a sealed file under 8 KiB has 231 or 311 bytes of overhead instead of 183. A
+file sealed to one curve’s key is refused by another curve’s key like any other wrong key. There
+are no 0.4-0.6 files at <code>l(p)=384</code>: a version-2 file with a 384 key is an unsupported version.</p>
 <pre><code>uacrypt box-keygen512 --out box512.key
 uacrypt box-pubkey --key box512.key --out box512.pub
 uacrypt box-seal --key box512.pub --in message.bin --out message.bin.box512
@@ -627,8 +628,8 @@ was not yet so.</p>
 <tr><td><code>keygen</code></td><td>symmetric key</td><td>a key line, see <a href="#key-files">Key files</a></td></tr>
 <tr><td><code>encrypt</code></td><td>encrypted file</td><td><code>version (1) || header (32)</code>, then one or more records, each <code>chunk tag (1) || ciphertext length (4) || ciphertext || auth tag (16)</code></td></tr>
 <tr><td><code>encrypt --passphrase</code> / <code>--passphrase-file</code></td><td>encrypted file</td><td><code>0x50 || 0x01 || 0x01 || m_cost KiB (4) || t_cost (4) || p_cost (1) || salt (16)</code>, then the <code>encrypt</code> layout above</td></tr>
-<tr><td><code>box-keygen</code> / <code>box-keygen512</code> / <code>box-pubkey</code></td><td>secret / public key</td><td>a key line each (the public key is the curve point’s <code>x</code>-coordinate)</td></tr>
-<tr><td><code>box-seal</code></td><td>sealed file</td><td><code>version (1, = 3) || KEM ciphertext (128, or 256 for an l(p)=512 key) || &lt;the encrypt stream format&gt;</code>: 183 or 311 bytes for an input under 8 KiB, plus 21 per further started 8 KiB (D-239; 0.4-0.6 wrote version 2, one chunk, still read by <code>box-open</code>)</td></tr>
+<tr><td><code>box-keygen</code> / <code>box-keygen384</code> / <code>box-keygen512</code> / <code>box-pubkey</code></td><td>secret / public key</td><td>a key line each (the public key is the curve point’s <code>x</code>-coordinate)</td></tr>
+<tr><td><code>box-seal</code></td><td>sealed file</td><td><code>version (1, = 3) || KEM ciphertext (128, or 176/256 for an l(p)=384/512 key) || &lt;the encrypt stream format&gt;</code>: 183, 231 or 311 bytes for an input under 8 KiB, plus 21 per further started 8 KiB (D-239; 0.4-0.6 wrote version 2, one chunk, at 256/512 only, still read by <code>box-open</code>)</td></tr>
 <tr><td><code>sign-keygen</code> / <code>sign-keygen257</code></td><td>signing key</td><td>a key line (the scalar <code>d</code>, big-endian)</td></tr>
 <tr><td><code>sign-pubkey</code></td><td>verifying key</td><td>a key line (<code>x || y</code>) of the signing key’s curve</td></tr>
 <tr><td><code>sign</code></td><td>signature</td><td>42 raw bytes for an m=163 key, 66 for m=257; <code>verify</code> picks the curve from the verifying key’s kind</td></tr>
@@ -680,6 +681,7 @@ spaces, no second line, no byte-order mark, no upper-case hex. The prefix names 
 <tr><td><code>sign163-secret</code> / <code>sign163-public</code></td><td><code>UACRYPT-SECRET-SIGN163</code> / <code>uacrypt-sign163-public</code></td><td>21 / 42</td><td><code>sign-keygen</code> / <code>sign-pubkey</code></td></tr>
 <tr><td><code>sign257-secret</code> / <code>sign257-public</code></td><td><code>UACRYPT-SECRET-SIGN257</code> / <code>uacrypt-sign257-public</code></td><td>33 / 66</td><td><code>sign-keygen257</code> / <code>sign-pubkey</code></td></tr>
 <tr><td><code>box256-secret</code> / <code>box256-public</code></td><td><code>UACRYPT-SECRET-BOX256</code> / <code>uacrypt-box256-public</code></td><td>32 / 32</td><td><code>box-keygen</code> / <code>box-pubkey</code></td></tr>
+<tr><td><code>box384-secret</code> / <code>box384-public</code></td><td><code>UACRYPT-SECRET-BOX384</code> / <code>uacrypt-box384-public</code></td><td>48 / 48</td><td><code>box-keygen384</code> / <code>box-pubkey</code></td></tr>
 <tr><td><code>box512-secret</code> / <code>box512-public</code></td><td><code>UACRYPT-SECRET-BOX512</code> / <code>uacrypt-box512-public</code></td><td>64 / 64</td><td><code>box-keygen512</code> / <code>box-pubkey</code></td></tr>
 </tbody>
 </table>
@@ -736,6 +738,9 @@ modes”), not yet in a tagged release. Built from <code>master</code> <code>0bf
 </thead>
 <tbody>
 <tr><td>Block cipher, ECB, CBC, CFB, OFB, CTR, XTS, KW</td><td>annex В examples</td><td>standard</td><td>same</td><td>same (self-test)</td><td>same where tested</td></tr>
+<tr><td>KW-p</td><td><code>|M| + l/2</code> not block-aligned (all annex В.11 examples)</td><td>standard (<code>kalyna_kw_p</code>, T-253)</td><td>same <code>encrypt_kw</code> code (read, not run)</td><td>same (run: 4/4 annex vectors)</td><td>no padded mode</td></tr>
+<tr><td>KW-p</td><td><code>|M| + l/2</code> block-aligned (DSTU 9041 <code>l(p)=384</code>)</td><td>Б.2 pads a full block (D-241)</td><td>same <code>encrypt_kw</code> code (read, not run)</td><td>no padding block: 96 bytes where the text gives 128 (run on Г.2’s <code>M'</code>)</td><td>no padded mode</td></tr>
+<tr><td>KW-p unwrap</td><td>a padding <code>wrap</code> does not produce</td><td>refused as an integrity error (D-243)</td><td>strips trailing zeros, length field unchecked (read)</td><td>same code (read)</td><td>-</td></tr>
 <tr><td>GCM / GMAC</td><td>AAD and ciphertext block-aligned, not both empty (all annex examples)</td><td>standard</td><td>same</td><td>same</td><td>same</td></tr>
 <tr><td>GCM / GMAC</td><td>AAD <strong>and</strong> data both empty</td><td>rejected (§12.1: AAD and data must not both be empty)</td><td>accepted: the tag is <code>E_K(0)</code>, the GHASH key itself</td><td>rejected</td><td>same as UAPKI ≤ 2.0.2</td></tr>
 <tr><td>GCM / GMAC</td><td>AAD not block-aligned</td><td><code>0x80</code> pad, true length (§12.2)</td><td>zero pad</td><td>same as dstu-core</td><td>zero pad</td></tr>
@@ -766,7 +771,8 @@ doesn’t matter for them: these are this library’s own formats, not a standar
 </thead>
 <tbody>
 <tr><td>Kupyna-256/512 (byte input, annex Б examples)</td><td>standard</td><td>same</td><td>same where tested</td></tr>
-<tr><td>Kupyna-48/304/384 (annex Б)</td><td>rightmost bytes of the 256/512 cores match; no public API yet (T-254)</td><td>-</td><td>-</td></tr>
+<tr><td>Kupyna-384 (annex Б, N = 760)</td><td>standard, <code>hazmat::kupyna::Kupyna384</code> (T-254)</td><td>-</td><td>same (<code>DSTU7564Digest(384)</code>)</td></tr>
+<tr><td>Kupyna-48/304 (annex Б)</td><td>rightmost bytes of the 256/512 cores match; no public API</td><td>-</td><td>-</td></tr>
 <tr><td>Kupyna-KMAC 256/384/512 (annex В.5)</td><td>standard</td><td>same</td><td>same</td></tr>
 </tbody>
 </table>
@@ -9660,14 +9666,38 @@ breaking bump. Apply the publishing runbook memory and verify the live registry 
 each step.</p>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-253</strong> (from T-234) <code>hazmat::kalyna_kw_p</code> - DSTU 7624:2014 §15.4/15.5 KW with padding,
+<p><input disabled="" type="checkbox" checked=""> <strong>T-253</strong> (<strong>done 2026-10-19, D-241/D-243</strong>: five variants, annex vectors for four, strict
+constant-time unwrap with one integrity error, fuzz target <code>kalyna_kw_p</code>) (from T-234)
+<code>hazmat::kalyna_kw_p</code> - DSTU 7624:2014 §15.4/15.5 KW with padding,
 needed for DSTU 9041 <code>l(p) = 384</code>. Annex В.11.x.3/4 vectors exist (byte-level for 128/128, 256/256,
 256/512, 512/512; 128/256’s is bit-level). Plain KW unwrap already strips their outer layer; the
 padded form looks like <code>pt || N (LE) || 0x80..</code> (read §15.4 before implementing).</p>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-254</strong> (from T-234) Public Kupyna-384 digest (<code>R_384</code> of the 1024-bit-state core, as
-<code>Kupyna384Kmac</code> already uses internally) plus the DSTU 7564 annex Б vector (N = 760).</p>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-254</strong> (<strong>done 2026-10-19, D-242</strong>: <code>hazmat::kupyna::Kupyna384</code>/<code>Kupyna384Hasher</code>, annex Б
+N = 760 vector, both BC harnesses green; <code>hazmat</code> only per the owner) (from T-234) Public
+Kupyna-384 digest (<code>R_384</code> of the 1024-bit-state core, as <code>Kupyna384Kmac</code> already uses
+internally) plus the DSTU 7564 annex Б vector (N = 760).</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox"> <strong>T-297</strong> (owner 2026-10-19, 0.7.0 step 3; depends: T-253) DSTU 9041 <code>l(p)=384</code> end to end:
+<code>hazmat::dstu9041</code> E384/1 (<code>fp384</code>/<code>curve384</code>/<code>message384</code>/<code>encryption384</code>), <code>crypto_box384</code>,
+<code>uacrypt box-keygen384</code> + <code>KeyKind::Box384*</code>, capi <code>box384</code>, all eight bindings, docs. Sources and
+the Г.2 <code>t</code> divergence: D-241. Phase plan: the 0.7.0 detailed plan, step 3.
+Progress: hazmat (5c02fed, D-244), <code>crypto_box384</code> + CLI (acae0a8, D-245), capi (46b1dc9),
+all eight bindings (964191c..79e91ed, 2026-10-20; each runner reads <code>curve: 384</code>). Local checks
+green per binding. Pi (aarch64, 2026-10-20): workspace clippy + <code>cargo test --workspace --all-features</code>, <code>xtask cpp</code>, clang-tidy on the C++ binding, all clean. Perf: docs/PERFORMANCE.md.
+Left: CI after the owner’s push (Miri timing of the new 384 files incl. the 3-way
+<code>dstu9041_encryption_384</code> shards, Sonar gate via api/qualitygates, asm-check and Kani on CI’s
+rustc, cppcheck - installed neither here nor on the Pi). UAPKI 2.0.3 run on KW-p (4f6b331).
+RESUME (2026-10-22): 19 local commits c14c83d..4f6b331 not pushed; after the push check
+<code>gh run list</code>, record Miri times here, then close T-297 and move to step 4 (T-264). Open offer to
+the owner: one independent read-only review on the strongest model (crypto + parser change), spawn
+only on a yes. Forks decided without asking (reported 2026-10-20): KW-p refuses block-aligned
+input; padding errors reuse <code>ChecksumMismatch</code>; no v2 at 384; KDF label <code>cryptbx3</code>; <code>box/v3.json</code>
+regenerated (256/512 cases re-sealed, v3 unreleased). Machine-local, not in git: <code>rustup override</code>
+for <code>bindings/php</code> (old one was on the <code>cipher_ua</code> path), noted in <code>.claude.local.md</code>. <code>46b1dc9</code>
+alone fails clippy, <code>e009e06</code> fixes it.</p>
 </li>
 <li>
 <p><input disabled="" type="checkbox" checked=""> <strong>T-252</strong> (<strong>done locally 2026-09-24, not yet run in CI</strong> - <code>release.yml</code>: <code>cargo auditable build --locked</code>, a CycloneDX SBOM job, <code>assemble-release-assets</code> with provenance attestations and a
@@ -11099,8 +11129,9 @@ round-trip or generate keys got slow under Miri (local Windows Miri: one E256/1 
 capi <code>box512_secretkey_from_bytes_round_trips_and_rejects_invalid_scalar</code> 1210 s). The capi
 box/box512 tests are split (the invalid-scalar refusal stays live) and the round trip plus
 <code>crypto_box512</code>’s <code>truncated_input_is_rejected_not_a_panic</code>, <code>uacrypt</code>’s
-<code>run_box_open_command_truncated_input_is_rejected</code>/<code>run_box_keygen_command_produces_ distinct_keys_each_call</code> are <code>cfg_attr(miri, ignore)</code>, about 50 Miri-minutes in all. Confirm on
-the next CI run (baseline 40d7d2b: uacrypt 51.4 min, capi 25.3 min).
+<code>run_box_open_command_truncated_input_is_rejected</code>/<code>run_box_keygen_command_produces_ distinct_keys_each_call</code> are <code>cfg_attr(miri, ignore)</code>, about 50 Miri-minutes in all. Confirmed in
+CI on c14c83d (run 39275285001, all green): uacrypt 47.5 min (was 51.4), capi 19.5 (25.3),
+<code>crypto_box512</code> 38.6 (43.1).
 Original finding: <code>crypto_box::open</code>/<code>crypto_box512::open</code> recompute the recipient public key
 (<code>secret.public_key()</code>, one full ladder; <code>crypto_box.rs:364</code>, <code>crypto_box512.rs:329</code>) on every
 call for the T-248 KDF binding.
@@ -11297,9 +11328,26 @@ loops. (2) capi: <code>derive_key</code> + passphrase-file handles. (3) 8 bindin
 <code>box/legacy_v2.json</code>, <code>pwhash/*.json</code>; D-118 pitfalls; the T-265 C++/.NET/Go “too short” fix;
 new capi statuses in the .NET/Go/C++ enums. (4) docs. Own plan mode + advisor first.</li>
 <li>Step 2: T-286, T-287 (first check which bindings keep a <code>SecretKey</code> handle), T-293 (own plan).</li>
-<li>Step 3: T-254 (2nd oracle: BC <code>DSTU7564Digest(384)</code>, else provisional; check whether it lands in
-<code>crypto_generichash</code> -&gt; binding gate), T-253 (own plan; BC <code>DSTU7624WrapEngine</code> if it pads;
-constant-time unwrap check). <strong>Owner decision open:</strong> DSTU 9041 <code>l(p)=384</code> in 0.7.0 or later.</li>
+<li>Step 3 (<strong>owner 2026-10-19: DSTU 9041 <code>l(p)=384</code> in 0.7.0, end to end</strong>; plan-mode + advisor
+plan, phases each their own commit):
+0. Sources (done, D-241): E384/1 from both Table В.2 columns, every check green; Додаток Г.2
+<code>Q</code>/<code>R</code>/<code>T</code>/<code>kappa</code>/<code>H</code> exact; DSTU 7624 §15.4/15.5 + Б.2 read (KW-p always pads; length field
+<code>μ_{l/2}</code> LE bits). Г.2’s <code>t</code> does <strong>not</strong> follow §15.4 - owner chose (a): follow the 7624
+text, record Г.2’s <code>t</code> as a discrepancy (D-241).
+<ol>
+<li>T-254 Kupyna-384 in <code>hazmat</code> only (owner: not in <code>crypto_generichash</code>, no binding gate);
+2nd oracle BC <code>DSTU7564Digest(384)</code>.</li>
+<li>T-253 <code>hazmat::kalyna_kw_p</code>: pad (§15.4) + the existing KW; constant-time strict unwrap
+(§15.5 + Б.3); vectors В.11.x.3/4; fuzz target (3 places); oracle independence stated.</li>
+<li><code>hazmat::dstu9041</code> <code>fp384</code>/<code>curve384</code>/<code>message384</code>/<code>encryption384</code> - a third sibling set
+(owner: no const-generic merge, D-181 revisited); constants generated by script from the
+JSON; Miri-ignore ladders; <code>asm_check.rs</code>; Sonar CPD in the same commit.</li>
+<li>T-297 <code>crypto_box384</code> (v3 only, 32-byte seed per D-182, D-201 KDF, cached public key) +
+<code>box-keygen384</code> and <code>KeyKind::Box384*</code> (D-212/D-213: other box commands dispatch by key).</li>
+<li>T-297 capi <code>box384</code>. 6. T-297 all eight bindings (T-204 order). 7. Perf + doc sweep.
+Push points for the owner: after phase 3 and after phase 6.</li>
+</ol>
+</li>
 <li>Step 4: T-264 (the parser is hand-written, no <code>clap</code>; no new dependency without the owner).</li>
 <li>Step 5: T-249 + the T-223/T-225 fuzz additions.</li>
 <li>Release: version bumps incl. every published binding’s minor (v3 box, C ABI break), the D-238
@@ -11754,7 +11802,7 @@ need <code>std</code> unconditionally, same reason <code>crypto_secretbox</code>
 <tr><td><code>crypto_sign257</code> are wired into <code>dstu-core-capi</code> plus all eight language bindings (<code>docs/TASKS.md</code></td><td></td><td></td></tr>
 <tr><td>T-204, 2026-08-09/10). The other 8 named curve sizes aren’t wired up.</td><td></td><td></td></tr>
 <tr><td><code>crypto_box</code></td><td><code>hazmat::dstu9041</code></td><td><strong>Done</strong> (<code>docs/TASKS.md</code> T-178, D-169) — <code>dstu_core::crypto_box::{seal,open,SecretKey,PublicKey}</code> plus the bounded <code>seal_stream</code>/<code>open_stream</code>/<code>sealed_len</code> over the stream-file codec (format v3, T-265/D-239; <code>open_v2_legacy</code> reads the 0.4-0.6 format for <code>uacrypt</code> only), hybrid via KDF (since T-248/D-201 a <code>Kupyna256Kmac</code> derivation binding `kem_ct</td></tr>
-<tr><td>bindings (<code>docs/TASKS.md</code> T-204, 2026-08-09/10). <code>l(p)=384/768</code> still not done.</td><td></td><td></td></tr>
+<tr><td>bindings (<code>docs/TASKS.md</code> T-204, 2026-08-09/10). <code>l(p)=384</code>/E384/1 is <code>dstu_core::crypto_box384</code> (T-297, D-245; key wrap per DSTU 7624 KW-p, D-241), <code>box-keygen384</code> in the CLI, in capi and all eight bindings. <code>l(p)=768</code> not done (no worked example, D-168).</td><td></td><td></td></tr>
 <tr><td><code>crypto_secretbox</code></td><td><code>dstu_core::crypto_secretbox</code> (<code>seal</code>/<code>open</code>/<code>SecretKey</code>), over <code>hazmat::kalyna_gcm::Kalyna256_256Gcm</code></td><td><strong>Implemented, provisional</strong> — single fixed Kalyna-GCM variant (not all five), internal nonce, combined <code>nonce||ciphertext||tag</code> output, no caller-facing AAD (the nonce is passed as <code>kalyna_gcm</code>’s AAD internally, to bind it into the tag — D-63). Migrated 2026-07-25 from an earlier Kalyna-CCM construction, removing its 255-byte message cap entirely. Still not primary-text-confirmed (inherits D-56). See D-51/D-63 in <code>docs/DECISIONS.md</code>.</td></tr>
 <tr><td><code>crypto_auth</code>/<code>crypto_onetimeauth</code></td><td><code>dstu_core::crypto_auth</code> (<code>auth</code>/<code>verify</code>/<code>Key</code>, over <code>hazmat::kupyna_kmac::Kupyna256Kmac</code> only) + <code>hazmat::kupyna_kmac</code> (<code>Kupyna256Kmac</code>/<code>Kupyna384Kmac</code>/<code>Kupyna512Kmac</code>, all three sizes)</td><td><strong>Implemented, provisional</strong> — Kupyna-based KMAC, both UAPKI’s and Bouncy Castle’s constructions read and cross-checked byte-for-byte on all three sizes, not confirmed against the primary DSTU 7564:2014 text. High-level wrapper added <code>docs/TASKS.md</code> T-105/<code>docs/DECISIONS.md</code> D-66: only the 256-bit size is exposed (D-47’s “delete the knob”), key is an opaque <code>Zeroize</code>-on-drop <code>Key</code> type, which also forecloses <code>WrongKeyLength</code> at this layer. See D-44/D-66 in <code>docs/DECISIONS.md</code>.</td></tr>
 <tr><td><code>crypto_kdf</code></td><td><code>dstu_core::crypto_kdf</code> (<code>MasterKey::derive_subkey</code>, over <code>hazmat::kupyna_kdf::Kupyna256Kdf</code> only) + <code>hazmat::kupyna_kdf</code> (<code>Kupyna256Kdf</code>/<code>Kupyna384Kdf</code>/<code>Kupyna512Kdf</code>, all three sizes)</td><td><strong>Implemented</strong> — modeled after libsodium’s <code>crypto_kdf_derive_from_key</code> shape over <code>hazmat::kupyna_kmac</code>, not full RFC 5869 HKDF. No DSTU standard or reference implementation exists for this construction, so unlike the rest of this table’s “provisional” rows, there is no oracle vector at all, ever. High-level wrapper added <code>docs/TASKS.md</code> T-105/<code>docs/DECISIONS.md</code> D-66, same “delete the knob” / opaque <code>Zeroize</code>-on-drop key shape as <code>crypto_auth</code> above. See D-45/D-66 in <code>docs/DECISIONS.md</code>.</td></tr>
@@ -12381,9 +12429,9 @@ caller-random; decide whether the other 9 curve sizes matter for 1.0 or can stay
 whether the DSTU §6.9/§6.10 compressed point encoding is needed for 1.0 (the wrapper currently
 ships only an uncompressed 42-byte form).</li>
 <li><strong>DSTU 9041’s <code>hazmat</code> primitive and its <code>crypto_box</code> high-level wrapper are both done</strong>
-(<code>l(p)=256</code> only, T-177/T-178, D-169) — no longer the hard-blocked, no-known-path-forward item
-this note originally described. Still an open scope decision for 1.0 whether <code>crypto_kx</code> (and the
-<code>l(p)=384/512/768</code> curve sizes, T-182) are required, or whether the current surface is acceptable
+(<code>l(p)=256</code>, T-177/T-178, D-169; <code>l(p)=512</code> T-192/T-193; <code>l(p)=384</code> T-297, D-241-D-245) — no
+longer the hard-blocked item this note originally described. Still an open scope decision for
+1.0 whether <code>crypto_kx</code> (and <code>l(p)=768</code>, which has no worked example, D-168) are required, or whether the current surface is acceptable
 for a first release — don’t treat either answer as decided by this entry.</li>
 <li><strong>Mechanical release work</strong>: <code>uacrypt</code>’s real <code>encrypt</code>/<code>decrypt</code>/<code>hash</code> commands are now done
 (T-16, D-52), GitHub Releases binaries are too (T-18/T-119, 2026-07-26), and crates.io/PyPI/npm/
@@ -12432,7 +12480,7 @@ table below.</p>
 </thead>
 <tbody>
 <tr><td>Discover</td><td>Find the project, understand what it does and its current maturity</td><td><code>README.md</code> top banner states its current released version plainly (<code>v0.3.8</code> as of 2026-08-13 - <code>docs-check</code>’s version-marker lint, T-186, keeps this from silently drifting)</td><td>none</td></tr>
-<tr><td>Acquire</td><td>A prebuilt binary for their OS, no Rust toolchain required</td><td><strong>Closed 2026-07-26, see <code>docs/TASKS.md</code> T-18/T-119.</strong> Every GitHub Release (first <code>v0.1.0</code>, latest <code>v0.3.8</code> as of 2026-08-13) ships <code>uacrypt-{linux-x86_64,macos-aarch64,windows-x86_64}</code> archives, built by <code>.github/workflows/release.yml</code> on a tag push. Verified against the actual downloaded Windows asset, not just a green CI run: extracted and ran standalone (no local <code>cargo</code>), <code>--version</code>/<code>keygen</code>/<code>encrypt</code>/<code>decrypt</code> round-trip all worked</td><td>macOS asset is <code>aarch64</code>-only (GitHub’s <code>macos-latest</code> runner) - an Intel Mac build isn’t covered, not previously scoped. <code>box-*</code>/<code>box-*512</code> (DSTU 9041/<code>crypto_box</code>/<code>crypto_box512</code>) and <code>sign*257</code> shipped in v0.3.0+, no longer <code>master</code>-only. From 0.4.0 a download can be checked for authenticity: signed <code>SHA256SUMS</code>, build-provenance attestations, SBOM (T-252, D-209, <code>docs/CLI.md</code>)</td></tr>
+<tr><td>Acquire</td><td>A prebuilt binary for their OS, no Rust toolchain required</td><td><strong>Closed 2026-07-26, see <code>docs/TASKS.md</code> T-18/T-119.</strong> Every GitHub Release (first <code>v0.1.0</code>, latest <code>v0.3.8</code> as of 2026-08-13) ships <code>uacrypt-{linux-x86_64,macos-aarch64,windows-x86_64}</code> archives, built by <code>.github/workflows/release.yml</code> on a tag push. Verified against the actual downloaded Windows asset, not just a green CI run: extracted and ran standalone (no local <code>cargo</code>), <code>--version</code>/<code>keygen</code>/<code>encrypt</code>/<code>decrypt</code> round-trip all worked</td><td>macOS asset is <code>aarch64</code>-only (GitHub’s <code>macos-latest</code> runner) - an Intel Mac build isn’t covered, not previously scoped. <code>box-*</code>/<code>box-*512</code> (DSTU 9041/<code>crypto_box</code>/<code>crypto_box512</code>) and <code>sign*257</code> shipped in v0.3.0+, no longer <code>master</code>-only; <code>box-keygen384</code> (<code>crypto_box384</code>, T-297) arrives with 0.7.0. From 0.4.0 a download can be checked for authenticity: signed <code>SHA256SUMS</code>, build-provenance attestations, SBOM (T-252, D-209, <code>docs/CLI.md</code>)</td></tr>
 <tr><td>Generate a key</td><td>A <code>uacrypt keygen</code> command, or at least a documented one-liner</td><td><strong>Closed 2026-07-26, see <code>docs/TASKS.md</code> T-115.</strong> <code>uacrypt keygen --out key.bin</code> now exists — draws a fresh 32-byte key from the OS CSPRNG via <code>crypto_secretstream::Key::generate</code>, writes it in the exact format <code>encrypt</code>/<code>decrypt --key</code> expect</td><td>none, as of T-115</td></tr>
 <tr><td>Run <code>encrypt</code>/<code>decrypt</code>/<code>hash</code></td><td>A misuse-resistant command with no mode/nonce to configure</td><td><code>README.md</code> “Using <code>uacrypt</code>” documents <code>encrypt</code>/<code>decrypt</code>/<code>hash</code> fully, including that they’re genuinely chunked (T-40/D-68) with no message-length cap</td><td>none, once a key exists</td></tr>
 <tr><td>Verify it does what’s claimed</td><td>Confirm round-trip correctness and see real throughput numbers</td><td><code>cargo test --workspace</code> for correctness; <code>docs/PERFORMANCE.md</code> “Binary-level (process) comparison” section for real <code>uacrypt</code>-binary MB/s numbers, <code>docs/resource-profiles.md</code> for the <code>fused</code>/<code>small-tables</code> speed table</td><td>For a <em>downloaded</em> binary specifically: correctness is now verifiable without a toolchain (the round-trip smoke test above), but the MB/s numbers still require building from source to reproduce - not re-measured per-platform for the release assets themselves</td></tr>
@@ -12978,8 +13026,8 @@ retroactively the same day it was added, see that entry.)</p>
 <ol>
 <li><input disabled="" type="checkbox"> Scaffold the binding crate/project, wired into the Cargo workspace where applicable.</li>
 <li><input disabled="" type="checkbox"> Wrap the full <code>crypto_*</code> surface (since T-269 that includes <code>crypto_pwhash::derive_key</code>,
-the streaming <code>crypto_box</code>/<code>crypto_box512</code> and the passphrase file, D-240 - all 8 bindings
-have them, through their existing stream type), zero-config (D-116), including a <code>selftest()</code> wrapper
+the streaming <code>crypto_box</code>/<code>crypto_box384</code>/<code>crypto_box512</code> (384: T-297) and the passphrase
+file, D-240 - all 8 bindings have them, through their existing stream type), zero-config (D-116), including a <code>selftest()</code> wrapper
 around T-161.</li>
 <li><input disabled="" type="checkbox"> Wrap <code>crypto_secretstream</code> in the language’s idiomatic stream/pipe primitive (D-118).
 <strong>Two pitfalls found by advisor review while building T-49’s own wrapper — check both
@@ -13714,6 +13762,13 @@ macro system.</p>
 type names in every binding, same as the C ABI and core itself; tag-byte dispatch stays a
 <code>uacrypt</code>-CLI-only concern (D-118’s “don’t duplicate wire-format logic into every binding” lesson
 generalized).</p>
+<h3 id="t-297--crypto_box384-across-all-eight-bindings--capi-2026-10-20"><a class="header" href="#t-297--crypto_box384-across-all-eight-bindings--capi-2026-10-20">T-297 — <code>crypto_box384</code> across all eight bindings + capi (2026-10-20)</a></h3>
+<p>Same shape as T-204: <code>dstu_box384_*</code> in capi first, then .NET/Go/C++ over it and the five
+direct-Rust bindings, each a copy of its own <code>box512</code> wrapper (generated by script, every 512
+number and name checked), with the streaming factories and a <code>curve: 384</code> entry in each runner of
+the shared <code>box/v3.json</code>. No 0.4-0.6 file exists at 384, so each binding’s “v2 refused” test uses a
+version-2 byte in front of a long enough blob instead of <code>legacy_v2.json</code>. PHP names every 384
+export explicitly (<code>function_exists</code> checked); the T-204 renaming pitfall applies unchanged.</p>
 <h3 id="publishing-all-registries--separate-owner-gated-requested-per-registry-as-it-happens"><a class="header" href="#publishing-all-registries--separate-owner-gated-requested-per-registry-as-it-happens">Publishing (all registries) — separate, owner-gated, requested per-registry as it happens</a></h3>
 <p>One explicit ask per registry (PyPI/npm/Maven Central/NuGet/RubyGems/Packagist), the same class of
 decision T-17 already applied to crates.io. <strong>Updated: three of six are done</strong> — PyPI and npm
@@ -14126,7 +14181,9 @@ GCM/GMAC/CCM/CMAC vector except CCM with an empty AAD, which it reads as a liter
 (78/93, <code>tests/oracle-harness/uapki-kalyna-modes/</code>, manual, not CI). It is a partly independent
 second transcription, not an unrelated oracle (D-231). Older uapkic (≤ 2.0.2) is not an oracle
 for these modes.</li>
-<li>KW-p (В.11.x.3/4) vectors exist for a future <code>kalyna_kw_p</code> (T-253).</li>
+<li>KW-p (В.11.x.3/4): <code>tests/vectors/kalyna-kw-p/</code> (four variants; 128/256’s example is not whole
+bytes), run by <code>tests/kalyna_kw_p.rs</code> (T-253). The annex is the only oracle: Bouncy Castle has
+no padded KW, and UAPKI’s differs from the text when <code>|M| + l/2</code> is aligned (D-241).</li>
 </ul>
 </li>
 <li><strong>Pseudocode:</strong> <code>docs/pseudocode/kalyna.md</code> — transcribed from the paper below, cross-checked
@@ -14250,8 +14307,8 @@ cross-architecture, per D-33’s standing pattern).</li>
 <li><strong>Primary text (T-234, 2026-09-23): DSTU 7564:2014, draft edition.</strong>
 <ul>
 <li>Annex Б: all 15 byte-level hashing examples pass (Kupyna-256/512, and 48/304/384 as the rightmost
-bytes of the 256/512 cores). Kupyna-384 N=760 is a new vector, waiting for a public Kupyna-384
-API (T-254).</li>
+bytes of the 256/512 cores). Kupyna-384 N=760 is <code>tests/vectors/kupyna/kupyna-384.json</code>, run
+against the public <code>Kupyna384</code> and by both Bouncy Castle harnesses (<code>DSTU7564Digest(384)</code>, T-254).</li>
 <li>The six bit-length examples (N = 510/655 for 256/512, N = 33/1 for 384), which the byte API cannot
 take, pass too: a unit test in <code>hazmat::kupyna</code> feeds the annex’s own padded blocks into the
 compression function and matches every intermediate state and the final hash
@@ -14484,7 +14541,9 @@ curve (E256/1) end-to-end, including Додаток Г’s own worked example (<
 directly — the sole oracle for this primitive, same single-source caveat as the rest of this
 section (no independent reference implementation exists anywhere, confirmed again as part of
 T-177’s own closure, not just the 2026-07-21 search above), but now a primary-source vector
-rather than a secondary thesis transcription. The <code>l(p)=384/512/768</code> cases remain unimplemented.
+rather than a secondary thesis transcription. <code>l(p)=512</code> (T-192, Додаток Г.3) and <code>l(p)=384</code>
+(T-297, Додаток Г.2 - up to <code>kappa</code>/<code>H</code>/<code>M'</code>, its <code>t</code> does not follow DSTU 7624 KW-p, D-241)
+followed; <code>l(p)=768</code> has no worked example and remains unimplemented.
 <strong>Confirmed 2026-08-06 (owner-supplied photos of the document’s final pages): the standard is
 genuinely 36 pages total, not the 40 the store listing states — page 36 is the last page,
 finishing Додаток Г.3’s <code>l(p)=512</code> decryption steps and then Додаток Д’s bibliography.</strong> Table
@@ -17408,6 +17467,25 @@ machine, release binary, 3 rounds each:</p>
 wash for a caller that rebuilds the key for every call (the Python, Node.js, Ruby, PHP and Java
 bindings take the secret key as bytes per call), and a gain for one that keeps it (the C ABI
 handle, so .NET, Go and C++).</p>
+<h3 id="crypto_box384-next-to-the-other-two-curves--t-297-2026-10-20"><a class="header" href="#crypto_box384-next-to-the-other-two-curves--t-297-2026-10-20"><code>crypto_box384</code> next to the other two curves — T-297 (2026-10-20)</a></h3>
+<p><code>uacrypt box-seal</code>/<code>box-open --iterations</code> (keys loaded once, 1 KiB message), release binary, 3
+interleaved rounds per curve; Windows dev machine (200 iterations) and the Raspberry Pi 5 (aarch64,
+100 iterations). ms/op:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Curve</th><th>Windows seal</th><th>Windows open</th><th>Pi seal</th><th>Pi open</th></tr>
+</thead>
+<tbody>
+<tr><td>E256/1 (<code>crypto_box</code>)</td><td>0.96</td><td>1.10-1.11</td><td>1.64</td><td>1.89</td></tr>
+<tr><td>E384/1 (<code>crypto_box384</code>)</td><td>2.63-2.68</td><td>3.04-3.05</td><td>4.47</td><td>5.11-5.12</td></tr>
+<tr><td>E512/1 (<code>crypto_box512</code>)</td><td>5.64-5.68</td><td>6.48-6.57</td><td>9.53</td><td>10.87-11.14</td></tr>
+</tbody>
+</table>
+</div>
+<p>E384/1 sits where its field size puts it: about 2.8x E256/1 and half of E512/1 on both machines
+(a 6-limb field multiply over a 384-step ladder). The KW-p step (one 128-byte wrap) does not show
+at this scale.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="rust-best-practices--architecture-ruleset"><a class="header" href="#rust-best-practices--architecture-ruleset">Rust Best Practices &amp; Architecture Ruleset</a></h1>
 <p>Comprehensive System Prompt / Ruleset for AI Assistants (Claude Code, Cursor)</p>
@@ -18937,9 +19015,9 @@ same day as T-174’s first pass, just not reflected in this list until now. Д�
 (<code>l(p)=512</code>) is now verified too (T-192, D-180) - <code>Q</code>/<code>R</code>/<code>T</code>/<code>kappa</code>/<code>H</code> all match the document’s
 own printed hex exactly, <code>t</code>/<code>C</code> match to within a 2-hex-digit discrepancy attributed to the same
 printing-erratum pattern already documented for Додаток Г.1’s own <code>t</code> (<code>g1-worked-example.json</code>’s
-<code>t_ciphertext_note</code>). What’s still unverified is Додаток Г.2 (<code>l(p)=384</code>) - present in the scan
-(curve params, <code>Q</code>/<code>R</code>/<code>T</code> etc.) but its own <code>t</code>/<code>C</code> can’t be checked yet regardless
-(<code>hazmat::kalyna_kw_p</code> doesn’t exist, see below).</li>
+<code>t_ciphertext_note</code>). Додаток Г.2 (<code>l(p)=384</code>) is checked too (T-297, D-241): <code>Q</code>/<code>R</code>/<code>T</code>/
+<code>kappa</code>/<code>H</code>/<code>M'</code> exactly; its printed <code>t</code> (one dropped <code>0</code> restored) inverts to a KW input that
+is not DSTU 7624 §15.4’s KW-p padding - recorded as a divergence, not reproduced.</li>
 <li><strong>No worked example exists for <code>l(p)=768</code> (<code>λ=383</code>) anywhere in this standard — confirmed
 2026-08-06, owner-supplied photos of the document’s final pages.</strong> The document is genuinely 36
 pages total (not the 40 the store listing implies, <code>docs/ORACLES.md</code>); page 36 is the last page,
@@ -18980,13 +19058,15 @@ over (same <code>r=p-1</code> order-2 point, same cofactor-4 order-4 subgroup - 
 Hasse-interval method, not copied). <code>l(p)=512</code> needed no new Kalyna-KW variant
 (<code>Kalyna512_512Kw</code> already existed) since its <code>M'</code> lands exactly block-aligned (Table 1) - unlike
 <code>l(p)=384</code> below.</p>
-<p><strong>Still not done, deliberately out of scope for T-192</strong>: <code>l(p)=384</code> (needs <code>hazmat::kalyna_kw_p</code>
-for its non-block-aligned <code>M'</code> padding case, a genuinely new primitive) and <code>l(p)=768</code> (no
-worked-example oracle exists at all in the standard, confirmed 2026-08-06, not just missing from
-this scan — see “Open gaps” above). Per this project’s own Tier C precedent (T-172 and earlier: any
-new primitive gets its own <code>advisor()</code> consultation and plan-mode pass before code is written, not
-after), picking either of these up should follow the same phased/tested-first pattern T-177/T-192
-used, not be treated as a small parameter tweak.</p>
+<p><strong><code>l(p)=384</code>/E384/1 is implemented too (T-297, 2026-10-19)</strong>: <code>message384.rs</code>/<code>fp384.rs</code>/
+<code>curve384.rs</code>/<code>encryption384.rs</code> (<code>docs/DECISIONS.md</code> D-241/D-244), with <code>hazmat::kalyna_kw_p</code>
+(T-253, D-243) as its KW stage: <code>t = Kalyna-256/256-KW-p(x_T^(256), M')</code> over the 48-byte <code>M'</code>,
+<code>C = r || t</code> = 176 bytes. Додаток Г.2 confirms <code>Q</code>/<code>R</code>/<code>T</code>/<code>kappa</code>/<code>H</code>/<code>M'</code> exactly; its printed
+<code>t</code> is KW over <code>M' || 00×11 01 10 00×3 || 00×32</code>, not DSTU 7624 §15.4’s padding, so this crate
+does not reproduce it (owner’s choice, D-241).</p>
+<p><strong>Still not done</strong>: <code>l(p)=768</code> (no worked-example oracle exists at all in the standard, confirmed
+2026-08-06, not just missing from this scan — see “Open gaps” above). Picking it up should follow
+the same phased, test-first pattern T-177/T-192/T-297 used, with its own plan and <code>advisor()</code> pass.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="docsdecisionsmd"><a class="header" href="#docsdecisionsmd">docs/DECISIONS.md</a></h1>
 <p>Architectural decisions with rejected alternatives and the reason for rejection. Add an entry at
@@ -33148,6 +33228,178 @@ input; the bytes after the header are the D-208 stream file, already covered by 
 Go <code>NewBox*</code>/<code>NewPassphrase*</code> functions); PHP’s writer/reader constructors also accept an already
 started codec object, which is how the factories build them.</li>
 </ul>
+<h2 id="d-241-dstu-9041-lp384-sources-checked-додаток-г2s-t-does-not-follow-dstu-7624-154-070-step-3-phase-0-2026-10-19"><a class="header" href="#d-241-dstu-9041-lp384-sources-checked-додаток-г2s-t-does-not-follow-dstu-7624-154-070-step-3-phase-0-2026-10-19">D-241: DSTU 9041 <code>l(p)=384</code> sources checked; Додаток Г.2’s <code>t</code> does not follow DSTU 7624 §15.4 (0.7.0 step 3 phase 0, 2026-10-19)</a></h2>
+<p><strong>Owner decisions (2026-10-19).</strong> <code>l(p)=384</code> lands in 0.7.0 end to end (hazmat, <code>crypto_box384</code>,
+CLI, capi, all eight bindings). The 384 modules are a third sibling set, not a const-generic merge
+of 256/512 (the review D-181 asked for once a third set appeared). Kupyna-384 goes public in
+<code>hazmat</code> only, not in <code>crypto_generichash</code>. After the finding below the owner chose (a): follow the
+DSTU 7624 text, record Г.2’s <code>t</code> as a discrepancy (rejected: (b) reproduce Г.2 by hardcoding its
+layout; (c) defer <code>l(p)=384</code>).</p>
+<p><strong>E384/1 (Table В.2, first entry, document page 19 = scan index 17).</strong> Both columns transcribed from
+260 DPI renders; a script converted the decimal column to hex and compared it with the transcribed
+hex, so the long <code>F</code>/<code>0</code> runs of <code>p</code>/<code>n</code> come from the decimal value, not from counting (D-166).
+Results, all re-run against the written <code>tests/vectors/dstu9041/curve-E384-1.json</code>:
+<code>p = 2^384 - 2147</code>, <code>p mod 8 = 5</code> (same <code>sqrt</code> formula and reduction shape as <code>fp256</code>/<code>fp512</code>);
+<code>p</code>, <code>n</code> prime (Miller-Rabin, 40 rounds); <code>P</code> on the curve, <code>n·P = (1, 0)</code>; cofactor 4 re-derived
+via the Hasse interval (the only <code>h &lt;= 20</code>); the table’s <code>w</code> equals <code>2^((p-1)/4) mod p</code>; <code>a = 2</code> and
+<code>d = 532</code> are both non-squares, as on E256/1 and E512/1. Г.2 itself says “таблиці В.1” for its
+parameters; the values are В.2’s (a slip in the document).</p>
+<p><strong>Додаток Г.2 (document pages 30-33).</strong> Computed, not transcribed digit by digit (D-180’s method):
+<code>Q = 0x25·P</code>, <code>R = 7·P</code>, <code>T = 7·Q</code>, <code>r^2</code>, the decryption half’s <code>y</code> (<code>p - y_R</code>, the document notes
+the sign flip) and <code>kappa</code> (low 256 bits of <code>x_T</code>, big-endian) all equal the printed values
+exactly. <code>H = Kupyna256(l_M~ || M~)</code> low 8 bytes <code>= 774E8653DD48D732</code> exactly (the printed <code>M'</code>
+line drops the <code>8D</code>; the decryption half prints it whole). The decryption half prints <code>D(t) = M'</code>
+(48 bytes), so it shows nothing of the padding.</p>
+<p><strong>DSTU 7624 §15.1-15.5 and annex Б, read for KW-p (draft PDF pages 33-35, 40).</strong></p>
+<ul>
+<li>KW (no padding) is used when <code>|M|</code> is a multiple of the block, KW-p otherwise (15.1); KW-p needs
+<code>|M| &gt; l</code> (15.4).</li>
+<li>15.4: <code>M || μ_{l/2}(|M|)</code> - the bit length as an <code>l/2</code>-bit little-endian field (the notation list
+defines <code>μ_l(j)</code> as little endian) - then Б.2’s padding, then KW (15.2), which appends <code>0^l</code>.</li>
+<li>Б.2 pads <strong>always</strong>: a 1 bit and <code>l - 1 - (N mod l)</code> zeros, a full block when <code>N</code> is already a
+multiple of <code>l</code>. UAPKI’s <code>padding()</code> pads only unaligned input, so the two differ exactly when
+<code>|M| + l/2</code> is a multiple of <code>l</code> - the <code>l(p)=384</code> case (48 + 16 = 64 bytes). On it UAPKI’s
+<code>encrypt_kw</code> gives a 96-byte <code>t</code>, the text gives 128.</li>
+<li>15.5 + Б.3: KW unwrap, strip the trailing zeros and the 1 bit (error if none or nothing left),
+then the last <code>l/2</code> bits must equal <code>μ(|M''| - l/2)</code>; anything else is an integrity error.</li>
+<li>The annex KW-p examples (В.11.1/3/4/5.3-4, extracted by script into
+<code>tests/vectors/kalyna-kw-p/</code>) all have <code>|M| + l/2</code> unaligned, so they cannot tell the Б.2 and
+UAPKI rules apart. 128/256’s example has <code>N = 314</code> bits, not whole bytes: no byte-API vector.
+Pad + this crate’s <code>Kalyna256_256Kw</code> reproduces В.11.3.3 exactly (scratch check).</li>
+</ul>
+<p><strong>The finding.</strong> 7624-faithful KW-p over Г.2’s <code>M'</code> gives a 128-byte <code>t</code> (the printed length) with
+different bytes. The printed <code>t</code> was recovered exactly: the standalone line drops a <code>D</code>, and every
+copy drops one <code>0</code> (hex position 208, <code>D3801D</code> printed <code>D381D</code>); among all 4096 single-digit
+insertions under five <code>kappa</code> candidates, exactly one makes the raw §15.3 inverse end in the
+all-zero checksum block. It inverts to KW over
+<code>M' || 00×11 01 10 00×3 || 00×32</code> instead of §15.4’s <code>M' || 80 01 00×14 || 80 00×31</code>. The 16-byte
+field reads as 384 written in binary (<code>110000000</code>) and parsed as hex; the last block is zeros where
+Б.2 puts the 1 bit. That fits a slip in whatever tool produced the example, and it matches the
+“M’ plus an all-zero block” shape G.1/G.3 already showed (D-165/D-180) - a hypothesis, not a
+proof: no second example exists.</p>
+<p><strong>Consequence.</strong> <code>hazmat::dstu9041</code> at <code>l(p)=384</code> reproduces Г.2’s curve arithmetic, <code>kappa</code>, <code>H</code>
+and <code>M'</code>, but not its <code>t</code>: it rejects the document’s <code>C</code>, and a third-party 9041 implementation
+built from the authors’ tool would not interoperate at this size. 256/512 are unchanged (their
+<code>M' || 0^l</code> input is confirmed by their own examples). <code>g2-worked-example.json</code> records the
+printed <code>t</code>, its decoded KW input and this divergence.</p>
+<p><strong>Oracle independence, stated plainly.</strong> Bouncy Castle has no DSTU 9041 and no padded KW
+(<code>DSTU7624WrapEngine</code> rejects unaligned input); UAPKI has no DSTU 9041 and its KW-p follows a
+different padding rule and never checks the length field on unwrap. The annex В.11 examples and
+UAPKI/cryptonite are one lineage (T-234). So KW-p rests on the 7624 text plus its own annex, one
+oracle, and the 384 <code>t</code> has none.</p>
+<p><strong>Run, not only read (2026-10-20).</strong> A scratch harness over UAPKI uapkic 2.0.3 (37039b1, the
+checkout <code>tests/oracle-harness/uapki-kalyna-modes/</code> uses) calling <code>dstu7624_init_kw</code> +
+<code>dstu7624_encrypt</code>: the four annex KW-p vectors come out byte for byte (a partly independent second
+transcription of the annex, as D-231 says of UAPKI 2.0.3), and Г.2’s <code>M'</code> under its <code>kappa</code> gives a
+96-byte result, neither this crate’s 128-byte <code>t</code> nor the document’s. So the document’s <code>t</code> is not
+UAPKI’s KW-p either; the UAPKI &lt;= 2.0.2 cells in COMPATIBILITY.md rest on reading the same code.</p>
+<h2 id="d-242-kupyna-384-public-in-hazmat-only-t-254-2026-10-19"><a class="header" href="#d-242-kupyna-384-public-in-hazmat-only-t-254-2026-10-19">D-242: Kupyna-384 public in <code>hazmat</code> only (T-254, 2026-10-19)</a></h2>
+<p><strong>Owner decision (2026-10-19).</strong> <code>hazmat::kupyna::Kupyna384</code>/<code>Kupyna384Hasher</code>, not a third
+<code>crypto_generichash</code> size (rejected: adding it there, which by the binding-gap rule means capi and
+all eight bindings). Consequence: binding users have no Kupyna-384; <code>crypto_generichash</code> stays at
+256/512.</p>
+<p><strong>Construction.</strong> DSTU 7564 clause 5: the 1024-bit-state core (16 columns, 14 rounds) with
+Kupyna-512’s initial value and padding, output the rightmost 384 bits. So <code>Kupyna384(m)</code> is the last
+48 bytes of <code>Kupyna512(m)</code> - the standard’s design, pinned by a test, and the reason no second
+initial value exists in the code (<code>Kupyna384Kmac</code> already used the same core).</p>
+<p><strong>Evidence.</strong> Annex Б’s one byte-aligned 384-bit example (N = 760, bytes <code>00..5E</code>), extracted by
+script into <code>tests/vectors/kupyna/kupyna-384.json</code>, passes one-shot and streaming, and passes both
+Bouncy Castle harnesses (<code>DSTU7564Digest(384)</code>, Java and .NET), which pick the file up from the
+vector directory. BC is a port of the reference C (<code>docs/ORACLES.md</code>), so this is the usual
+shared-lineage second check. Annex Б’s bit-length 384 examples (N = 33, 1) were already covered at
+the compression-function level (T-234).</p>
+<h2 id="d-243-hazmatkalyna_kw_p---dstu-7624-kw-p-with-a-strict-constant-time-unwrap-t-253-2026-10-19"><a class="header" href="#d-243-hazmatkalyna_kw_p---dstu-7624-kw-p-with-a-strict-constant-time-unwrap-t-253-2026-10-19">D-243: <code>hazmat::kalyna_kw_p</code> - DSTU 7624 KW-p with a strict, constant-time unwrap (T-253, 2026-10-19)</a></h2>
+<p><strong>Construction</strong> (the text read in D-241): <code>wrap</code> = §15.4 padding (<code>M || μ_{l/2}(8|M|)</code> LE ||
+<code>0x80</code> || zeros to a block, always) then the existing <code>kalyna_kw</code> <code>wrap_with_cipher</code>; <code>unwrap</code> =
+<code>kalyna_kw</code> <code>unwrap_with_cipher</code> then §15.5/Б.3. Same five variants as KW, one macro; the KW
+network is reused, not copied.</p>
+<p><strong>Forks decided, recorded so they are not only in code:</strong></p>
+<ul>
+<li><strong>Input range.</strong> <code>wrap</code> takes only <code>l &lt; |M|</code>, <code>|M|</code> not a multiple of <code>l</code> (§15.4 needs <code>|M| &gt; l</code>;
+§15.1 sends aligned messages to plain KW), padded to at most KW’s 20 blocks. <code>wrapped_len</code>
+returns <code>None</code> otherwise. Rejected: also padding aligned input (the text never does; it would
+give an aligned message two encodings, KW and KW-p).</li>
+<li><strong>Strict unwrap, one error.</strong> Beyond §15.5’s literal checks, <code>unwrap</code> refuses a recovered block
+<code>wrap</code> cannot produce: the 1 bit not as the byte <code>0x80</code> (byte API), a nonzero top byte in the
+length field, non-minimal padding (an extra zero block), a length <code>&lt;= l</code> or aligned. All of them
+and the KW checksum return the one <code>KwError::ChecksumMismatch</code> and zero <code>out</code>, so there is no
+padding oracle and each message has one ciphertext. Rejected: a separate padding error (an
+oracle) and a new <code>KwError</code> variant (the enum is not <code>#[non_exhaustive]</code>; <code>ChecksumMismatch</code> is
+already “integrity error”).</li>
+<li><strong>Constant time.</strong> The padding check runs over every byte of the recovered block with <code>subtle</code>
+selects, no branch on its content; the one branch is on the final verdict. After a valid KW
+checksum the block is authentic, so this is defence in depth, as is <code>subtle</code> for the checksum.</li>
+<li><strong><code>unwrap</code>’s <code>out</code></strong> is exactly the ciphertext minus one block (KW’s own contract) and the
+message length is returned; the rest of <code>out</code> is zero.</li>
+</ul>
+<p><strong>Evidence.</strong> Annex В.11.1/3/4/5.3-4 (128/128, 256/256, 256/512, 512/512) wrap and unwrap
+exactly, and plain KW unwrap of each shows the annex’s printed <code>padded</code> layout; 128/256 has no
+byte-level example (round trip only). Forged blocks (valid checksum, bad padding) for each refusal
+above; mutation check: disabling any of the five padding conditions fails the forged-padding test.
+Round-trip proptests per variant, <code>wrapped_len</code> boundaries (48 bytes at 256/256 = the always-pad
+case, the 20-block limit), misuse lengths. Fuzz target <code>kalyna_kw_p</code> (round trip asserted,
+arbitrary input into both functions). Oracle independence is as D-241 says: the annex is the only
+oracle.</p>
+<h2 id="d-244-hazmatdstu9041-at-lp384---e3841-as-a-third-sibling-set-t-297-phase-3-2026-10-19"><a class="header" href="#d-244-hazmatdstu9041-at-lp384---e3841-as-a-third-sibling-set-t-297-phase-3-2026-10-19">D-244: <code>hazmat::dstu9041</code> at <code>l(p)=384</code> - E384/1 as a third sibling set (T-297 phase 3, 2026-10-19)</a></h2>
+<p><strong>What.</strong> <code>fp384</code>/<code>curve384</code>/<code>message384</code>/<code>encryption384</code>, siblings of the 256/512 modules (owner:
+no const-generic merge, D-241). <code>fp384</code>/<code>curve384</code>/<code>message384</code> and the field/curve test files were
+generated from their 512 counterparts by a script that fails on any pattern it cannot find, with
+every constant (<code>P_LIMBS</code>, <code>P_MINUS_2</code>, the <code>sqrt</code> exponents, <code>W</code>, <code>BASE_X/Y</code>, <code>ORDER_N</code>,
+<code>A_DIV_D</code>, the field test vectors) computed from the committed <code>curve-E384-1.json</code> - D-178’s
+hand-transcription failure class closed by construction. The compiler caught the two patterns the
+script first missed (array initialisers), as a type error, not silently. The tests pin the
+constants again: <code>w_squared_is_p_minus_1</code>, <code>a_div_d_matches_curve_constants</code>, base point on the
+curve, <code>n·P = O</code>, <code>order()</code> equal to the JSON’s <code>n</code>.</p>
+<p><strong>Where 384 differs from 256/512 (from the text, not by analogy):</strong></p>
+<ul>
+<li><code>kappa = x_T^(k)</code> with <code>k = 256</code> (Table 2: Kalyna-256/256 for <code>l(p)=384</code>) - the low-order 32
+bytes of <code>x_T</code>, where 256/512 use all of it (<code>k = l(p)</code>). Г.2 prints this <code>kappa</code>.</li>
+<li><code>M'</code> is 48 bytes, so <code>t = Kalyna256_256KwP(kappa, M')</code> (128 bytes), <code>C = r || t</code> = 176 bytes;
+256/512 keep their example-confirmed <code>KW(M' || 0^l)</code>. <code>decrypt</code> also refuses a valid KW-p whose
+message is not exactly 48 bytes (a 128-byte KW-p can carry 48-79 bytes).</li>
+<li>Table 1: <code>l_max(p) = 296</code>, <code>l_H = 64</code>; <code>M~</code> 37 bytes. <code>H</code> is Kupyna-256 as at 256/512 (Г.2’s <code>H</code>
+matches exactly).</li>
+</ul>
+<p><strong>Findings re-derived for E384/1 (D-241), wired the same way:</strong> cofactor 4 and the <code>r = p-1</code>
+order-2 point are refused by <code>point_from_x</code> (<code>x in {0,1,p-1}</code>, <code>x^2 = a/d</code>, non-residue, then
+<code>n·candidate == O</code>); <code>r_equals_p_minus_1_reconstructs_the_order_2_point</code> and the crafted-<code>r</code>
+cluster in <code>dstu9041_encryption_384.rs</code> cover them.</p>
+<p><strong>Evidence.</strong> Г.2: <code>37·P = Q</code>, <code>7·P = R</code>, <code>7·Q = T</code> in Rust; <code>encrypt</code>’s <code>r</code> equals the printed
+<code>r</code>, its <code>t</code> equals KW-p of the printed <code>M'</code> under the printed <code>kappa</code>, the document’s own <code>C</code> is
+refused (the D-241 divergence, pinned). Field ops against Python big integers, boundary vectors at
+<code>p</code>, proptests (field, message, round trip), tamper/misuse/boundary tests mirroring 512.</p>
+<p><strong>CI follow-through in the same change:</strong> <code>asm_check.rs</code> lists every <code>fp384</code>/<code>curve384</code> symbol its
+512 twins have (160 zero-jump rows, green; a missing symbol fails the check); <code>miri.yml</code> shards
+<code>dstu9041_encryption_384</code> three ways up front (a 384 ladder is ~0.4x a 512 one; 512 needed 6);
+<code>sonar.cpd.exclusions</code> gains the four new files (D-181’s prediction). Kani harnesses are
+auto-discovered, so the <code>fp384</code> proofs run in the existing job.</p>
+<h2 id="d-245-crypto_box384-and-uacrypt-box-keygen384-t-297-phase-4-2026-10-19"><a class="header" href="#d-245-crypto_box384-and-uacrypt-box-keygen384-t-297-phase-4-2026-10-19">D-245: <code>crypto_box384</code> and <code>uacrypt box-keygen384</code> (T-297 phase 4, 2026-10-19)</a></h2>
+<p><strong>Shape.</strong> <code>crypto_box384</code> is <code>crypto_box512</code> at E384/1’s widths (generated from it by script):
+<code>SecretKey</code>/<code>PublicKey</code> 48 bytes (the public key is <code>x</code> only - the compression argument is the
+curve family’s, so it holds; <code>kappa</code> taking the low 256 bits of <code>x</code> changes nothing in it), KEM
+ciphertext 176 bytes, a 32-byte seed wrapped at <code>message_bits = 256</code> with exactly that length
+required back (D-182’s reasoning: <code>L_MAX_P = 296</code> bits &gt; 256), the D-201 stream-key binding under
+its own label <code>cryptbx3</code>, the T-287 cached public key, wire format v3 only:
+<code>3 || kem (176) || &lt;D-208 stream file&gt;</code>, 231 bytes for an empty message.</p>
+<p><strong>Forks decided here:</strong></p>
+<ul>
+<li><strong>No format v2 / no <code>open_v2_legacy</code>.</strong> Nothing was ever sealed at 384, so there is nothing to
+keep readable. <code>uacrypt box-open</code> refuses a version-2 file with a 384 key as an unsupported
+version from the first byte, before reading the file whole (256/512 still take the legacy path).</li>
+<li><strong>One new command only</strong> (D-212/D-213): <code>box-keygen384</code>; <code>box-pubkey</code>/<code>box-seal</code>/<code>box-open</code>
+pick the curve from the key’s kind, <code>KeyKind::Box384Secret</code>/<code>Box384Public</code> (prefixes
+<code>UACRYPT-SECRET-BOX384</code>/<code>uacrypt-box384-public</code>, <code>key-import</code> names <code>box384-secret</code>/
+<code>box384-public</code>). Their golden key lines were computed outside the crate (Python preimage,
+<code>uacrypt kupyna-digest</code>) and match both <code>keyfile</code>‘s encoder and the smoke tests’ independent one.</li>
+<li><strong>Shared vectors.</strong> <code>tests/vectors/box/v3.json</code> gains eight <code>curve: 384</code> cases and a
+<code>box384_secret_key_hex</code>; regenerating it re-sealed the 256/512 cases too (random seals, a pin,
+not an oracle). Every binding’s runner must handle the new curve value (phase 6).</li>
+</ul>
+<p><strong>Evidence.</strong> <code>tests/crypto_box384.rs</code> (the 512 suite less its v2 tests: round trips, tamper per
+region, truncation, reordering, wrong key, other-curve blobs from both <code>crypto_box</code> and
+<code>crypto_box512</code>, degenerate public keys, key ranges, the shared vectors) plus the stream-key
+binding unit tests; <code>uacrypt</code> smoke tests cover every curve size in the keygen/pubkey/seal/open,
+typed-key and cross-curve tables.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows
@@ -33155,6 +33407,28 @@ started codec object, which is how the factories build them.</li>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
 <h3 id="added"><a class="header" href="#added">Added</a></h3>
 <ul>
+<li><strong><code>dstu-core</code>: Kupyna-384</strong> (T-254, <code>docs/DECISIONS.md</code> D-242): <code>hazmat::kupyna::Kupyna384</code> and
+<code>Kupyna384Hasher</code>, checked against DSTU 7564 annex Б and Bouncy Castle. <code>hazmat</code> only:
+<code>crypto_generichash</code> keeps Kupyna-256/512.</li>
+<li><strong><code>dstu-core</code>: Kalyna-KW-p</strong> (T-253, <code>docs/DECISIONS.md</code> D-243): <code>hazmat::kalyna_kw_p</code>, DSTU 7624
+key wrap with padding for messages that are not a multiple of the block, all five Kalyna sizes,
+checked against the standard’s annex В.11. Unwrap refuses any padding the standard does not
+produce, with the same error as a bad checksum.</li>
+<li><strong><code>dstu-core</code>: DSTU 9041 at <code>l(p)=384</code></strong> (T-297, <code>docs/DECISIONS.md</code> D-241/D-244):
+<code>hazmat::dstu9041::{fp384, curve384, message384, encryption384}</code> over the recommended curve
+E384/1. Its key-wrap step follows DSTU 7624; the standard’s worked example Г.2 prints a different
+ciphertext, so the example’s <code>C</code> is not accepted (everything before the key wrap matches it).</li>
+<li><strong><code>dstu-core</code>: <code>crypto_box384</code></strong> (T-297, <code>docs/DECISIONS.md</code> D-245): public-key encryption over
+E384/1, the <code>crypto_box</code>/<code>crypto_box512</code> shape with 48-byte keys, format v3 only.</li>
+<li><strong><code>uacrypt box-keygen384</code></strong> (T-297): a key for the <code>l(p)=384</code> curve; <code>box-pubkey</code>, <code>box-seal</code>
+and <code>box-open</code> take it like the other two curves. New key kinds <code>box384-secret</code>/<code>box384-public</code>.</li>
+<li><strong>C ABI:</strong> <code>dstu_box384_*</code> (T-297), the <code>dstu_box512_*</code> set at l(p)=384:
+<code>DSTU_BOX384_SECRETKEY_BYTES</code>/<code>_PUBLICKEY_BYTES</code> (48), <code>DSTU_BOX384_OPEN_MIN_OVERHEAD</code> (231),
+<code>DSTU_BOX384_SEAL_STREAM_PREFIX_BYTES</code> (210), <code>DSTU_BOX384_OPEN_STREAM_PREFIX_BYTES</code> (177).</li>
+<li><strong>All 8 bindings</strong> (T-297): <code>crypto_box384</code> with the same names as each binding’s
+<code>crypto_box512</code> wrapper at 384 (for example Python <code>box384_seal</code>/<code>Box384Encryptor</code>, .NET
+<code>Box384SecretKey</code>/<code>ForBox384</code>, Go <code>Box384SecretKey</code>/<code>NewBox384EncryptWriter</code>), streaming
+included, tested against the shared <code>box/v3.json</code>.</li>
 <li><strong><code>dstu-core</code>: streaming <code>crypto_box</code>/<code>crypto_box512</code></strong> (T-265, <code>docs/DECISIONS.md</code> D-239):
 <code>seal_stream</code>/<code>open_stream</code> hand out the stream-file codec’s <code>FileEncryptor</code>/<code>FileDecryptor</code>,
 plus <code>sealed_len</code>, <code>SEAL_STREAM_PREFIX_BYTES</code>/<code>OPEN_STREAM_PREFIX_BYTES</code>, <code>FORMAT_VERSION</code>.
