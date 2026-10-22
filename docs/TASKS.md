@@ -8730,7 +8730,7 @@ Moved to `docs/SECURITY.md` "Standards baseline" (T-246, 2026-10-11): policy liv
   N = 760 vector, both BC harnesses green; `hazmat` only per the owner) (from T-234) Public
   Kupyna-384 digest (`R_384` of the 1024-bit-state core, as `Kupyna384Kmac` already uses
   internally) plus the DSTU 7564 annex Б vector (N = 760).
-- [x] **T-297** (owner 2026-10-19, 0.7.0 step 3; depends: T-253; **closed 2026-10-22**: pushed `252cf9c`, CI green except `bindings-php` (RUSTSEC-2026-0383, T-308); Miri run 39808016675 green in 1h22m, `dstu9041_encryption_384` shards 52/36/49 min, `crypto_box384` 26, `dstu9041_curve_384` 21; `rust` (asm-check, Kani, cppcheck) green; Sonar gate OK. The offered independent review became the owner's red-team wave, T-298..T-308) DSTU 9041 `l(p)=384` end to end:
+- [x] **T-297** (owner 2026-10-19, 0.7.0 step 3; depends: T-253; **closed 2026-10-22**: pushed `252cf9c`, CI green except `bindings-php` (RUSTSEC-2026-0383, T-308); Miri run 39808016675 green in 1h22m, `dstu9041_encryption_384` shards 52/36/49 min, `crypto_box384` 26, `dstu9041_curve_384` 21; `rust` (asm-check, Kani) and `bindings-cpp` (cppcheck) green; Sonar gate OK. The offered independent review became the owner's red-team wave, T-298..T-308) DSTU 9041 `l(p)=384` end to end:
   `hazmat::dstu9041` E384/1 (`fp384`/`curve384`/`message384`/`encryption384`), `crypto_box384`,
   `uacrypt box-keygen384` + `KeyKind::Box384*`, capi `box384`, all eight bindings, docs. Sources and
   the Г.2 `t` divergence: D-241. Phase plan: the 0.7.0 detailed plan, step 3.
