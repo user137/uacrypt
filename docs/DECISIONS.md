@@ -15852,3 +15852,30 @@ copies the compiler places; Rust cannot guarantee their erasure. Per-block `comp
 buffers in Kupyna are left (they hold message bytes, overwritten by the next block; wiping them
 would cost every hash). No test: zeroization is not observable through the public API (a
 type-signature-level gap, recorded here per the project's misuse-category rule).
+
+## D-250: owner-only output files on Windows (T-300, 2026-10-22)
+
+**Finding** (red-team wave). `create_private_new` gave Unix files mode `0600` but left Windows files
+with their directory's inherited ACL: under `C:\work` (which inherits `BUILTIN\Users:RX`) a secret
+key from any `*-keygen`/`key-import`, a temp file, or `decrypt`/`box-open` plaintext was readable
+by every local user. `docs/CLI.md` promised only the Unix side.
+
+**Fix.** `crates/uacrypt/src/private_file.rs`: `CreateFileW` with `CREATE_NEW` (same semantics as
+`create_new`: fails on anything at the path, a symlink included), `GENERIC_WRITE`, std's share mode,
+and `SECURITY_ATTRIBUTES` holding `D:P(A;;FA;;;<current user SID>)` - a protected DACL (nothing
+inherited) with one full-access entry, the SID read from the process token. Set in the creating
+call, so there is no window in which another process can open the file with the inherited ACL
+(setting the DACL after creation would leave one, and an already-open handle keeps its access).
+The rename onto the output path keeps the temp file's descriptor, so `--force` replacing a shared
+file also ends owner-only. Paths of 248+ UTF-16 units go in their `\?\` (or `\?\UNC\`) form after
+`std::path::absolute`, as `std::fs` does, so long paths keep working without `LongPathsEnabled`.
+`windows-sys` (already a dependency) gains the `Win32_Security_Authorization` and
+`Win32_System_Threading` features; no new crate.
+
+**Rejected:** `SetSecurityInfo` after `OpenOptions::open` (the race above); the `OW` (Owner Rights)
+SDDL alias (the default owner of an elevated admin's files is `BUILTIN\Administrators`, not the
+user); also granting `SYSTEM`/`Administrators` (they can take ownership anyway; minimal is clearer).
+
+**Evidence.** `tests/smoke_overwrite.rs` `outputs_are_owner_only_on_windows` (`icacls`: no `(I)`
+entry, exactly one ACE, the current user - failed before the fix) for a key, a fresh output and a
+`--force` replacement; `private_file` unit tests for the path form.

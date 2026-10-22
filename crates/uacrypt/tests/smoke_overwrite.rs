@@ -962,3 +962,58 @@ fn a_directory_output_is_refused_and_left_intact_with_or_without_force() {
     assert_eq!(read_bytes(&dir.file("sub").join("inside")), EXISTING);
     assert_eq!(listing(&dir), before);
 }
+
+/// T-300: on Windows a key file, a fresh output and a `--force`-replaced output carry a protected
+/// DACL with one entry, the current user - not ACEs inherited from the directory (`icacls` marks
+/// an inherited entry `(I)`, in every display language).
+#[cfg(windows)]
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
+fn outputs_are_owner_only_on_windows() {
+    let dir = TempDir::new("overwrite_acl");
+    fixtures(&dir);
+    let p = |n: &str| dir.file(n).to_string_lossy().into_owned();
+    let r = uacrypt([
+        "kupyna-digest",
+        "--variant",
+        "256",
+        "--in",
+        &p("in32"),
+        "--out",
+        &p("fresh"),
+    ]);
+    assert!(r.success(), "{}", r.stderr);
+    write_bytes(&dir.file("shared"), EXISTING);
+    let r = uacrypt([
+        "kupyna-digest",
+        "--variant",
+        "256",
+        "--in",
+        &p("in32"),
+        "--out",
+        &p("shared"),
+        "--force",
+    ]);
+    assert!(r.success(), "{}", r.stderr);
+    let user = std::env::var("USERNAME").expect("USERNAME is set on Windows");
+    for name in ["sym.key", "fresh", "shared"] {
+        let out = std::process::Command::new("icacls")
+            .arg(dir.file(name))
+            .output()
+            .expect("run icacls");
+        assert!(out.status.success(), "icacls {name}");
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            !text.contains("(I)"),
+            "{name} has inherited entries:\n{text}"
+        );
+        assert_eq!(text.matches(":(").count(), 1, "{name}:\n{text}");
+        assert!(
+            text.to_lowercase().contains(&user.to_lowercase()),
+            "{name} is not granted to {user}:\n{text}"
+        );
+    }
+}

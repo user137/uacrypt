@@ -24,6 +24,8 @@
 
 mod keyfile;
 mod passphrase;
+#[cfg(windows)]
+mod private_file;
 mod progress;
 mod sigint;
 
@@ -2203,16 +2205,24 @@ fn temp_path_beside(out_path: &std::path::Path) -> Result<PathBuf, CliError> {
 /// Opens `path` for writing only if nothing exists there yet, whether a file or a symlink:
 /// `create_new` is `O_CREAT | O_EXCL`, which never follows a link. On Unix the file gets mode
 /// `0600`, so a key, a temp file or a decrypted plaintext is never readable by other users. On
-/// Windows it inherits its directory's ACL (T-241).
+/// Windows it gets a protected DACL for the current user only, set at creation (T-300, D-250;
+/// before that it inherited its directory's ACL, T-241).
 fn create_private_new(path: &std::path::Path) -> std::io::Result<std::fs::File> {
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
+    #[cfg(windows)]
     {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
+        private_file::create_new(path)
     }
-    options.open(path)
+    #[cfg(not(windows))]
+    {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        options.open(path)
+    }
 }
 
 /// Refuses an existing regular file at an output path that starts like a typed key file, or that
@@ -4855,8 +4865,8 @@ Draws from the OS CSPRNG (dstu_core::randombytes, via crypto_secretstream::Key::
 writes it to --out as a typed key file: one text line that names its kind, so no other command
 mistakes it for its own kind of key (docs/CLI.md 'Key files'). Refuses to overwrite
 --out if it already exists (so a repeated run cannot destroy a key); delete the old file first if
-you really want a new key. Every `*-keygen` command behaves the same way, and on Unix writes the
-key with mode 0600.
+you really want a new key. Every `*-keygen` command behaves the same way, and writes the key
+owner-only (mode 0600 on Unix, a current-user-only ACL on Windows).
 
 USAGE:
     uacrypt keygen --out <path>

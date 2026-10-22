@@ -10534,7 +10534,7 @@ names (`create_new`, 64-bit random), `--force` never over a key, passphrase hand
   Suspected, unproven: a crafted unreduced Q behaving degenerately on the portable path. Fix:
   reject non-zero top bits, plus on-curve and `n*Q == O` at decode (fail closed in one place);
   the C ABI/binding shape decided in the D-entry. Tests: the recipe vectors in both builds.
-- [ ] **T-300** (Medium, security) Windows: `create_private_new` (`uacrypt/src/lib.rs:2207`) gives a
+- [x] **T-300** (Medium, security; **done 2026-10-22, D-250**: `private_file.rs`, protected current-user DACL at create) Windows: `create_private_new` (`uacrypt/src/lib.rs:2207`) gives a
   key file, temp file or decrypted output the directory's inherited ACL (Unix gets `0600`).
   Recipe: a directory with `Everyone:(OI)(CI)R`, `uacrypt keygen --out d\k.key`, `icacls d\k.key`
   shows `Everyone:(I)(R)`; `C:\work` inherits `BUILTIN\Users:RX`. Fix: a protected owner-only DACL

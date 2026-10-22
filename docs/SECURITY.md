@@ -216,7 +216,7 @@ replace a DSTU primitive.
 | public-key validation | SEC 1 v2 §3.2.2.1; NIST SP 800-56A r3 §5.6.2.3.3 (full validation incl. `n*Q = O`) | m=163 full validation | T-245b |
 | constant time / zeroization | ISO/IEC 19790 / FIPS 140-3 SSP zeroization (informational, not a certification claim); CWE-208, CWE-226 | what "zeroized" and "no timing leak" mean for review | T-242 |
 | FFI UB | CWE-758 (reliance on undefined behavior), Rust reference "invalid enum discriminant" | `u32` at the boundary | T-240 |
-| CLI file handling | CWE-377 (insecure temp file), CWE-59 (link following), CWE-732 (permissions), CWE-367 (TOCTOU); POSIX `open(O_CREAT | O_EXCL | O_NOFOLLOW)` | `create_new`, random temp name, `0o600` | T-241 |
+| CLI file handling | CWE-377 (insecure temp file), CWE-59 (link following), CWE-732 (permissions), CWE-367 (TOCTOU); POSIX `open(O_CREAT | O_EXCL | O_NOFOLLOW)` | `create_new`, random temp name, `0o600`; Windows: `CREATE_NEW` with a protected current-user-only DACL | T-241, T-300 |
 | release artifacts | SLSA v1.0 Build L2/L3 provenance (GitHub `actions/attest-build-provenance`); signed SHA-256 checksums (Sigstore/cosign or minisign) | verifiable `uacrypt` binaries and binding artefacts | T-252 |
 | dependency transparency | CycloneDX or SPDX SBOM; `cargo auditable` (embeds the dependency list in the binary); `cargo build --locked` | an SBOM per release, and auditable binaries (`cargo audit bin`) | T-252 |
 | disclosure | ISO/IEC 29147 (vulnerability disclosure) + ISO/IEC 30111 (handling); GitHub Security Advisories; RustSec advisory-db | the process T-233 follows | T-233 |

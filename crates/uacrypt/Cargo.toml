@@ -33,5 +33,6 @@ libc = "0.2.189"
 
 [target.'cfg(windows)'.dependencies]
 # Console input mode restored on Ctrl-C at the passphrase prompt (T-271, D-219); already locked
-# through rpassword, with a subset of its features.
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Console"] }
+# through rpassword, with a subset of its features. Owner-only file creation (T-300, D-250) adds
+# the Authorization and Threading API sets.
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_Threading"] }

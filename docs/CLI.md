@@ -28,8 +28,10 @@ key inputs (`--key`, `--iv`, `--tweak`, or a decrypt-side `--nonce`/`--tag`) is 
 the key with plaintext. The result is written to a temp file next to the
 output and renamed onto it only when the command succeeds, so a failed command leaves no output file,
 no temp file and, with `--force`, the old file unchanged. `--force` replaces a symlink at the
-output path, never the file it points to. On Unix every output file is created with mode `0600`
-(owner only), also when `--force` replaces a `0644` file; `chmod` it to share it. Key files
+output path, never the file it points to. Every output file is created owner-only, also when
+`--force` replaces a shared file: mode `0600` on Unix (`chmod` it to share it), and on Windows a
+protected ACL granting only the current user, with nothing inherited from the folder (T-300;
+`icacls` to share it). Key files
 (`*-keygen`, `sign-pubkey`, `box-pubkey`, `key-import`) are never replaced at all and do not
 accept `--force`: `box-pubkey --key box.key --out box.key` would otherwise destroy the secret key.
 No other command replaces an existing key file either, with or without `--force` (T-268,
@@ -120,8 +122,8 @@ prior `crypto_secretbox`-backed `encrypt` produced cannot be read by this `decry
 primitive for whole-message use, just no longer what this CLI command uses. `--key` is a typed
 key file ([Key files](#key-files)) holding a 32-byte `crypto_secretstream::Key` — `uacrypt keygen
 --out key.bin` generates one from the OS CSPRNG (`docs/TASKS.md` T-115). Like every `*-keygen` command, it refuses to overwrite an
-existing `--out` (with no `--force` to override it), so a repeated run cannot destroy a key, and on Unix it writes the key with mode
-`0600` (T-241). `encrypt` draws a fresh random header internally on every call
+existing `--out` (with no `--force` to override it), so a repeated run cannot destroy a key, and writes the key owner-only (mode
+`0600` on Unix, T-241; a current-user-only ACL on Windows, T-300). `encrypt` draws a fresh random header internally on every call
 and embeds it in `--out`; there is no `--nonce`/`--header` flag to supply or reuse by mistake.
 **0.4.0 changed the `encrypt`/`box-seal` file formats (both curves)** (T-232/T-248,
 `docs/DECISIONS.md` D-200-D-202). Files written by 0.3.x don't open with 0.4.0. `box-open` almost
