@@ -15961,8 +15961,8 @@ needs the victim's own disk and (by default) admin rights, which a check list do
 ## D-253: 0.7.0 now, one advisory, no yank (2026-10-23)
 
 **Owner, 2026-10-23:** release 0.7.0 now with what is done (T-264 and T-249 move after it), with
-one combined GitHub advisory. **Delegated to Claude ("питання на тобі"), decided by D-247's order -
-project rules, then safety, then compatibility:**
+one combined GitHub advisory. **Delegated to Claude ("питання на тобі"), decided in the order project
+rules, then safety, then compatibility:**
 
 - **Advisory text** `.claude/disclosure-drafts/advisory_070.md` as drafted: T-298, T-299, T-300,
   T-301 and T-303 (T-303 added: 0.6.0's `hash --check` reached UNC hosts, an NTLM leak - the same
