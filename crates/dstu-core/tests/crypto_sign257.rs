@@ -382,3 +382,28 @@ fn order_2n_verifying_key_is_rejected() {
         "a verifying key of order 2n must be rejected"
     );
 }
+
+// T-299: a coordinate >= 2^257 (here `x + f` or `y + f`, f = z^257 + z^12 + 1) is not a field
+// element - see the m=163 test of the same name in `tests/crypto_sign.rs`.
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 257-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
+)]
+#[test]
+fn t299_non_canonical_verifying_key_is_rejected() {
+    let signing_key = SigningKey::from_bytes(&small_scalar(0x2A)).expect("nonzero, below n");
+    let pk = signing_key.verifying_key().to_uncompressed_bytes();
+    let sig = signing_key.sign(b"a real message");
+    assert!(VerifyingKey::from_uncompressed_bytes(&pk).verify(b"a real message", &sig));
+    for (hi, mid, lo) in [(0usize, 31usize, 32usize), (33, 64, 65)] {
+        let mut bad = pk;
+        bad[hi] ^= 0x02;
+        bad[mid] ^= 0x10;
+        bad[lo] ^= 0x01;
+        let key = VerifyingKey::from_uncompressed_bytes(&bad);
+        assert!(
+            !key.verify(b"a real message", &sig),
+            "coordinate at byte {hi} + f accepted"
+        );
+    }
+}

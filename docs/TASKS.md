@@ -10522,7 +10522,7 @@ names (`create_new`, 64-bit random), `--force` never over a key, passphrase hand
   pinning the property, hazmat + CLI docs/help warning (not EUF-CMA, never share the key); whether
   `uacrypt kalyna-cmac` stays (an interop/benchmark tool per D-31/D-71, `PERFORMANCE.md` uses it)
   or goes is the owner's call. D-entry.
-- [ ] **T-299** (Medium, security, **embargo-sensitive**) DSTU 4145 `VerifyingKey::from_uncompressed_bytes`
+- [x] **T-299** (Medium, security, **embargo-sensitive**; **done 2026-10-22, D-246**: `is_on_curve` rejects coordinates >= 2^m) DSTU 4145 `VerifyingKey::from_uncompressed_bytes`
   (`crypto_sign.rs:269`, `crypto_sign257.rs:196`) accepts coordinates >= 2^m:
   `FieldElement::from_be_bytes` does not reduce (its doc puts that on the caller), breaking the
   "top bits zero" invariant. Recipe: valid `pk = x||y` + signature; m=163 XOR `pk[0]^=0x08,

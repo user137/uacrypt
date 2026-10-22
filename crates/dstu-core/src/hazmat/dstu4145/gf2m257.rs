@@ -52,6 +52,13 @@ impl FieldElement {
     pub const ZERO: FieldElement = FieldElement([0, 0, 0, 0, 0]);
     pub const ONE: FieldElement = FieldElement([1, 0, 0, 0, 0]);
 
+    /// Whether bits 257..320 are zero, i.e. this is a field element at all - false only for a
+    /// value built by [`Self::from_be_bytes`] from bytes `>= 2^257` (T-299).
+    #[must_use]
+    pub fn is_canonical(self) -> bool {
+        self.0[4] >> 1 == 0
+    }
+
     /// Builds a field element from a big-endian byte slice (up to 33 bytes / 257 bits). The
     /// caller must ensure the value is already less than `2^257` - this does not reduce.
     #[must_use]

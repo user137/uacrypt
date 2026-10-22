@@ -84,6 +84,9 @@ impl Point {
     pub fn is_on_curve(self) -> bool {
         match self {
             Point::Infinity => false,
+            // T-299: a coordinate >= 2^m is not a field element (and the portable and
+            // hardware multiplies disagree on it), so it is never a point.
+            Point::Affine(x, y) if !x.is_canonical() || !y.is_canonical() => false,
             Point::Affine(x, y) => {
                 let lhs = y.square() + x.multiply(y);
                 let rhs = x.multiply(x.square()) + x.square() + b();

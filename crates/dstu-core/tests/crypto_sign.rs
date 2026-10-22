@@ -303,3 +303,31 @@ proptest! {
         prop_assert!(verifying_key.verify(&message, &sig));
     }
 }
+
+// T-299: a coordinate >= 2^163 (here `x + f` or `y + f`, f = z^163 + z^7 + z^6 + z^3 + 1) is not
+// a field element. Before the fix the std build's hardware multiply treated it as `x`, so the key
+// had several byte encodings that verified, while the portable no_std multiply rejected them.
+#[cfg_attr(
+    miri,
+    ignore = "Point::scalar_multiply's 163-iteration ladder is too slow to interpret under Miri - see docs/TASKS.md T-100"
+)]
+#[test]
+fn t299_non_canonical_verifying_key_is_rejected() {
+    let signing_key = SigningKey::from_bytes(&small_scalar(0x2A)).expect("nonzero, below n");
+    let pk = signing_key.verifying_key().to_uncompressed_bytes();
+    let sig = signing_key.sign(b"a real message");
+    assert!(
+        dstu_core::crypto_sign::VerifyingKey::from_uncompressed_bytes(&pk)
+            .verify(b"a real message", &sig)
+    );
+    for (hi, lo) in [(0usize, 20usize), (21, 41)] {
+        let mut bad = pk;
+        bad[hi] ^= 0x08;
+        bad[lo] ^= 0xC9;
+        let key = dstu_core::crypto_sign::VerifyingKey::from_uncompressed_bytes(&bad);
+        assert!(
+            !key.verify(b"a real message", &sig),
+            "coordinate at byte {hi} + f accepted"
+        );
+    }
+}

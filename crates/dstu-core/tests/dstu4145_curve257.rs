@@ -155,3 +155,26 @@ fn curve257_point_arithmetic_matches_bouncy_castle() {
     }
     assert_eq!(checked, 60, "expected 20 cases x 3 ops from the generator");
 }
+
+// T-299: `x + f` (f = z^257 + z^12 + 1) bytes are not a field element - see the m=163 test of the
+// same name in `tests/dstu4145_curve.rs`.
+#[test]
+fn t299_non_canonical_coordinate_is_not_on_curve() {
+    let Point::Affine(x, y) = Point::generator() else {
+        panic!("the generator is affine");
+    };
+    let (mut xb, mut yb) = (x.to_be_bytes(), y.to_be_bytes());
+    for b in [&mut xb, &mut yb] {
+        b[0] ^= 0x02;
+        b[31] ^= 0x10;
+        b[32] ^= 0x01;
+    }
+    let (bad_x, bad_y) = (
+        FieldElement::from_be_bytes(&xb),
+        FieldElement::from_be_bytes(&yb),
+    );
+    assert!(x.is_canonical() && y.is_canonical());
+    assert!(!bad_x.is_canonical() && !bad_y.is_canonical());
+    assert!(!Point::Affine(bad_x, y).is_on_curve());
+    assert!(!Point::Affine(x, bad_y).is_on_curve());
+}

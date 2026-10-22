@@ -409,3 +409,26 @@ proptest! {
         );
     }
 }
+
+// T-299: `x + f` (f = z^163 + z^7 + z^6 + z^3 + 1) bytes are not a field element, so the
+// generator with such a coordinate is not on the curve - in every build, not only where the
+// hardware multiply happens to reduce it.
+#[test]
+fn t299_non_canonical_coordinate_is_not_on_curve() {
+    let Point::Affine(x, y) = Point::generator() else {
+        panic!("the generator is affine");
+    };
+    let (mut xb, mut yb) = (x.to_be_bytes(), y.to_be_bytes());
+    xb[0] ^= 0x08;
+    xb[20] ^= 0xC9;
+    yb[0] ^= 0x08;
+    yb[20] ^= 0xC9;
+    let (bad_x, bad_y) = (
+        FieldElement::from_be_bytes(&xb),
+        FieldElement::from_be_bytes(&yb),
+    );
+    assert!(x.is_canonical() && y.is_canonical());
+    assert!(!bad_x.is_canonical() && !bad_y.is_canonical());
+    assert!(!Point::Affine(bad_x, y).is_on_curve());
+    assert!(!Point::Affine(x, bad_y).is_on_curve());
+}

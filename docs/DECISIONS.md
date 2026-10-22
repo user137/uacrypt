@@ -15748,3 +15748,29 @@ region, truncation, reordering, wrong key, other-curve blobs from both `crypto_b
 `crypto_box512`, degenerate public keys, key ranges, the shared vectors) plus the stream-key
 binding unit tests; `uacrypt` smoke tests cover every curve size in the keygen/pubkey/seal/open,
 typed-key and cross-curve tables.
+
+## D-246: DSTU 4145 verifying keys with non-canonical coordinates (T-299, 2026-10-22)
+
+**Finding** (red-team wave, `docs/TASKS.md` T-299). `FieldElement::from_be_bytes` (`gf2m163`/
+`gf2m257`) does not reduce and documents that the caller must pass a value `< 2^m`;
+`VerifyingKey::from_uncompressed_bytes` never checked it. The std build multiplies with a hardware
+carry-less multiply over whole limbs and reduces correctly, so `x + f` acted as `x` and the key had
+up to 2^5 (m=163) / 2^7 (m=257) byte encodings per coordinate that verified; the portable multiply
+reads only the low `m` bits of one operand, so the no_std build rejected the same bytes. Key
+malleability plus a build-dependent `verify`, reachable from `uacrypt verify --key`, capi
+`dstu_verifying_key_from_bytes` (+257) and every binding.
+
+**Fix: reject in `Point::is_on_curve`, not at decode.** A point with a coordinate `>= 2^m` is not
+on the curve - it is not even a pair of field elements. `is_on_curve` is already the gate
+`signature::verify`/`signature257::verify` run on `q` (T-189/T-245b, followed by `n*q == O`), so
+one check closes every entry point, keeps `from_uncompressed_bytes` infallible and leaves the C ABI
+and all bindings unchanged. New `FieldElement::is_canonical()` on both fields.
+
+**Rejected:** a fallible `from_uncompressed_bytes` (an API and ABI break through capi and eight
+bindings for the same effect); reducing in `from_be_bytes` (would make `x + f` *accept* as `x`,
+which is exactly the malleability). `uacrypt key-import --kind sign*-public` still accepts any 42/
+66 bytes - such a key can only fail `verify`, recorded rather than changed.
+
+**Evidence.** `tests/crypto_sign.rs`/`crypto_sign257.rs` `t299_*` (the red-team recipe: failed
+before the fix on the std build) and `tests/dstu4145_curve.rs`/`dstu4145_curve257.rs` `t299_*`
+(cheap, run in the no_std build and under Miri).
