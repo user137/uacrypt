@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["from_candidate_bytes"],"struct":["FieldElement"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["Kalyna128_128KwP","Kalyna128_256KwP","Kalyna256_256KwP","Kalyna256_512KwP","Kalyna512_512KwP"]};

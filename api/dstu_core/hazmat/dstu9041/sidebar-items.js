@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["curve256","curve512","encryption","encryption512","fp256","fp512","message","message512"]};
+window.SIDEBAR_ITEMS = {"mod":["curve256","curve384","curve512","encryption","encryption384","encryption512","fp256","fp384","fp512","message","message384","message512"]};

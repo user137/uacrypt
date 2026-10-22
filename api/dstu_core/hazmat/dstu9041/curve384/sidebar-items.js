@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["base_point","is_valid_scalar","order","point_from_x"],"struct":["Point"]};

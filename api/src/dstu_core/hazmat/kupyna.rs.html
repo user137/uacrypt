@@ -541,259 +541,305 @@
 <a href=#541 id=541 data-nosnippet>541</a>    }
 <a href=#542 id=542 data-nosnippet>542</a>}
 <a href=#543 id=543 data-nosnippet>543</a>
-<a href=#544 id=544 data-nosnippet>544</a><span class="doccomment">/// Kupyna-512: 1024-bit internal state, 14 rounds, 512-bit (64-byte) output.
-<a href=#545 id=545 data-nosnippet>545</a></span><span class="kw">pub struct </span>Kupyna512;
-<a href=#546 id=546 data-nosnippet>546</a>
-<a href=#547 id=547 data-nosnippet>547</a><span class="kw">impl </span>Kupyna512 {
-<a href=#548 id=548 data-nosnippet>548</a>    <span class="doccomment">/// Hashes `message` (byte-aligned only) and returns the 512-bit digest.
-<a href=#549 id=549 data-nosnippet>549</a>    </span><span class="attr">#[must_use]
-<a href=#550 id=550 data-nosnippet>550</a>    </span><span class="kw">pub fn </span>digest(message: <span class="kw-2">&amp;</span>[u8]) -&gt; [u8; <span class="number">64</span>] {
-<a href=#551 id=551 data-nosnippet>551</a>        digest_generic(message, <span class="number">16</span>, <span class="number">14</span>, <span class="number">11</span>, <span class="number">64</span>)
-<a href=#552 id=552 data-nosnippet>552</a>    }
-<a href=#553 id=553 data-nosnippet>553</a>}
-<a href=#554 id=554 data-nosnippet>554</a>
-<a href=#555 id=555 data-nosnippet>555</a><span class="doccomment">/// Streaming Kupyna-256: same construction as [`Kupyna256`], for messages fed incrementally
-<a href=#556 id=556 data-nosnippet>556</a>/// (e.g. from a reader) instead of available as one contiguous slice up front.
-<a href=#557 id=557 data-nosnippet>557</a></span><span class="kw">pub struct </span>Kupyna256Hasher(KupynaCore);
-<a href=#558 id=558 data-nosnippet>558</a>
-<a href=#559 id=559 data-nosnippet>559</a><span class="kw">impl </span>Kupyna256Hasher {
-<a href=#560 id=560 data-nosnippet>560</a>    <span class="attr">#[must_use]
-<a href=#561 id=561 data-nosnippet>561</a>    </span><span class="kw">pub fn </span>new() -&gt; <span class="self">Self </span>{
-<a href=#562 id=562 data-nosnippet>562</a>        <span class="self">Self</span>(KupynaCore::new(<span class="number">8</span>, <span class="number">10</span>, <span class="number">7</span>))
-<a href=#563 id=563 data-nosnippet>563</a>    }
-<a href=#564 id=564 data-nosnippet>564</a>
-<a href=#565 id=565 data-nosnippet>565</a>    <span class="doccomment">/// Feeds more message bytes in. May be called any number of times, with any chunking -
-<a href=#566 id=566 data-nosnippet>566</a>    /// `Kupyna256Hasher::new().update(a); ...update(b)` is equivalent to one `update(a ++ b)`
-<a href=#567 id=567 data-nosnippet>567</a>    /// call, and both are equivalent to `Kupyna256::digest(a ++ b)`.
-<a href=#568 id=568 data-nosnippet>568</a>    </span><span class="kw">pub fn </span>update(<span class="kw-2">&amp;mut </span><span class="self">self</span>, data: <span class="kw-2">&amp;</span>[u8]) {
-<a href=#569 id=569 data-nosnippet>569</a>        <span class="self">self</span>.<span class="number">0</span>.update(data);
-<a href=#570 id=570 data-nosnippet>570</a>    }
-<a href=#571 id=571 data-nosnippet>571</a>
-<a href=#572 id=572 data-nosnippet>572</a>    <span class="doccomment">/// Consumes the hasher and returns the 256-bit digest of everything fed via `update`.
-<a href=#573 id=573 data-nosnippet>573</a>    </span><span class="attr">#[must_use]
-<a href=#574 id=574 data-nosnippet>574</a>    </span><span class="kw">pub fn </span>finalize(<span class="self">self</span>) -&gt; [u8; <span class="number">32</span>] {
-<a href=#575 id=575 data-nosnippet>575</a>        <span class="kw">let </span>full = <span class="self">self</span>.<span class="number">0</span>.finalize(<span class="number">32</span>);
-<a href=#576 id=576 data-nosnippet>576</a>        <span class="kw">let </span><span class="kw-2">mut </span>out = [<span class="number">0u8</span>; <span class="number">32</span>];
-<a href=#577 id=577 data-nosnippet>577</a>        out.copy_from_slice(<span class="kw-2">&amp;</span>full[..<span class="number">32</span>]);
-<a href=#578 id=578 data-nosnippet>578</a>        out
+<a href=#544 id=544 data-nosnippet>544</a><span class="doccomment">/// Kupyna-384: Kupyna-512's 1024-bit state, 14 rounds, initial value and padding, keeping the
+<a href=#545 id=545 data-nosnippet>545</a>/// rightmost 384 bits (DSTU 7564 clause 5, T-254). So its digest is the last 48 bytes of
+<a href=#546 id=546 data-nosnippet>546</a>/// [`Kupyna512`]'s for the same message: the standard's design, not a separate function.
+<a href=#547 id=547 data-nosnippet>547</a></span><span class="kw">pub struct </span>Kupyna384;
+<a href=#548 id=548 data-nosnippet>548</a>
+<a href=#549 id=549 data-nosnippet>549</a><span class="kw">impl </span>Kupyna384 {
+<a href=#550 id=550 data-nosnippet>550</a>    <span class="doccomment">/// Hashes `message` (byte-aligned only) and returns the 384-bit digest.
+<a href=#551 id=551 data-nosnippet>551</a>    </span><span class="attr">#[must_use]
+<a href=#552 id=552 data-nosnippet>552</a>    </span><span class="kw">pub fn </span>digest(message: <span class="kw-2">&amp;</span>[u8]) -&gt; [u8; <span class="number">48</span>] {
+<a href=#553 id=553 data-nosnippet>553</a>        <span class="kw">let </span>full = digest_generic(message, <span class="number">16</span>, <span class="number">14</span>, <span class="number">11</span>, <span class="number">48</span>);
+<a href=#554 id=554 data-nosnippet>554</a>        <span class="kw">let </span><span class="kw-2">mut </span>out = [<span class="number">0u8</span>; <span class="number">48</span>];
+<a href=#555 id=555 data-nosnippet>555</a>        out.copy_from_slice(<span class="kw-2">&amp;</span>full[..<span class="number">48</span>]);
+<a href=#556 id=556 data-nosnippet>556</a>        out
+<a href=#557 id=557 data-nosnippet>557</a>    }
+<a href=#558 id=558 data-nosnippet>558</a>}
+<a href=#559 id=559 data-nosnippet>559</a>
+<a href=#560 id=560 data-nosnippet>560</a><span class="doccomment">/// Kupyna-512: 1024-bit internal state, 14 rounds, 512-bit (64-byte) output.
+<a href=#561 id=561 data-nosnippet>561</a></span><span class="kw">pub struct </span>Kupyna512;
+<a href=#562 id=562 data-nosnippet>562</a>
+<a href=#563 id=563 data-nosnippet>563</a><span class="kw">impl </span>Kupyna512 {
+<a href=#564 id=564 data-nosnippet>564</a>    <span class="doccomment">/// Hashes `message` (byte-aligned only) and returns the 512-bit digest.
+<a href=#565 id=565 data-nosnippet>565</a>    </span><span class="attr">#[must_use]
+<a href=#566 id=566 data-nosnippet>566</a>    </span><span class="kw">pub fn </span>digest(message: <span class="kw-2">&amp;</span>[u8]) -&gt; [u8; <span class="number">64</span>] {
+<a href=#567 id=567 data-nosnippet>567</a>        digest_generic(message, <span class="number">16</span>, <span class="number">14</span>, <span class="number">11</span>, <span class="number">64</span>)
+<a href=#568 id=568 data-nosnippet>568</a>    }
+<a href=#569 id=569 data-nosnippet>569</a>}
+<a href=#570 id=570 data-nosnippet>570</a>
+<a href=#571 id=571 data-nosnippet>571</a><span class="doccomment">/// Streaming Kupyna-256: same construction as [`Kupyna256`], for messages fed incrementally
+<a href=#572 id=572 data-nosnippet>572</a>/// (e.g. from a reader) instead of available as one contiguous slice up front.
+<a href=#573 id=573 data-nosnippet>573</a></span><span class="kw">pub struct </span>Kupyna256Hasher(KupynaCore);
+<a href=#574 id=574 data-nosnippet>574</a>
+<a href=#575 id=575 data-nosnippet>575</a><span class="kw">impl </span>Kupyna256Hasher {
+<a href=#576 id=576 data-nosnippet>576</a>    <span class="attr">#[must_use]
+<a href=#577 id=577 data-nosnippet>577</a>    </span><span class="kw">pub fn </span>new() -&gt; <span class="self">Self </span>{
+<a href=#578 id=578 data-nosnippet>578</a>        <span class="self">Self</span>(KupynaCore::new(<span class="number">8</span>, <span class="number">10</span>, <span class="number">7</span>))
 <a href=#579 id=579 data-nosnippet>579</a>    }
-<a href=#580 id=580 data-nosnippet>580</a>}
-<a href=#581 id=581 data-nosnippet>581</a>
-<a href=#582 id=582 data-nosnippet>582</a><span class="kw">impl </span>Default <span class="kw">for </span>Kupyna256Hasher {
-<a href=#583 id=583 data-nosnippet>583</a>    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
-<a href=#584 id=584 data-nosnippet>584</a>        <span class="self">Self</span>::new()
-<a href=#585 id=585 data-nosnippet>585</a>    }
-<a href=#586 id=586 data-nosnippet>586</a>}
+<a href=#580 id=580 data-nosnippet>580</a>
+<a href=#581 id=581 data-nosnippet>581</a>    <span class="doccomment">/// Feeds more message bytes in. May be called any number of times, with any chunking -
+<a href=#582 id=582 data-nosnippet>582</a>    /// `Kupyna256Hasher::new().update(a); ...update(b)` is equivalent to one `update(a ++ b)`
+<a href=#583 id=583 data-nosnippet>583</a>    /// call, and both are equivalent to `Kupyna256::digest(a ++ b)`.
+<a href=#584 id=584 data-nosnippet>584</a>    </span><span class="kw">pub fn </span>update(<span class="kw-2">&amp;mut </span><span class="self">self</span>, data: <span class="kw-2">&amp;</span>[u8]) {
+<a href=#585 id=585 data-nosnippet>585</a>        <span class="self">self</span>.<span class="number">0</span>.update(data);
+<a href=#586 id=586 data-nosnippet>586</a>    }
 <a href=#587 id=587 data-nosnippet>587</a>
-<a href=#588 id=588 data-nosnippet>588</a><span class="doccomment">/// Streaming Kupyna-512 - see [`Kupyna256Hasher`].
-<a href=#589 id=589 data-nosnippet>589</a></span><span class="kw">pub struct </span>Kupyna512Hasher(KupynaCore);
-<a href=#590 id=590 data-nosnippet>590</a>
-<a href=#591 id=591 data-nosnippet>591</a><span class="kw">impl </span>Kupyna512Hasher {
-<a href=#592 id=592 data-nosnippet>592</a>    <span class="attr">#[must_use]
-<a href=#593 id=593 data-nosnippet>593</a>    </span><span class="kw">pub fn </span>new() -&gt; <span class="self">Self </span>{
-<a href=#594 id=594 data-nosnippet>594</a>        <span class="self">Self</span>(KupynaCore::new(<span class="number">16</span>, <span class="number">14</span>, <span class="number">11</span>))
+<a href=#588 id=588 data-nosnippet>588</a>    <span class="doccomment">/// Consumes the hasher and returns the 256-bit digest of everything fed via `update`.
+<a href=#589 id=589 data-nosnippet>589</a>    </span><span class="attr">#[must_use]
+<a href=#590 id=590 data-nosnippet>590</a>    </span><span class="kw">pub fn </span>finalize(<span class="self">self</span>) -&gt; [u8; <span class="number">32</span>] {
+<a href=#591 id=591 data-nosnippet>591</a>        <span class="kw">let </span>full = <span class="self">self</span>.<span class="number">0</span>.finalize(<span class="number">32</span>);
+<a href=#592 id=592 data-nosnippet>592</a>        <span class="kw">let </span><span class="kw-2">mut </span>out = [<span class="number">0u8</span>; <span class="number">32</span>];
+<a href=#593 id=593 data-nosnippet>593</a>        out.copy_from_slice(<span class="kw-2">&amp;</span>full[..<span class="number">32</span>]);
+<a href=#594 id=594 data-nosnippet>594</a>        out
 <a href=#595 id=595 data-nosnippet>595</a>    }
-<a href=#596 id=596 data-nosnippet>596</a>
-<a href=#597 id=597 data-nosnippet>597</a>    <span class="doccomment">/// Feeds more message bytes in - see [`Kupyna256Hasher::update`].
-<a href=#598 id=598 data-nosnippet>598</a>    </span><span class="kw">pub fn </span>update(<span class="kw-2">&amp;mut </span><span class="self">self</span>, data: <span class="kw-2">&amp;</span>[u8]) {
-<a href=#599 id=599 data-nosnippet>599</a>        <span class="self">self</span>.<span class="number">0</span>.update(data);
-<a href=#600 id=600 data-nosnippet>600</a>    }
-<a href=#601 id=601 data-nosnippet>601</a>
-<a href=#602 id=602 data-nosnippet>602</a>    <span class="doccomment">/// Consumes the hasher and returns the 512-bit digest of everything fed via `update`.
-<a href=#603 id=603 data-nosnippet>603</a>    </span><span class="attr">#[must_use]
-<a href=#604 id=604 data-nosnippet>604</a>    </span><span class="kw">pub fn </span>finalize(<span class="self">self</span>) -&gt; [u8; <span class="number">64</span>] {
-<a href=#605 id=605 data-nosnippet>605</a>        <span class="self">self</span>.<span class="number">0</span>.finalize(<span class="number">64</span>)
-<a href=#606 id=606 data-nosnippet>606</a>    }
-<a href=#607 id=607 data-nosnippet>607</a>}
-<a href=#608 id=608 data-nosnippet>608</a>
-<a href=#609 id=609 data-nosnippet>609</a><span class="kw">impl </span>Default <span class="kw">for </span>Kupyna512Hasher {
-<a href=#610 id=610 data-nosnippet>610</a>    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
-<a href=#611 id=611 data-nosnippet>611</a>        <span class="self">Self</span>::new()
-<a href=#612 id=612 data-nosnippet>612</a>    }
-<a href=#613 id=613 data-nosnippet>613</a>}
-<a href=#614 id=614 data-nosnippet>614</a>
-<a href=#615 id=615 data-nosnippet>615</a><span class="attr">#[cfg(test)]
-<a href=#616 id=616 data-nosnippet>616</a></span><span class="kw">mod </span>fused_round_tests {
-<a href=#617 id=617 data-nosnippet>617</a>    <span class="kw">use super</span>::{mix_columns, shift_bytes, sub_bytes, sub_shift_mix, MAX_COLUMNS, ROWS};
-<a href=#618 id=618 data-nosnippet>618</a>    <span class="kw">use </span>proptest::prelude::<span class="kw-2">*</span>;
-<a href=#619 id=619 data-nosnippet>619</a>
-<a href=#620 id=620 data-nosnippet>620</a>    <span class="doccomment">/// The pre-D-28 three-pass form, kept only here as the independent reference the fused
-<a href=#621 id=621 data-nosnippet>621</a>    /// `sub_shift_mix` is checked against.
-<a href=#622 id=622 data-nosnippet>622</a>    </span><span class="kw">fn </span>naive_sub_shift_mix(state: <span class="kw-2">&amp;mut </span>[[u8; ROWS]], last_row_shift: usize) {
-<a href=#623 id=623 data-nosnippet>623</a>        sub_bytes(state);
-<a href=#624 id=624 data-nosnippet>624</a>        shift_bytes(state, last_row_shift);
-<a href=#625 id=625 data-nosnippet>625</a>        mix_columns(state);
-<a href=#626 id=626 data-nosnippet>626</a>    }
+<a href=#596 id=596 data-nosnippet>596</a>}
+<a href=#597 id=597 data-nosnippet>597</a>
+<a href=#598 id=598 data-nosnippet>598</a><span class="kw">impl </span>Default <span class="kw">for </span>Kupyna256Hasher {
+<a href=#599 id=599 data-nosnippet>599</a>    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+<a href=#600 id=600 data-nosnippet>600</a>        <span class="self">Self</span>::new()
+<a href=#601 id=601 data-nosnippet>601</a>    }
+<a href=#602 id=602 data-nosnippet>602</a>}
+<a href=#603 id=603 data-nosnippet>603</a>
+<a href=#604 id=604 data-nosnippet>604</a><span class="doccomment">/// Streaming Kupyna-384 - see [`Kupyna256Hasher`] and [`Kupyna384`].
+<a href=#605 id=605 data-nosnippet>605</a></span><span class="kw">pub struct </span>Kupyna384Hasher(KupynaCore);
+<a href=#606 id=606 data-nosnippet>606</a>
+<a href=#607 id=607 data-nosnippet>607</a><span class="kw">impl </span>Kupyna384Hasher {
+<a href=#608 id=608 data-nosnippet>608</a>    <span class="attr">#[must_use]
+<a href=#609 id=609 data-nosnippet>609</a>    </span><span class="kw">pub fn </span>new() -&gt; <span class="self">Self </span>{
+<a href=#610 id=610 data-nosnippet>610</a>        <span class="self">Self</span>(KupynaCore::new(<span class="number">16</span>, <span class="number">14</span>, <span class="number">11</span>))
+<a href=#611 id=611 data-nosnippet>611</a>    }
+<a href=#612 id=612 data-nosnippet>612</a>
+<a href=#613 id=613 data-nosnippet>613</a>    <span class="doccomment">/// Feeds more message bytes in - see [`Kupyna256Hasher::update`].
+<a href=#614 id=614 data-nosnippet>614</a>    </span><span class="kw">pub fn </span>update(<span class="kw-2">&amp;mut </span><span class="self">self</span>, data: <span class="kw-2">&amp;</span>[u8]) {
+<a href=#615 id=615 data-nosnippet>615</a>        <span class="self">self</span>.<span class="number">0</span>.update(data);
+<a href=#616 id=616 data-nosnippet>616</a>    }
+<a href=#617 id=617 data-nosnippet>617</a>
+<a href=#618 id=618 data-nosnippet>618</a>    <span class="doccomment">/// Consumes the hasher and returns the 384-bit digest of everything fed via `update`.
+<a href=#619 id=619 data-nosnippet>619</a>    </span><span class="attr">#[must_use]
+<a href=#620 id=620 data-nosnippet>620</a>    </span><span class="kw">pub fn </span>finalize(<span class="self">self</span>) -&gt; [u8; <span class="number">48</span>] {
+<a href=#621 id=621 data-nosnippet>621</a>        <span class="kw">let </span>full = <span class="self">self</span>.<span class="number">0</span>.finalize(<span class="number">48</span>);
+<a href=#622 id=622 data-nosnippet>622</a>        <span class="kw">let </span><span class="kw-2">mut </span>out = [<span class="number">0u8</span>; <span class="number">48</span>];
+<a href=#623 id=623 data-nosnippet>623</a>        out.copy_from_slice(<span class="kw-2">&amp;</span>full[..<span class="number">48</span>]);
+<a href=#624 id=624 data-nosnippet>624</a>        out
+<a href=#625 id=625 data-nosnippet>625</a>    }
+<a href=#626 id=626 data-nosnippet>626</a>}
 <a href=#627 id=627 data-nosnippet>627</a>
-<a href=#628 id=628 data-nosnippet>628</a>    <span class="kw">fn </span>arb_state(columns: usize) -&gt; <span class="kw">impl </span>Strategy&lt;Value = Vec&lt;[u8; ROWS]&gt;&gt; {
-<a href=#629 id=629 data-nosnippet>629</a>        proptest::collection::vec(proptest::array::uniform8(any::&lt;u8&gt;()), columns)
-<a href=#630 id=630 data-nosnippet>630</a>    }
-<a href=#631 id=631 data-nosnippet>631</a>
-<a href=#632 id=632 data-nosnippet>632</a>    <span class="macro">proptest!</span> {
-<a href=#633 id=633 data-nosnippet>633</a>        <span class="attr">#[test]
-<a href=#634 id=634 data-nosnippet>634</a>        </span><span class="kw">fn </span>fused_sub_shift_mix_matches_naive_256(state <span class="kw">in </span>arb_state(<span class="number">8</span>)) {
-<a href=#635 id=635 data-nosnippet>635</a>            <span class="kw">let </span><span class="kw-2">mut </span>fused = [[<span class="number">0u8</span>; ROWS]; MAX_COLUMNS];
-<a href=#636 id=636 data-nosnippet>636</a>            fused[..<span class="number">8</span>].copy_from_slice(<span class="kw-2">&amp;</span>state);
-<a href=#637 id=637 data-nosnippet>637</a>            <span class="kw">let </span><span class="kw-2">mut </span>naive = fused;
-<a href=#638 id=638 data-nosnippet>638</a>            sub_shift_mix(<span class="kw-2">&amp;mut </span>fused[..<span class="number">8</span>], <span class="number">7</span>);
-<a href=#639 id=639 data-nosnippet>639</a>            naive_sub_shift_mix(<span class="kw-2">&amp;mut </span>naive[..<span class="number">8</span>], <span class="number">7</span>);
-<a href=#640 id=640 data-nosnippet>640</a>            <span class="macro">prop_assert_eq!</span>(fused, naive);
-<a href=#641 id=641 data-nosnippet>641</a>        }
+<a href=#628 id=628 data-nosnippet>628</a><span class="kw">impl </span>Default <span class="kw">for </span>Kupyna384Hasher {
+<a href=#629 id=629 data-nosnippet>629</a>    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+<a href=#630 id=630 data-nosnippet>630</a>        <span class="self">Self</span>::new()
+<a href=#631 id=631 data-nosnippet>631</a>    }
+<a href=#632 id=632 data-nosnippet>632</a>}
+<a href=#633 id=633 data-nosnippet>633</a>
+<a href=#634 id=634 data-nosnippet>634</a><span class="doccomment">/// Streaming Kupyna-512 - see [`Kupyna256Hasher`].
+<a href=#635 id=635 data-nosnippet>635</a></span><span class="kw">pub struct </span>Kupyna512Hasher(KupynaCore);
+<a href=#636 id=636 data-nosnippet>636</a>
+<a href=#637 id=637 data-nosnippet>637</a><span class="kw">impl </span>Kupyna512Hasher {
+<a href=#638 id=638 data-nosnippet>638</a>    <span class="attr">#[must_use]
+<a href=#639 id=639 data-nosnippet>639</a>    </span><span class="kw">pub fn </span>new() -&gt; <span class="self">Self </span>{
+<a href=#640 id=640 data-nosnippet>640</a>        <span class="self">Self</span>(KupynaCore::new(<span class="number">16</span>, <span class="number">14</span>, <span class="number">11</span>))
+<a href=#641 id=641 data-nosnippet>641</a>    }
 <a href=#642 id=642 data-nosnippet>642</a>
-<a href=#643 id=643 data-nosnippet>643</a>        <span class="attr">#[test]
-<a href=#644 id=644 data-nosnippet>644</a>        </span><span class="kw">fn </span>fused_sub_shift_mix_matches_naive_512(state <span class="kw">in </span>arb_state(<span class="number">16</span>)) {
-<a href=#645 id=645 data-nosnippet>645</a>            <span class="kw">let </span><span class="kw-2">mut </span>fused = [[<span class="number">0u8</span>; ROWS]; MAX_COLUMNS];
-<a href=#646 id=646 data-nosnippet>646</a>            fused[..<span class="number">16</span>].copy_from_slice(<span class="kw-2">&amp;</span>state);
-<a href=#647 id=647 data-nosnippet>647</a>            <span class="kw">let </span><span class="kw-2">mut </span>naive = fused;
-<a href=#648 id=648 data-nosnippet>648</a>            sub_shift_mix(<span class="kw-2">&amp;mut </span>fused[..<span class="number">16</span>], <span class="number">11</span>);
-<a href=#649 id=649 data-nosnippet>649</a>            naive_sub_shift_mix(<span class="kw-2">&amp;mut </span>naive[..<span class="number">16</span>], <span class="number">11</span>);
-<a href=#650 id=650 data-nosnippet>650</a>            <span class="macro">prop_assert_eq!</span>(fused, naive);
-<a href=#651 id=651 data-nosnippet>651</a>        }
+<a href=#643 id=643 data-nosnippet>643</a>    <span class="doccomment">/// Feeds more message bytes in - see [`Kupyna256Hasher::update`].
+<a href=#644 id=644 data-nosnippet>644</a>    </span><span class="kw">pub fn </span>update(<span class="kw-2">&amp;mut </span><span class="self">self</span>, data: <span class="kw-2">&amp;</span>[u8]) {
+<a href=#645 id=645 data-nosnippet>645</a>        <span class="self">self</span>.<span class="number">0</span>.update(data);
+<a href=#646 id=646 data-nosnippet>646</a>    }
+<a href=#647 id=647 data-nosnippet>647</a>
+<a href=#648 id=648 data-nosnippet>648</a>    <span class="doccomment">/// Consumes the hasher and returns the 512-bit digest of everything fed via `update`.
+<a href=#649 id=649 data-nosnippet>649</a>    </span><span class="attr">#[must_use]
+<a href=#650 id=650 data-nosnippet>650</a>    </span><span class="kw">pub fn </span>finalize(<span class="self">self</span>) -&gt; [u8; <span class="number">64</span>] {
+<a href=#651 id=651 data-nosnippet>651</a>        <span class="self">self</span>.<span class="number">0</span>.finalize(<span class="number">64</span>)
 <a href=#652 id=652 data-nosnippet>652</a>    }
 <a href=#653 id=653 data-nosnippet>653</a>}
 <a href=#654 id=654 data-nosnippet>654</a>
-<a href=#655 id=655 data-nosnippet>655</a><span class="doccomment">/// T-134's const-generic specialization (`sub_shift_mix_n`/`compress_n`) is a performance-motivated
-<a href=#656 id=656 data-nosnippet>656</a>/// refactor of the *same* algorithm as the retained runtime-`columns` `sub_shift_mix`/`compress`,
-<a href=#657 id=657 data-nosnippet>657</a>/// not a new derivation - so the check here is new-vs-old equality over random state, for every
-<a href=#658 id=658 data-nosnippet>658</a>/// `COLUMNS` value the crate actually instantiates (8, 16), rather than re-deriving correctness
-<a href=#659 id=659 data-nosnippet>659</a>/// against `naive_sub_shift_mix` again (that's `fused_round_tests`'s job). Mirrors
-<a href=#660 id=660 data-nosnippet>660</a>/// `hazmat::kalyna`'s `const_round_tests` exactly (`docs/DECISIONS.md` T-128/D-77).
-<a href=#661 id=661 data-nosnippet>661</a></span><span class="attr">#[cfg(test)]
-<a href=#662 id=662 data-nosnippet>662</a></span><span class="kw">mod </span>const_shift_mix_tests {
-<a href=#663 id=663 data-nosnippet>663</a>    <span class="kw">use super</span>::{
-<a href=#664 id=664 data-nosnippet>664</a>        bytes_to_columns, bytes_to_columns_n, compress, compress_n, sub_shift_mix, sub_shift_mix_n,
-<a href=#665 id=665 data-nosnippet>665</a>        ROWS,
-<a href=#666 id=666 data-nosnippet>666</a>    };
-<a href=#667 id=667 data-nosnippet>667</a>    <span class="kw">use </span>proptest::prelude::<span class="kw-2">*</span>;
-<a href=#668 id=668 data-nosnippet>668</a>
-<a href=#669 id=669 data-nosnippet>669</a>    <span class="kw">fn </span>arb_state&lt;<span class="kw">const </span>COLUMNS: usize&gt;() -&gt; <span class="kw">impl </span>Strategy&lt;Value = [[u8; ROWS]; COLUMNS]&gt; {
-<a href=#670 id=670 data-nosnippet>670</a>        proptest::collection::vec(proptest::array::uniform8(any::&lt;u8&gt;()), COLUMNS).prop_map(|v| {
-<a href=#671 id=671 data-nosnippet>671</a>            <span class="kw">let </span><span class="kw-2">mut </span>out = [[<span class="number">0u8</span>; ROWS]; COLUMNS];
-<a href=#672 id=672 data-nosnippet>672</a>            out.copy_from_slice(<span class="kw-2">&amp;</span>v);
-<a href=#673 id=673 data-nosnippet>673</a>            out
-<a href=#674 id=674 data-nosnippet>674</a>        })
-<a href=#675 id=675 data-nosnippet>675</a>    }
-<a href=#676 id=676 data-nosnippet>676</a>
-<a href=#677 id=677 data-nosnippet>677</a>    <span class="macro">macro_rules!</span> const_matches_dyn_test {
-<a href=#678 id=678 data-nosnippet>678</a>        (<span class="macro-nonterminal">$shift_mix_test</span>:ident, <span class="macro-nonterminal">$compress_test</span>:ident, <span class="macro-nonterminal">$bytes_test</span>:ident, <span class="macro-nonterminal">$columns</span>:literal, <span class="macro-nonterminal">$rounds</span>:literal, <span class="macro-nonterminal">$last_row_shift</span>:literal) =&gt; {
-<a href=#679 id=679 data-nosnippet>679</a>            <span class="macro">proptest!</span> {
-<a href=#680 id=680 data-nosnippet>680</a>                <span class="attr">#[test]
-<a href=#681 id=681 data-nosnippet>681</a>                </span><span class="kw">fn </span><span class="macro-nonterminal">$shift_mix_test</span>(state <span class="kw">in </span>arb_state::&lt;<span class="macro-nonterminal">$columns</span>&gt;()) {
-<a href=#682 id=682 data-nosnippet>682</a>                    <span class="kw">let </span><span class="kw-2">mut </span>dynamic = state;
-<a href=#683 id=683 data-nosnippet>683</a>                    <span class="kw">let </span><span class="kw-2">mut </span>constant = state;
-<a href=#684 id=684 data-nosnippet>684</a>                    sub_shift_mix(<span class="kw-2">&amp;mut </span>dynamic[..], <span class="macro-nonterminal">$last_row_shift</span>);
-<a href=#685 id=685 data-nosnippet>685</a>                    sub_shift_mix_n::&lt;<span class="macro-nonterminal">$columns</span>&gt;(<span class="kw-2">&amp;mut </span>constant, <span class="macro-nonterminal">$last_row_shift</span>);
-<a href=#686 id=686 data-nosnippet>686</a>                    <span class="macro">prop_assert_eq!</span>(dynamic, constant);
-<a href=#687 id=687 data-nosnippet>687</a>                }
+<a href=#655 id=655 data-nosnippet>655</a><span class="kw">impl </span>Default <span class="kw">for </span>Kupyna512Hasher {
+<a href=#656 id=656 data-nosnippet>656</a>    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+<a href=#657 id=657 data-nosnippet>657</a>        <span class="self">Self</span>::new()
+<a href=#658 id=658 data-nosnippet>658</a>    }
+<a href=#659 id=659 data-nosnippet>659</a>}
+<a href=#660 id=660 data-nosnippet>660</a>
+<a href=#661 id=661 data-nosnippet>661</a><span class="attr">#[cfg(test)]
+<a href=#662 id=662 data-nosnippet>662</a></span><span class="kw">mod </span>fused_round_tests {
+<a href=#663 id=663 data-nosnippet>663</a>    <span class="kw">use super</span>::{mix_columns, shift_bytes, sub_bytes, sub_shift_mix, MAX_COLUMNS, ROWS};
+<a href=#664 id=664 data-nosnippet>664</a>    <span class="kw">use </span>proptest::prelude::<span class="kw-2">*</span>;
+<a href=#665 id=665 data-nosnippet>665</a>
+<a href=#666 id=666 data-nosnippet>666</a>    <span class="doccomment">/// The pre-D-28 three-pass form, kept only here as the independent reference the fused
+<a href=#667 id=667 data-nosnippet>667</a>    /// `sub_shift_mix` is checked against.
+<a href=#668 id=668 data-nosnippet>668</a>    </span><span class="kw">fn </span>naive_sub_shift_mix(state: <span class="kw-2">&amp;mut </span>[[u8; ROWS]], last_row_shift: usize) {
+<a href=#669 id=669 data-nosnippet>669</a>        sub_bytes(state);
+<a href=#670 id=670 data-nosnippet>670</a>        shift_bytes(state, last_row_shift);
+<a href=#671 id=671 data-nosnippet>671</a>        mix_columns(state);
+<a href=#672 id=672 data-nosnippet>672</a>    }
+<a href=#673 id=673 data-nosnippet>673</a>
+<a href=#674 id=674 data-nosnippet>674</a>    <span class="kw">fn </span>arb_state(columns: usize) -&gt; <span class="kw">impl </span>Strategy&lt;Value = Vec&lt;[u8; ROWS]&gt;&gt; {
+<a href=#675 id=675 data-nosnippet>675</a>        proptest::collection::vec(proptest::array::uniform8(any::&lt;u8&gt;()), columns)
+<a href=#676 id=676 data-nosnippet>676</a>    }
+<a href=#677 id=677 data-nosnippet>677</a>
+<a href=#678 id=678 data-nosnippet>678</a>    <span class="macro">proptest!</span> {
+<a href=#679 id=679 data-nosnippet>679</a>        <span class="attr">#[test]
+<a href=#680 id=680 data-nosnippet>680</a>        </span><span class="kw">fn </span>fused_sub_shift_mix_matches_naive_256(state <span class="kw">in </span>arb_state(<span class="number">8</span>)) {
+<a href=#681 id=681 data-nosnippet>681</a>            <span class="kw">let </span><span class="kw-2">mut </span>fused = [[<span class="number">0u8</span>; ROWS]; MAX_COLUMNS];
+<a href=#682 id=682 data-nosnippet>682</a>            fused[..<span class="number">8</span>].copy_from_slice(<span class="kw-2">&amp;</span>state);
+<a href=#683 id=683 data-nosnippet>683</a>            <span class="kw">let </span><span class="kw-2">mut </span>naive = fused;
+<a href=#684 id=684 data-nosnippet>684</a>            sub_shift_mix(<span class="kw-2">&amp;mut </span>fused[..<span class="number">8</span>], <span class="number">7</span>);
+<a href=#685 id=685 data-nosnippet>685</a>            naive_sub_shift_mix(<span class="kw-2">&amp;mut </span>naive[..<span class="number">8</span>], <span class="number">7</span>);
+<a href=#686 id=686 data-nosnippet>686</a>            <span class="macro">prop_assert_eq!</span>(fused, naive);
+<a href=#687 id=687 data-nosnippet>687</a>        }
 <a href=#688 id=688 data-nosnippet>688</a>
-<a href=#689 id=689 data-nosnippet>689</a>                <span class="attr">#[test]
-<a href=#690 id=690 data-nosnippet>690</a>                </span><span class="kw">fn </span><span class="macro-nonterminal">$compress_test</span>(h <span class="kw">in </span>arb_state::&lt;<span class="macro-nonterminal">$columns</span>&gt;(), block <span class="kw">in </span>arb_state::&lt;<span class="macro-nonterminal">$columns</span>&gt;()) {
-<a href=#691 id=691 data-nosnippet>691</a>                    <span class="kw">let </span><span class="kw-2">mut </span>dynamic = h;
-<a href=#692 id=692 data-nosnippet>692</a>                    <span class="kw">let </span><span class="kw-2">mut </span>constant = h;
-<a href=#693 id=693 data-nosnippet>693</a>                    compress(<span class="kw-2">&amp;mut </span>dynamic[..], <span class="kw-2">&amp;</span>block[..], <span class="macro-nonterminal">$rounds</span>, <span class="macro-nonterminal">$last_row_shift</span>);
-<a href=#694 id=694 data-nosnippet>694</a>                    compress_n::&lt;<span class="macro-nonterminal">$columns</span>, <span class="macro-nonterminal">$rounds</span>&gt;(<span class="kw-2">&amp;mut </span>constant, <span class="kw-2">&amp;</span>block, <span class="macro-nonterminal">$last_row_shift</span>);
-<a href=#695 id=695 data-nosnippet>695</a>                    <span class="macro">prop_assert_eq!</span>(dynamic, constant);
-<a href=#696 id=696 data-nosnippet>696</a>                }
-<a href=#697 id=697 data-nosnippet>697</a>
-<a href=#698 id=698 data-nosnippet>698</a>                <span class="attr">#[test]
-<a href=#699 id=699 data-nosnippet>699</a>                </span><span class="kw">fn </span><span class="macro-nonterminal">$bytes_test</span>(bytes <span class="kw">in </span>proptest::collection::vec(any::&lt;u8&gt;(), <span class="macro-nonterminal">$columns </span>* ROWS)) {
-<a href=#700 id=700 data-nosnippet>700</a>                    <span class="kw">let </span>dynamic = bytes_to_columns(<span class="kw-2">&amp;</span>bytes, <span class="macro-nonterminal">$columns</span>);
-<a href=#701 id=701 data-nosnippet>701</a>                    <span class="kw">let </span>constant = bytes_to_columns_n::&lt;<span class="macro-nonterminal">$columns</span>&gt;(<span class="kw-2">&amp;</span>bytes);
-<a href=#702 id=702 data-nosnippet>702</a>                    <span class="macro">prop_assert_eq!</span>(<span class="kw-2">&amp;</span>dynamic[..<span class="macro-nonterminal">$columns</span>], <span class="kw-2">&amp;</span>constant[..]);
-<a href=#703 id=703 data-nosnippet>703</a>                }
-<a href=#704 id=704 data-nosnippet>704</a>            }
-<a href=#705 id=705 data-nosnippet>705</a>        };
-<a href=#706 id=706 data-nosnippet>706</a>    }
-<a href=#707 id=707 data-nosnippet>707</a>
-<a href=#708 id=708 data-nosnippet>708</a>    <span class="macro">const_matches_dyn_test!</span>(
-<a href=#709 id=709 data-nosnippet>709</a>        sub_shift_mix_n_matches_dyn_columns8,
-<a href=#710 id=710 data-nosnippet>710</a>        compress_n_matches_dyn_columns8,
-<a href=#711 id=711 data-nosnippet>711</a>        bytes_to_columns_n_matches_dyn_columns8,
-<a href=#712 id=712 data-nosnippet>712</a>        <span class="number">8</span>,
-<a href=#713 id=713 data-nosnippet>713</a>        <span class="number">10</span>,
-<a href=#714 id=714 data-nosnippet>714</a>        <span class="number">7
-<a href=#715 id=715 data-nosnippet>715</a>    </span>);
-<a href=#716 id=716 data-nosnippet>716</a>    <span class="macro">const_matches_dyn_test!</span>(
-<a href=#717 id=717 data-nosnippet>717</a>        sub_shift_mix_n_matches_dyn_columns16,
-<a href=#718 id=718 data-nosnippet>718</a>        compress_n_matches_dyn_columns16,
-<a href=#719 id=719 data-nosnippet>719</a>        bytes_to_columns_n_matches_dyn_columns16,
-<a href=#720 id=720 data-nosnippet>720</a>        <span class="number">16</span>,
-<a href=#721 id=721 data-nosnippet>721</a>        <span class="number">14</span>,
-<a href=#722 id=722 data-nosnippet>722</a>        <span class="number">11
-<a href=#723 id=723 data-nosnippet>723</a>    </span>);
-<a href=#724 id=724 data-nosnippet>724</a>}
-<a href=#725 id=725 data-nosnippet>725</a>
-<a href=#726 id=726 data-nosnippet>726</a><span class="doccomment">/// DSTU 7564:2014 (draft) annex Б's bit-length examples (T-234): messages whose length is not a whole
-<a href=#727 id=727 data-nosnippet>727</a>/// number of bytes, which the public byte API cannot take. The annex prints each one already padded,
-<a href=#728 id=728 data-nosnippet>728</a>/// so this feeds those blocks straight into the compression function and checks every
-<a href=#729 id=729 data-nosnippet>729</a>/// intermediate state and the final hash.
-<a href=#730 id=730 data-nosnippet>730</a></span><span class="attr">#[cfg(test)]
-<a href=#731 id=731 data-nosnippet>731</a></span><span class="kw">mod </span>annex_bit_level_tests {
-<a href=#732 id=732 data-nosnippet>732</a>    <span class="kw">use </span><span class="kw">super</span>::KupynaCore;
-<a href=#733 id=733 data-nosnippet>733</a>
-<a href=#734 id=734 data-nosnippet>734</a>    <span class="kw">const </span>VECTORS: <span class="kw-2">&amp;</span>str = <span class="macro">include_str!</span>(<span class="string">"../../tests/vectors/kupyna/annex-b-bit-level.json"</span>);
-<a href=#735 id=735 data-nosnippet>735</a>
-<a href=#736 id=736 data-nosnippet>736</a>    <span class="kw">fn </span>decode_hex(s: <span class="kw-2">&amp;</span>str) -&gt; Vec&lt;u8&gt; {
-<a href=#737 id=737 data-nosnippet>737</a>        <span class="macro">assert!</span>(s.len().is_multiple_of(<span class="number">2</span>), <span class="string">"odd-length hex string: {s}"</span>);
-<a href=#738 id=738 data-nosnippet>738</a>        (<span class="number">0</span>..s.len())
-<a href=#739 id=739 data-nosnippet>739</a>            .step_by(<span class="number">2</span>)
-<a href=#740 id=740 data-nosnippet>740</a>            .map(|i| u8::from_str_radix(<span class="kw-2">&amp;</span>s[i..i + <span class="number">2</span>], <span class="number">16</span>).expect(<span class="string">"valid hex digit"</span>))
-<a href=#741 id=741 data-nosnippet>741</a>            .collect()
-<a href=#742 id=742 data-nosnippet>742</a>    }
+<a href=#689 id=689 data-nosnippet>689</a>        <span class="attr">#[test]
+<a href=#690 id=690 data-nosnippet>690</a>        </span><span class="kw">fn </span>fused_sub_shift_mix_matches_naive_512(state <span class="kw">in </span>arb_state(<span class="number">16</span>)) {
+<a href=#691 id=691 data-nosnippet>691</a>            <span class="kw">let </span><span class="kw-2">mut </span>fused = [[<span class="number">0u8</span>; ROWS]; MAX_COLUMNS];
+<a href=#692 id=692 data-nosnippet>692</a>            fused[..<span class="number">16</span>].copy_from_slice(<span class="kw-2">&amp;</span>state);
+<a href=#693 id=693 data-nosnippet>693</a>            <span class="kw">let </span><span class="kw-2">mut </span>naive = fused;
+<a href=#694 id=694 data-nosnippet>694</a>            sub_shift_mix(<span class="kw-2">&amp;mut </span>fused[..<span class="number">16</span>], <span class="number">11</span>);
+<a href=#695 id=695 data-nosnippet>695</a>            naive_sub_shift_mix(<span class="kw-2">&amp;mut </span>naive[..<span class="number">16</span>], <span class="number">11</span>);
+<a href=#696 id=696 data-nosnippet>696</a>            <span class="macro">prop_assert_eq!</span>(fused, naive);
+<a href=#697 id=697 data-nosnippet>697</a>        }
+<a href=#698 id=698 data-nosnippet>698</a>    }
+<a href=#699 id=699 data-nosnippet>699</a>}
+<a href=#700 id=700 data-nosnippet>700</a>
+<a href=#701 id=701 data-nosnippet>701</a><span class="doccomment">/// T-134's const-generic specialization (`sub_shift_mix_n`/`compress_n`) is a performance-motivated
+<a href=#702 id=702 data-nosnippet>702</a>/// refactor of the *same* algorithm as the retained runtime-`columns` `sub_shift_mix`/`compress`,
+<a href=#703 id=703 data-nosnippet>703</a>/// not a new derivation - so the check here is new-vs-old equality over random state, for every
+<a href=#704 id=704 data-nosnippet>704</a>/// `COLUMNS` value the crate actually instantiates (8, 16), rather than re-deriving correctness
+<a href=#705 id=705 data-nosnippet>705</a>/// against `naive_sub_shift_mix` again (that's `fused_round_tests`'s job). Mirrors
+<a href=#706 id=706 data-nosnippet>706</a>/// `hazmat::kalyna`'s `const_round_tests` exactly (`docs/DECISIONS.md` T-128/D-77).
+<a href=#707 id=707 data-nosnippet>707</a></span><span class="attr">#[cfg(test)]
+<a href=#708 id=708 data-nosnippet>708</a></span><span class="kw">mod </span>const_shift_mix_tests {
+<a href=#709 id=709 data-nosnippet>709</a>    <span class="kw">use super</span>::{
+<a href=#710 id=710 data-nosnippet>710</a>        bytes_to_columns, bytes_to_columns_n, compress, compress_n, sub_shift_mix, sub_shift_mix_n,
+<a href=#711 id=711 data-nosnippet>711</a>        ROWS,
+<a href=#712 id=712 data-nosnippet>712</a>    };
+<a href=#713 id=713 data-nosnippet>713</a>    <span class="kw">use </span>proptest::prelude::<span class="kw-2">*</span>;
+<a href=#714 id=714 data-nosnippet>714</a>
+<a href=#715 id=715 data-nosnippet>715</a>    <span class="kw">fn </span>arb_state&lt;<span class="kw">const </span>COLUMNS: usize&gt;() -&gt; <span class="kw">impl </span>Strategy&lt;Value = [[u8; ROWS]; COLUMNS]&gt; {
+<a href=#716 id=716 data-nosnippet>716</a>        proptest::collection::vec(proptest::array::uniform8(any::&lt;u8&gt;()), COLUMNS).prop_map(|v| {
+<a href=#717 id=717 data-nosnippet>717</a>            <span class="kw">let </span><span class="kw-2">mut </span>out = [[<span class="number">0u8</span>; ROWS]; COLUMNS];
+<a href=#718 id=718 data-nosnippet>718</a>            out.copy_from_slice(<span class="kw-2">&amp;</span>v);
+<a href=#719 id=719 data-nosnippet>719</a>            out
+<a href=#720 id=720 data-nosnippet>720</a>        })
+<a href=#721 id=721 data-nosnippet>721</a>    }
+<a href=#722 id=722 data-nosnippet>722</a>
+<a href=#723 id=723 data-nosnippet>723</a>    <span class="macro">macro_rules!</span> const_matches_dyn_test {
+<a href=#724 id=724 data-nosnippet>724</a>        (<span class="macro-nonterminal">$shift_mix_test</span>:ident, <span class="macro-nonterminal">$compress_test</span>:ident, <span class="macro-nonterminal">$bytes_test</span>:ident, <span class="macro-nonterminal">$columns</span>:literal, <span class="macro-nonterminal">$rounds</span>:literal, <span class="macro-nonterminal">$last_row_shift</span>:literal) =&gt; {
+<a href=#725 id=725 data-nosnippet>725</a>            <span class="macro">proptest!</span> {
+<a href=#726 id=726 data-nosnippet>726</a>                <span class="attr">#[test]
+<a href=#727 id=727 data-nosnippet>727</a>                </span><span class="kw">fn </span><span class="macro-nonterminal">$shift_mix_test</span>(state <span class="kw">in </span>arb_state::&lt;<span class="macro-nonterminal">$columns</span>&gt;()) {
+<a href=#728 id=728 data-nosnippet>728</a>                    <span class="kw">let </span><span class="kw-2">mut </span>dynamic = state;
+<a href=#729 id=729 data-nosnippet>729</a>                    <span class="kw">let </span><span class="kw-2">mut </span>constant = state;
+<a href=#730 id=730 data-nosnippet>730</a>                    sub_shift_mix(<span class="kw-2">&amp;mut </span>dynamic[..], <span class="macro-nonterminal">$last_row_shift</span>);
+<a href=#731 id=731 data-nosnippet>731</a>                    sub_shift_mix_n::&lt;<span class="macro-nonterminal">$columns</span>&gt;(<span class="kw-2">&amp;mut </span>constant, <span class="macro-nonterminal">$last_row_shift</span>);
+<a href=#732 id=732 data-nosnippet>732</a>                    <span class="macro">prop_assert_eq!</span>(dynamic, constant);
+<a href=#733 id=733 data-nosnippet>733</a>                }
+<a href=#734 id=734 data-nosnippet>734</a>
+<a href=#735 id=735 data-nosnippet>735</a>                <span class="attr">#[test]
+<a href=#736 id=736 data-nosnippet>736</a>                </span><span class="kw">fn </span><span class="macro-nonterminal">$compress_test</span>(h <span class="kw">in </span>arb_state::&lt;<span class="macro-nonterminal">$columns</span>&gt;(), block <span class="kw">in </span>arb_state::&lt;<span class="macro-nonterminal">$columns</span>&gt;()) {
+<a href=#737 id=737 data-nosnippet>737</a>                    <span class="kw">let </span><span class="kw-2">mut </span>dynamic = h;
+<a href=#738 id=738 data-nosnippet>738</a>                    <span class="kw">let </span><span class="kw-2">mut </span>constant = h;
+<a href=#739 id=739 data-nosnippet>739</a>                    compress(<span class="kw-2">&amp;mut </span>dynamic[..], <span class="kw-2">&amp;</span>block[..], <span class="macro-nonterminal">$rounds</span>, <span class="macro-nonterminal">$last_row_shift</span>);
+<a href=#740 id=740 data-nosnippet>740</a>                    compress_n::&lt;<span class="macro-nonterminal">$columns</span>, <span class="macro-nonterminal">$rounds</span>&gt;(<span class="kw-2">&amp;mut </span>constant, <span class="kw-2">&amp;</span>block, <span class="macro-nonterminal">$last_row_shift</span>);
+<a href=#741 id=741 data-nosnippet>741</a>                    <span class="macro">prop_assert_eq!</span>(dynamic, constant);
+<a href=#742 id=742 data-nosnippet>742</a>                }
 <a href=#743 id=743 data-nosnippet>743</a>
-<a href=#744 id=744 data-nosnippet>744</a>    <span class="kw">fn </span>string_field&lt;<span class="lifetime">'a</span>&gt;(case: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>str, key: <span class="kw-2">&amp;</span>str) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">'a </span>str {
-<a href=#745 id=745 data-nosnippet>745</a>        <span class="kw">let </span>pattern = <span class="macro">format!</span>(<span class="string">"\"{key}\": \""</span>);
-<a href=#746 id=746 data-nosnippet>746</a>        <span class="kw">let </span>start = case.find(<span class="kw-2">&amp;</span>pattern).expect(<span class="string">"field present"</span>) + pattern.len();
-<a href=#747 id=747 data-nosnippet>747</a>        <span class="kw">let </span>len = case[start..].find(<span class="string">'"'</span>).expect(<span class="string">"closing quote"</span>);
-<a href=#748 id=748 data-nosnippet>748</a>        <span class="kw-2">&amp;</span>case[start..start + len]
-<a href=#749 id=749 data-nosnippet>749</a>    }
-<a href=#750 id=750 data-nosnippet>750</a>
-<a href=#751 id=751 data-nosnippet>751</a>    <span class="kw">fn </span>state_bytes(core: <span class="kw-2">&amp;</span>KupynaCore) -&gt; Vec&lt;u8&gt; {
-<a href=#752 id=752 data-nosnippet>752</a>        core.h[..core.columns].iter().flatten().copied().collect()
-<a href=#753 id=753 data-nosnippet>753</a>    }
-<a href=#754 id=754 data-nosnippet>754</a>
-<a href=#755 id=755 data-nosnippet>755</a>    <span class="attr">#[test]
-<a href=#756 id=756 data-nosnippet>756</a>    </span><span class="kw">fn </span>annex_b_bit_length_examples() {
-<a href=#757 id=757 data-nosnippet>757</a>        <span class="kw">let </span>cases: Vec&lt;<span class="kw-2">&amp;</span>str&gt; = VECTORS.split(<span class="string">"\"output_bits\": "</span>).skip(<span class="number">1</span>).collect();
-<a href=#758 id=758 data-nosnippet>758</a>        <span class="macro">assert_eq!</span>(cases.len(), <span class="number">6</span>, <span class="string">"six bit-length examples in annex Б"</span>);
-<a href=#759 id=759 data-nosnippet>759</a>        <span class="kw">for </span>case <span class="kw">in </span>cases {
-<a href=#760 id=760 data-nosnippet>760</a>            <span class="kw">let </span>output_bits: usize = case[..case.find(<span class="string">','</span>).expect(<span class="string">"number"</span>)]
-<a href=#761 id=761 data-nosnippet>761</a>                .parse()
-<a href=#762 id=762 data-nosnippet>762</a>                .expect(<span class="string">"int"</span>);
-<a href=#763 id=763 data-nosnippet>763</a>            <span class="kw">let </span>padded = decode_hex(string_field(case, <span class="string">"padded_hex"</span>));
-<a href=#764 id=764 data-nosnippet>764</a>            <span class="kw">let </span>hash = decode_hex(string_field(case, <span class="string">"hash_hex"</span>));
-<a href=#765 id=765 data-nosnippet>765</a>            <span class="kw">let </span>states_start = case.find(<span class="string">"\"block_states_hex\": ["</span>).expect(<span class="string">"states"</span>) + <span class="number">21</span>;
-<a href=#766 id=766 data-nosnippet>766</a>            <span class="kw">let </span>states_end = states_start + case[states_start..].find(<span class="string">']'</span>).expect(<span class="string">"]"</span>);
-<a href=#767 id=767 data-nosnippet>767</a>            <span class="kw">let </span>states: Vec&lt;Vec&lt;u8&gt;&gt; = case[states_start..states_end]
-<a href=#768 id=768 data-nosnippet>768</a>                .split(<span class="string">'"'</span>)
-<a href=#769 id=769 data-nosnippet>769</a>                .skip(<span class="number">1</span>)
-<a href=#770 id=770 data-nosnippet>770</a>                .step_by(<span class="number">2</span>)
-<a href=#771 id=771 data-nosnippet>771</a>                .map(decode_hex)
-<a href=#772 id=772 data-nosnippet>772</a>                .collect();
-<a href=#773 id=773 data-nosnippet>773</a>
-<a href=#774 id=774 data-nosnippet>774</a>            <span class="kw">let </span>(columns, rounds, shift) = <span class="kw">if </span>output_bits &lt;= <span class="number">256 </span>{
-<a href=#775 id=775 data-nosnippet>775</a>                (<span class="number">8</span>, <span class="number">10</span>, <span class="number">7</span>)
-<a href=#776 id=776 data-nosnippet>776</a>            } <span class="kw">else </span>{
-<a href=#777 id=777 data-nosnippet>777</a>                (<span class="number">16</span>, <span class="number">14</span>, <span class="number">11</span>)
-<a href=#778 id=778 data-nosnippet>778</a>            };
-<a href=#779 id=779 data-nosnippet>779</a>            <span class="kw">let </span><span class="kw-2">mut </span>core = KupynaCore::new(columns, rounds, shift);
-<a href=#780 id=780 data-nosnippet>780</a>            <span class="kw">let </span>blocks: Vec&lt;<span class="kw-2">&amp;</span>[u8]&gt; = padded.chunks(core.block_bytes()).collect();
-<a href=#781 id=781 data-nosnippet>781</a>            <span class="macro">assert_eq!</span>(blocks.len(), states.len());
-<a href=#782 id=782 data-nosnippet>782</a>            <span class="kw">for </span>(i, block) <span class="kw">in </span>blocks.iter().enumerate() {
-<a href=#783 id=783 data-nosnippet>783</a>                core.compress_block(block);
-<a href=#784 id=784 data-nosnippet>784</a>                <span class="macro">assert_eq!</span>(
-<a href=#785 id=785 data-nosnippet>785</a>                    state_bytes(<span class="kw-2">&amp;</span>core),
-<a href=#786 id=786 data-nosnippet>786</a>                    states[i],
-<a href=#787 id=787 data-nosnippet>787</a>                    <span class="string">"state after block {i}, Kupyna-{output_bits}"
-<a href=#788 id=788 data-nosnippet>788</a>                </span>);
-<a href=#789 id=789 data-nosnippet>789</a>            }
-<a href=#790 id=790 data-nosnippet>790</a>            <span class="kw">let </span>out = core.output(output_bits / <span class="number">8</span>);
-<a href=#791 id=791 data-nosnippet>791</a>            <span class="macro">assert_eq!</span>(
-<a href=#792 id=792 data-nosnippet>792</a>                <span class="kw-2">&amp;</span>out[..output_bits / <span class="number">8</span>],
-<a href=#793 id=793 data-nosnippet>793</a>                hash.as_slice(),
-<a href=#794 id=794 data-nosnippet>794</a>                <span class="string">"hash, Kupyna-{output_bits}"
-<a href=#795 id=795 data-nosnippet>795</a>            </span>);
-<a href=#796 id=796 data-nosnippet>796</a>        }
-<a href=#797 id=797 data-nosnippet>797</a>    }
-<a href=#798 id=798 data-nosnippet>798</a>}
+<a href=#744 id=744 data-nosnippet>744</a>                <span class="attr">#[test]
+<a href=#745 id=745 data-nosnippet>745</a>                </span><span class="kw">fn </span><span class="macro-nonterminal">$bytes_test</span>(bytes <span class="kw">in </span>proptest::collection::vec(any::&lt;u8&gt;(), <span class="macro-nonterminal">$columns </span>* ROWS)) {
+<a href=#746 id=746 data-nosnippet>746</a>                    <span class="kw">let </span>dynamic = bytes_to_columns(<span class="kw-2">&amp;</span>bytes, <span class="macro-nonterminal">$columns</span>);
+<a href=#747 id=747 data-nosnippet>747</a>                    <span class="kw">let </span>constant = bytes_to_columns_n::&lt;<span class="macro-nonterminal">$columns</span>&gt;(<span class="kw-2">&amp;</span>bytes);
+<a href=#748 id=748 data-nosnippet>748</a>                    <span class="macro">prop_assert_eq!</span>(<span class="kw-2">&amp;</span>dynamic[..<span class="macro-nonterminal">$columns</span>], <span class="kw-2">&amp;</span>constant[..]);
+<a href=#749 id=749 data-nosnippet>749</a>                }
+<a href=#750 id=750 data-nosnippet>750</a>            }
+<a href=#751 id=751 data-nosnippet>751</a>        };
+<a href=#752 id=752 data-nosnippet>752</a>    }
+<a href=#753 id=753 data-nosnippet>753</a>
+<a href=#754 id=754 data-nosnippet>754</a>    <span class="macro">const_matches_dyn_test!</span>(
+<a href=#755 id=755 data-nosnippet>755</a>        sub_shift_mix_n_matches_dyn_columns8,
+<a href=#756 id=756 data-nosnippet>756</a>        compress_n_matches_dyn_columns8,
+<a href=#757 id=757 data-nosnippet>757</a>        bytes_to_columns_n_matches_dyn_columns8,
+<a href=#758 id=758 data-nosnippet>758</a>        <span class="number">8</span>,
+<a href=#759 id=759 data-nosnippet>759</a>        <span class="number">10</span>,
+<a href=#760 id=760 data-nosnippet>760</a>        <span class="number">7
+<a href=#761 id=761 data-nosnippet>761</a>    </span>);
+<a href=#762 id=762 data-nosnippet>762</a>    <span class="macro">const_matches_dyn_test!</span>(
+<a href=#763 id=763 data-nosnippet>763</a>        sub_shift_mix_n_matches_dyn_columns16,
+<a href=#764 id=764 data-nosnippet>764</a>        compress_n_matches_dyn_columns16,
+<a href=#765 id=765 data-nosnippet>765</a>        bytes_to_columns_n_matches_dyn_columns16,
+<a href=#766 id=766 data-nosnippet>766</a>        <span class="number">16</span>,
+<a href=#767 id=767 data-nosnippet>767</a>        <span class="number">14</span>,
+<a href=#768 id=768 data-nosnippet>768</a>        <span class="number">11
+<a href=#769 id=769 data-nosnippet>769</a>    </span>);
+<a href=#770 id=770 data-nosnippet>770</a>}
+<a href=#771 id=771 data-nosnippet>771</a>
+<a href=#772 id=772 data-nosnippet>772</a><span class="doccomment">/// DSTU 7564:2014 (draft) annex Б's bit-length examples (T-234): messages whose length is not a whole
+<a href=#773 id=773 data-nosnippet>773</a>/// number of bytes, which the public byte API cannot take. The annex prints each one already padded,
+<a href=#774 id=774 data-nosnippet>774</a>/// so this feeds those blocks straight into the compression function and checks every
+<a href=#775 id=775 data-nosnippet>775</a>/// intermediate state and the final hash.
+<a href=#776 id=776 data-nosnippet>776</a></span><span class="attr">#[cfg(test)]
+<a href=#777 id=777 data-nosnippet>777</a></span><span class="kw">mod </span>annex_bit_level_tests {
+<a href=#778 id=778 data-nosnippet>778</a>    <span class="kw">use </span><span class="kw">super</span>::KupynaCore;
+<a href=#779 id=779 data-nosnippet>779</a>
+<a href=#780 id=780 data-nosnippet>780</a>    <span class="kw">const </span>VECTORS: <span class="kw-2">&amp;</span>str = <span class="macro">include_str!</span>(<span class="string">"../../tests/vectors/kupyna/annex-b-bit-level.json"</span>);
+<a href=#781 id=781 data-nosnippet>781</a>
+<a href=#782 id=782 data-nosnippet>782</a>    <span class="kw">fn </span>decode_hex(s: <span class="kw-2">&amp;</span>str) -&gt; Vec&lt;u8&gt; {
+<a href=#783 id=783 data-nosnippet>783</a>        <span class="macro">assert!</span>(s.len().is_multiple_of(<span class="number">2</span>), <span class="string">"odd-length hex string: {s}"</span>);
+<a href=#784 id=784 data-nosnippet>784</a>        (<span class="number">0</span>..s.len())
+<a href=#785 id=785 data-nosnippet>785</a>            .step_by(<span class="number">2</span>)
+<a href=#786 id=786 data-nosnippet>786</a>            .map(|i| u8::from_str_radix(<span class="kw-2">&amp;</span>s[i..i + <span class="number">2</span>], <span class="number">16</span>).expect(<span class="string">"valid hex digit"</span>))
+<a href=#787 id=787 data-nosnippet>787</a>            .collect()
+<a href=#788 id=788 data-nosnippet>788</a>    }
+<a href=#789 id=789 data-nosnippet>789</a>
+<a href=#790 id=790 data-nosnippet>790</a>    <span class="kw">fn </span>string_field&lt;<span class="lifetime">'a</span>&gt;(case: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>str, key: <span class="kw-2">&amp;</span>str) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">'a </span>str {
+<a href=#791 id=791 data-nosnippet>791</a>        <span class="kw">let </span>pattern = <span class="macro">format!</span>(<span class="string">"\"{key}\": \""</span>);
+<a href=#792 id=792 data-nosnippet>792</a>        <span class="kw">let </span>start = case.find(<span class="kw-2">&amp;</span>pattern).expect(<span class="string">"field present"</span>) + pattern.len();
+<a href=#793 id=793 data-nosnippet>793</a>        <span class="kw">let </span>len = case[start..].find(<span class="string">'"'</span>).expect(<span class="string">"closing quote"</span>);
+<a href=#794 id=794 data-nosnippet>794</a>        <span class="kw-2">&amp;</span>case[start..start + len]
+<a href=#795 id=795 data-nosnippet>795</a>    }
+<a href=#796 id=796 data-nosnippet>796</a>
+<a href=#797 id=797 data-nosnippet>797</a>    <span class="kw">fn </span>state_bytes(core: <span class="kw-2">&amp;</span>KupynaCore) -&gt; Vec&lt;u8&gt; {
+<a href=#798 id=798 data-nosnippet>798</a>        core.h[..core.columns].iter().flatten().copied().collect()
+<a href=#799 id=799 data-nosnippet>799</a>    }
+<a href=#800 id=800 data-nosnippet>800</a>
+<a href=#801 id=801 data-nosnippet>801</a>    <span class="attr">#[test]
+<a href=#802 id=802 data-nosnippet>802</a>    </span><span class="kw">fn </span>annex_b_bit_length_examples() {
+<a href=#803 id=803 data-nosnippet>803</a>        <span class="kw">let </span>cases: Vec&lt;<span class="kw-2">&amp;</span>str&gt; = VECTORS.split(<span class="string">"\"output_bits\": "</span>).skip(<span class="number">1</span>).collect();
+<a href=#804 id=804 data-nosnippet>804</a>        <span class="macro">assert_eq!</span>(cases.len(), <span class="number">6</span>, <span class="string">"six bit-length examples in annex Б"</span>);
+<a href=#805 id=805 data-nosnippet>805</a>        <span class="kw">for </span>case <span class="kw">in </span>cases {
+<a href=#806 id=806 data-nosnippet>806</a>            <span class="kw">let </span>output_bits: usize = case[..case.find(<span class="string">','</span>).expect(<span class="string">"number"</span>)]
+<a href=#807 id=807 data-nosnippet>807</a>                .parse()
+<a href=#808 id=808 data-nosnippet>808</a>                .expect(<span class="string">"int"</span>);
+<a href=#809 id=809 data-nosnippet>809</a>            <span class="kw">let </span>padded = decode_hex(string_field(case, <span class="string">"padded_hex"</span>));
+<a href=#810 id=810 data-nosnippet>810</a>            <span class="kw">let </span>hash = decode_hex(string_field(case, <span class="string">"hash_hex"</span>));
+<a href=#811 id=811 data-nosnippet>811</a>            <span class="kw">let </span>states_start = case.find(<span class="string">"\"block_states_hex\": ["</span>).expect(<span class="string">"states"</span>) + <span class="number">21</span>;
+<a href=#812 id=812 data-nosnippet>812</a>            <span class="kw">let </span>states_end = states_start + case[states_start..].find(<span class="string">']'</span>).expect(<span class="string">"]"</span>);
+<a href=#813 id=813 data-nosnippet>813</a>            <span class="kw">let </span>states: Vec&lt;Vec&lt;u8&gt;&gt; = case[states_start..states_end]
+<a href=#814 id=814 data-nosnippet>814</a>                .split(<span class="string">'"'</span>)
+<a href=#815 id=815 data-nosnippet>815</a>                .skip(<span class="number">1</span>)
+<a href=#816 id=816 data-nosnippet>816</a>                .step_by(<span class="number">2</span>)
+<a href=#817 id=817 data-nosnippet>817</a>                .map(decode_hex)
+<a href=#818 id=818 data-nosnippet>818</a>                .collect();
+<a href=#819 id=819 data-nosnippet>819</a>
+<a href=#820 id=820 data-nosnippet>820</a>            <span class="kw">let </span>(columns, rounds, shift) = <span class="kw">if </span>output_bits &lt;= <span class="number">256 </span>{
+<a href=#821 id=821 data-nosnippet>821</a>                (<span class="number">8</span>, <span class="number">10</span>, <span class="number">7</span>)
+<a href=#822 id=822 data-nosnippet>822</a>            } <span class="kw">else </span>{
+<a href=#823 id=823 data-nosnippet>823</a>                (<span class="number">16</span>, <span class="number">14</span>, <span class="number">11</span>)
+<a href=#824 id=824 data-nosnippet>824</a>            };
+<a href=#825 id=825 data-nosnippet>825</a>            <span class="kw">let </span><span class="kw-2">mut </span>core = KupynaCore::new(columns, rounds, shift);
+<a href=#826 id=826 data-nosnippet>826</a>            <span class="kw">let </span>blocks: Vec&lt;<span class="kw-2">&amp;</span>[u8]&gt; = padded.chunks(core.block_bytes()).collect();
+<a href=#827 id=827 data-nosnippet>827</a>            <span class="macro">assert_eq!</span>(blocks.len(), states.len());
+<a href=#828 id=828 data-nosnippet>828</a>            <span class="kw">for </span>(i, block) <span class="kw">in </span>blocks.iter().enumerate() {
+<a href=#829 id=829 data-nosnippet>829</a>                core.compress_block(block);
+<a href=#830 id=830 data-nosnippet>830</a>                <span class="macro">assert_eq!</span>(
+<a href=#831 id=831 data-nosnippet>831</a>                    state_bytes(<span class="kw-2">&amp;</span>core),
+<a href=#832 id=832 data-nosnippet>832</a>                    states[i],
+<a href=#833 id=833 data-nosnippet>833</a>                    <span class="string">"state after block {i}, Kupyna-{output_bits}"
+<a href=#834 id=834 data-nosnippet>834</a>                </span>);
+<a href=#835 id=835 data-nosnippet>835</a>            }
+<a href=#836 id=836 data-nosnippet>836</a>            <span class="kw">let </span>out = core.output(output_bits / <span class="number">8</span>);
+<a href=#837 id=837 data-nosnippet>837</a>            <span class="macro">assert_eq!</span>(
+<a href=#838 id=838 data-nosnippet>838</a>                <span class="kw-2">&amp;</span>out[..output_bits / <span class="number">8</span>],
+<a href=#839 id=839 data-nosnippet>839</a>                hash.as_slice(),
+<a href=#840 id=840 data-nosnippet>840</a>                <span class="string">"hash, Kupyna-{output_bits}"
+<a href=#841 id=841 data-nosnippet>841</a>            </span>);
+<a href=#842 id=842 data-nosnippet>842</a>        }
+<a href=#843 id=843 data-nosnippet>843</a>    }
+<a href=#844 id=844 data-nosnippet>844</a>}
 </code></pre></div></section></main></body></html>
