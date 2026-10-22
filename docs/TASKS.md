@@ -10276,6 +10276,7 @@ writer onto it. Superseded in detail by the plan below.
      `box-keygen384` and `KeyKind::Box384*` (D-212/D-213: other box commands dispatch by key).
   5. T-297 capi `box384`. 6. T-297 all eight bindings (T-204 order). 7. Perf + doc sweep.
   Push points for the owner: after phase 3 and after phase 6.
+- Step 3b (owner 2026-10-22): the red-team wave T-298..T-308 ("Red-team remediation wave" below).
 - Step 4: T-264 (the parser is hand-written, no `clap`; no new dependency without the owner).
 - Step 5: T-249 + the T-223/T-225 fuzz additions.
 - Release: version bumps incl. every published binding's minor (v3 box, C ABI break), the D-238
@@ -10488,3 +10489,84 @@ work and never touches the 0.4.0 release on `master`). Fit this batch into the U
   - For PHP, the Pi needs `cargo build --release` in `bindings/php`. The extension is at
     `target/release/libdstu_core_php.so`; load it with `php -d extension=...`.
 - Before trusting any absolute MB/s number, check the machine state first (see the intro).
+
+## Red-team remediation wave (2026-10-22, owner-requested)
+
+Owner 2026-10-22: four read-only "white-hat" subagents (strongest model, no plan or prior findings
+given) attacked `master` = `252cf9c`: (1) `hazmat::dstu9041` + `crypto_box*` + KW/KW-p, (2) the
+symmetric `hazmat` + `crypto_secretbox`/`secretstream`/`auth`/`kdf`/`pwhash`, (3) the `uacrypt`
+binary, (4) DSTU 4145 + `crypto_sign*`. Owner: "create tasks, build the wave, start fixing". The
+PoCs lived in `%TEMP%\claude\redteam\` and will not survive; every task carries its recipe.
+**Embargo-sensitive: T-298, T-299** (exploitable in released 0.6.0) - local commits with neutral
+messages, the owner decides on an advisory and the push; no external contact by Claude.
+
+Checked and sound (do not redo): `secretstream` framing (AAD binds counter/tag/len, no wrap, rekey
+one-way, failed pull leaves state), `FileDecryptor` bounds/poisoning/trailing data, D-219 header
+params pinned, `verify_password` bounds, secretbox AAD, GCM true lengths, KW/KW-p constant-time
+strict unwrap (200k mutants, unique encoding), CCM, block modes without panics, Kupyna `Hasher`
+boundaries, `limb.rs`; dstu9041 constants and field ops (2592 differential cases vs Python per op),
+`point_from_x` rejects {0,1,p-1}, ±sqrt(a/d), twist, both 2n classes, x>=p; 3000 bit-flip mutants
+per box variant, cross-variant/version confusion refused; DSTU 4145 small-subgroup keys (m=257 T2,
+T4, Q+T*), r/s ranges, nonce bias, ladders branchless; CLI key-type confusion, truncation, temp
+names (`create_new`, 64-bit random), `--force` never over a key, passphrase handling, exit codes.
+
+- [ ] **T-298** (Medium, security, **embargo-sensitive**) Kalyna-CMAC (DSTU 7624 §9 as written) is
+  not EUF-CMA. `hazmat/kalyna_cmac.rs:104-106`: the final-block key is `E_K(0^n)` (aligned) with no
+  GF doubling, and the CBC state after one zero block is the same `E_K(0)`, so
+  `MAC(0^b || Y) = E_K(Y)[..16]`. Recipe: `Kalyna128_128Cmac::mac(k, &[0; 32]) ==
+  Kalyna128_128::encrypt(k, [0; 16])`; `tag(X)` is valid for `0^16 || (X ^ L)`; chaining 5 such
+  queries gives a valid tag on any unqueried message. For 128-bit blocks the tag is the full block
+  (an `E_K` oracle; under a shared key it also gives GCM's `H` and breaks CTR/CCM/KW); 256/512
+  give a truncated `E_K` oracle. Inherent to the text: UAPKI `cmac_final` and BC `DSTU7624Mac`
+  (aligned branch) do the same. Not in `crypto_*` (`crypto_auth` is KMAC). Fix: a negative test
+  pinning the property, hazmat + CLI docs/help warning (not EUF-CMA, never share the key); whether
+  `uacrypt kalyna-cmac` stays (an interop/benchmark tool per D-31/D-71, `PERFORMANCE.md` uses it)
+  or goes is the owner's call. D-entry.
+- [ ] **T-299** (Medium, security, **embargo-sensitive**) DSTU 4145 `VerifyingKey::from_uncompressed_bytes`
+  (`crypto_sign.rs:269`, `crypto_sign257.rs:196`) accepts coordinates >= 2^m:
+  `FieldElement::from_be_bytes` does not reduce (its doc puts that on the caller), breaking the
+  "top bits zero" invariant. Recipe: valid `pk = x||y` + signature; m=163 XOR `pk[0]^=0x08,
+  pk[20]^=0xC9` (x+f; y: bytes 21/41); m=257 `pk[0]^=0x02, pk[31]^=0x10, pk[32]^=0x01` (y: 33/64/65).
+  Result: `verify=true` with `std` on x86_64/aarch64 (hardware clmul over full limbs), `false`
+  without `std` (portable `poly_mul_wide` reads only the low m bits) - key malleability (2^5/2^7
+  encodings per coordinate) and a build-dependent verify. Reached from `uacrypt verify --key`,
+  `key-import --kind sign*-public`, capi `dstu_verifying_key_from_bytes` (+257), all bindings.
+  Suspected, unproven: a crafted unreduced Q behaving degenerately on the portable path. Fix:
+  reject non-zero top bits, plus on-curve and `n*Q == O` at decode (fail closed in one place);
+  the C ABI/binding shape decided in the D-entry. Tests: the recipe vectors in both builds.
+- [ ] **T-300** (Medium, security) Windows: `create_private_new` (`uacrypt/src/lib.rs:2207`) gives a
+  key file, temp file or decrypted output the directory's inherited ACL (Unix gets `0600`).
+  Recipe: a directory with `Everyone:(OI)(CI)R`, `uacrypt keygen --out d\k.key`, `icacls d\k.key`
+  shows `Everyone:(I)(R)`; `C:\work` inherits `BUILTIN\Users:RX`. Fix: a protected owner-only DACL
+  at create (`windows-sys`, already a dependency) + test; `docs/CLI.md` states both platforms.
+- [ ] **T-301** (Low-Medium) A kill/Ctrl-C during `decrypt`/`box-open` leaves
+  `<out>.uacrypt-tmp-<hex>` holding verified plaintext and the empty `--out` placeholder, so a
+  re-run fails "already exists" (cleanup is only in `Drop`, lib.rs:2257-2366). Fix: a Ctrl-C /
+  console-ctrl handler that removes the registered paths; document leftovers for kill -9.
+- [ ] **T-302** (Low) Zeroization gaps: `KupynaCore` (no zeroize; after absorbing PAD(K) its `h`
+  forges KMAC under K), `kupyna.rs` `tail`/`block` copies, Kalyna key-expansion temporaries
+  (`k0`/`k1`/`initial_data`/`kt`), `kalyna_kw` intermediates, `secretstream` `new_subkey`,
+  `kalyna_gcm` `h_key`; dstu9041 `m_tilde`/`hashed_input` and `Message` (derived `Debug` prints the
+  seed); DSTU 4145 nonce `e` and `to_be_bytes` copies; `uacrypt` `read_key` growth copies.
+- [ ] **T-303** (Low) `hash --check` opens any path in the list: `CONIN$` waits on the console
+  (lib.rs:3351 only refuses `-`); suspected `/dev/tty`, a FIFO, `/dev/zero`, UNC `\\host\x` (SMB
+  connect). Fix: open only regular files (metadata before open), refuse device/UNC names.
+- [ ] **T-304** (Low, DoS) Unbounded reads: `verify --sig` (lib.rs:3949 `fs::read`, 512 MiB ->
+  517 MB peak) and `box-open` with a leading `0x02` (legacy v2 path reads all of `--in`, D-239).
+  Fix: bounded read for the signature; a size cap on the legacy path.
+- [ ] **T-305** (Low) A non-UTF-8 argument panics (`main.rs` `env::args()`, exit 101). Fix: a clean
+  usage error.
+- [ ] **T-306** (Low, docs) `crypto_auth`, `crypto_kdf` and the `secretstream` subkey are all bare
+  `Kupyna256Kmac(key, msg)`: `derive_subkey(id, ctx) == auth(k, ctx || id_le)`. A real fix changes
+  wire formats; document "one key, one API" instead.
+- [ ] **T-307** (Low) dstu9041 hazmat: `encryption*::encrypt` takes an unchecked `Point` (public
+  fields): `Q` = NEUTRAL, `(p-1,0)` or `(0,0)` makes kappa trivial. And the docs' "complete
+  addition law"/"cyclic Z/4n" arguments are wrong: `a = 2` is a non-residue on all three curves
+  (`a*d` a residue), so 2-torsion is Z/2 x Z/2 with two points at infinity; `scalar_multiply` gives
+  `(0,0)` outside `<P>`. Fix: reject degenerate `T`/`Q` in `encrypt`, correct the docs.
+- [ ] **T-308** (Low, infra) `bindings-php` CI red on `252cf9c`: RUSTSEC-2026-0383
+  (`webpki-root-certs` 1.0.9, build-only via `ext-php-rs` -> `ureq`). Fix: `cargo update -p
+  webpki-root-certs` (1.0.10).
+
+**Wave order (Claude, 2026-10-22):** T-308; T-299 (+ capi/bindings); T-298 (docs/test part); T-307;
+T-302; then the CLI batch T-300, T-303, T-304, T-305, T-301; T-306 docs. Commit per task.
