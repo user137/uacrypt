@@ -3367,6 +3367,14 @@ fn run_hash_check(list: &Source) -> Result<(), CliError> {
             .map_err(|e| stdout_error(&e))?;
             continue;
         }
+        // T-303: opening is what waits (a console, a FIFO, a tty), never ends (`/dev/zero`) or
+        // connects (a UNC host), so only a path already known to be a local regular file is
+        // opened. A swap between this check and the open is not covered.
+        if let Err(reason) = check_list_entry_is_local_file(std::path::Path::new(&entry.path)) {
+            failed += 1;
+            writeln!(out, "{}: FAILED ({reason})", entry.path).map_err(|e| stdout_error(&e))?;
+            continue;
+        }
         let status = match hash_file_streamed(&Source::File(PathBuf::from(&entry.path))) {
             // A file digest is public: no constant-time comparison needed.
             Ok(digest) if digest == entry.digest => "OK".to_string(),
@@ -3387,6 +3395,25 @@ fn run_hash_check(list: &Source) -> Result<(), CliError> {
         });
     }
     Ok(())
+}
+
+/// `Ok` only for a local regular file (T-303). On Windows a path with a prefix other than a drive
+/// letter (`\\host\share`, `\\?\`, `\\.\`) is refused before any file-system call, which for a UNC
+/// path would already connect to the host. A `metadata` failure is reported as is, without trying
+/// to open the path anyway.
+fn check_list_entry_is_local_file(path: &std::path::Path) -> Result<(), String> {
+    const REFUSED: &str = "not a local regular file; a check list only names local files";
+    #[cfg(windows)]
+    if let Some(std::path::Component::Prefix(prefix)) = path.components().next() {
+        if !matches!(prefix.kind(), std::path::Prefix::Disk(_)) {
+            return Err(REFUSED.to_string());
+        }
+    }
+    match std::fs::metadata(path) {
+        Ok(meta) if meta.is_file() => Ok(()),
+        Ok(_) => Err(REFUSED.to_string()),
+        Err(e) => Err(format!("cannot read: {e}")),
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

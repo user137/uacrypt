@@ -372,3 +372,58 @@ fn a_utf16_check_file_is_named_and_a_utf8_bom_is_accepted() {
     assert!(r.success(), "{}", r.stderr);
     assert_eq!(r.stdout, "a: OK\n");
 }
+
+/// T-303: a check list is untrusted, so an entry that is not a local regular file - a directory, a
+/// device (`CONIN$` waits on the console, `/dev/zero` never ends) or a UNC path (Windows would
+/// connect to that host) - is refused without being opened. Run with a deadline: before the fix
+/// some of these hung.
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
+fn check_refuses_entries_that_are_not_local_regular_files() {
+    let dir = TempDir::new("hash_check_devices");
+    std::fs::create_dir(dir.file("sub")).expect("mkdir");
+    let mut entries = vec!["sub"];
+    #[cfg(windows)]
+    entries.extend(["CONIN$", "\\\\127.0.0.1\\uacrypt-none\\x"]);
+    #[cfg(unix)]
+    entries.extend(["/dev/zero", "/dev/tty"]);
+    let zeros = "0".repeat(64);
+    let list: String = entries.iter().map(|e| format!("{zeros}  {e}\n")).collect();
+    write_bytes(&dir.file("SUMS"), list.as_bytes());
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_uacrypt"))
+        .args(["hash", "--check", "SUMS"])
+        .current_dir(&dir.0)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn the real uacrypt binary");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while child.try_wait().expect("poll").is_none() {
+        if std::time::Instant::now() > deadline {
+            child.kill().expect("kill");
+            panic!("hash --check hung on a device or UNC entry");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let output = child.wait_with_output().expect("collect output");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(1), "{stdout}");
+    // Every entry fails; a device may already fail its `metadata` call (Windows reports `CONIN$`
+    // as "Incorrect function"), which is reported without opening it.
+    for entry in &entries {
+        assert!(
+            stdout.contains(&format!("{entry}: FAILED (")),
+            "{entry}:\n{stdout}"
+        );
+    }
+    let refused = |entry: &str| format!("{entry}: FAILED (not a local regular file");
+    assert!(stdout.contains(&refused("sub")), "{stdout}");
+    #[cfg(windows)]
+    assert!(stdout.contains(&refused(entries[2])), "{stdout}");
+    #[cfg(unix)]
+    assert!(stdout.contains(&refused("/dev/zero")), "{stdout}");
+}

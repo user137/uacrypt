@@ -62,7 +62,10 @@ cat report.pdf | uacrypt hash --in -          # prints "<hex>  -"
 - `hash --check -` reads the checksum list from stdin (like `sha256sum -c -`, same 16 MiB cap and
   grammar). A line for `-` inside any list is never read from stdin - an untrusted list must not
   consume or wait on your script's stdin - so it is reported as `-: FAILED (stdin is not read from
-  a check list ...)` and counts as a failure; a file really named `-` is listed as `./-`.
+  a check list ...)` and counts as a failure; a file really named `-` is listed as `./-`. For the
+  same reason a list entry is opened only if it is a local regular file: a directory, a device
+  (`CONIN$`, `/dev/tty`, `/dev/zero`), a FIFO or, on Windows, a UNC or `\\?\`/`\\.\` path is
+  reported as `FAILED (not a local regular file ...)` without being opened (T-303).
 - Every other path flag (`--key`, `--sig`, `key-import --in`, and all paths of
   the lower-level `kalyna-*`/`kupyna-digest`/`strumok-crypt` commands) refuses `-` as a usage
   error, so `-` never silently names a file. A file really named `-` is `./-`.

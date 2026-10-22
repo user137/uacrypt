@@ -10548,7 +10548,7 @@ names (`create_new`, 64-bit random), `--force` never over a key, passphrase hand
   (`k0`/`k1`/`initial_data`/`kt`), `kalyna_kw` intermediates, `secretstream` `new_subkey`,
   `kalyna_gcm` `h_key`; dstu9041 `m_tilde`/`hashed_input` and `Message` (derived `Debug` prints the
   seed); DSTU 4145 nonce `e` and `to_be_bytes` copies; `uacrypt` `read_key` growth copies.
-- [ ] **T-303** (Low) `hash --check` opens any path in the list: `CONIN$` waits on the console
+- [x] **T-303** (Low; **done 2026-10-22**: only a `metadata`-confirmed local regular file is opened; Windows non-drive prefixes refused before any FS call; `smoke_hash.rs` test with a deadline - hung before) `hash --check` opens any path in the list: `CONIN$` waits on the console
   (lib.rs:3351 only refuses `-`); suspected `/dev/tty`, a FIFO, `/dev/zero`, UNC `\\host\x` (SMB
   connect). Fix: open only regular files (metadata before open), refuse device/UNC names.
 - [ ] **T-304** (Low, DoS) Unbounded reads: `verify --sig` (lib.rs:3949 `fs::read`, 512 MiB ->
