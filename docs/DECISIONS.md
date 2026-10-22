@@ -15904,3 +15904,31 @@ Rejected: a cap (breaks real files), a new flag (a knob, D-47).
 read everything, then "authentication failed"), `tests/smoke_streaming_boundedness.rs`
 `verify_reads_a_bounded_prefix_of_sig` (ignored, `cargo xtask streaming-bounded`: a 200 MiB
 `--sig` stays under the 60 MiB threshold and is reported as `got 209715200`).
+
+## D-252: an interrupted output is removed (T-301, 2026-10-22)
+
+**Finding** (red-team wave). `OutputFile` removed its temp file and `--out` placeholder only in
+`Drop`; Ctrl-C ends the process without running it. A killed `decrypt` of a 64 MiB file left
+`<out>` (empty) and `<out>.uacrypt-tmp-<hex>` (384 KiB of verified plaintext), and the re-run was
+refused with "already exists".
+
+**Fix.** `crates/uacrypt/src/cleanup.rs`: `OutputFile` registers the placeholder (after creating
+it - registering first could delete a file that already existed) and the temp file; a `Guard`
+takes each out again. Unix: a handler for SIGINT/SIGTERM/SIGHUP unlinks every registered path and
+re-raises the signal with the default disposition (exit status as before; a signal ignored by the
+parent, e.g. under `nohup`, stays ignored). Windows: a console control handler `DeleteFileW`s them
+and returns FALSE so the default exit follows; the open temp file was created with
+`FILE_SHARE_DELETE`, so it is deleted when the process closes it. `commit` drops the placeholder's
+guard **before** the rename, so an interruption after the rename can never delete the finished
+output. The table is 8 `AtomicPtr` slots holding leaked NUL-terminated paths: a signal handler may
+not lock or free, and a released string may still be read by a handler on another thread.
+
+**Not covered:** `kill -9`/End task/power loss (documented in `docs/CLI.md`), a path registered
+when all slots are taken, and the microseconds between creating a file and registering it.
+`sigint::Ignored` (the passphrase prompt) still sets SIGINT to ignored while it lives and restores
+whatever was there; the prompt runs before any output exists.
+
+**Evidence.** `tests/smoke_interrupt.rs`: `decrypt --in -` stopped while waiting for stdin, after
+both files exist - SIGINT on Unix (Pi), Ctrl-Break to its own process group on Windows. Failed on
+Windows before the fix ("left behind: out, out.uacrypt-tmp-..."). Where Ctrl-Break cannot be
+delivered (no shared console) the test prints SKIPPED instead of passing silently.

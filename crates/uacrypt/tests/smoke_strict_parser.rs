@@ -463,6 +463,9 @@ fn a_non_unicode_argument_is_a_usage_error_not_a_panic() {
         .expect("spawn the real uacrypt binary");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(2), "{stderr}");
-    assert!(stderr.contains("argument 3 is not valid Unicode"), "{stderr}");
+    assert!(
+        stderr.contains("argument 3 is not valid Unicode"),
+        "{stderr}"
+    );
     assert!(!stderr.contains("panicked"), "{stderr}");
 }

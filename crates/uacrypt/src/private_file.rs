@@ -66,7 +66,7 @@ pub(crate) fn create_new(path: &std::path::Path) -> std::io::Result<std::fs::Fil
 /// `path` as NUL-terminated UTF-16 for `CreateFileW`. Like `std::fs`, a path of 248 units or more
 /// goes in its `\\?\` form, which has no `MAX_PATH` limit; `std::path::absolute` resolves it first
 /// (separators, `.`, `..`), because the verbatim form is taken literally.
-fn wide_path(path: &std::path::Path) -> std::io::Result<Vec<u16>> {
+pub(crate) fn wide_path(path: &std::path::Path) -> std::io::Result<Vec<u16>> {
     let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
     if wide.contains(&0) {
         return Err(std::io::Error::new(

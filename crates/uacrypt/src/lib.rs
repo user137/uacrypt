@@ -22,6 +22,7 @@
 //! in `docs/PERFORMANCE.md` (`docs/TASKS.md`, D-28/29/30 follow-up) - with `iterations <= 1` this is just a
 //! single-block file operation.
 
+mod cleanup;
 mod keyfile;
 mod passphrase;
 #[cfg(windows)]
@@ -2119,6 +2120,9 @@ struct OutputFile {
     tmp_path: Option<PathBuf>,
     placeholder: bool,
     committed: bool,
+    /// T-301: the placeholder and the temp file are removed on Ctrl-C too, which skips `Drop`.
+    placeholder_guard: Option<cleanup::Guard>,
+    tmp_guard: Option<cleanup::Guard>,
 }
 
 impl OutputFile {
@@ -2143,12 +2147,17 @@ impl OutputFile {
             tmp_path: None,
             placeholder: false,
             committed: false,
+            placeholder_guard: None,
+            tmp_guard: None,
         };
         if force {
             refuse_key_file(path)?;
         } else {
             match create_private_new(path) {
-                Ok(_) => output.placeholder = true,
+                Ok(_) => {
+                    output.placeholder = true;
+                    output.placeholder_guard = cleanup::register(path);
+                }
                 // Windows reports a directory as access denied, not as already existing.
                 Err(_) if path.is_dir() => {
                     return Err(io_err(path, std::io::Error::other("is a directory")));
@@ -2165,6 +2174,7 @@ impl OutputFile {
         }
         let tmp_path = temp_path_beside(path)?;
         let file = create_private_new(&tmp_path).map_err(|e| io_err(&tmp_path, e))?;
+        output.tmp_guard = cleanup::register(&tmp_path);
         output.tmp_path = Some(tmp_path);
         Ok((output, file))
     }
@@ -2186,6 +2196,9 @@ impl OutputFile {
             message: e.to_string(),
         })?;
         drop(file);
+        // Out of the interruption table before the rename puts the output at `self.path`, so a
+        // Ctrl-C from here on can never delete the finished output.
+        self.placeholder_guard = None;
         if let Some(tmp_path) = &self.tmp_path {
             std::fs::rename(tmp_path, &self.path).map_err(|e| CliError::Io {
                 path: self.path.clone(),

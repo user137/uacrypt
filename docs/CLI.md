@@ -27,7 +27,10 @@ key inputs (`--key`, `--iv`, `--tweak`, or a decrypt-side `--nonce`/`--tag`) is 
 (exit 2), with or without `--force`, so `decrypt --key k.key --out k.key --force` cannot replace
 the key with plaintext. The result is written to a temp file next to the
 output and renamed onto it only when the command succeeds, so a failed command leaves no output file,
-no temp file and, with `--force`, the old file unchanged. `--force` replaces a symlink at the
+no temp file and, with `--force`, the old file unchanged. The same holds when the command is
+interrupted (Ctrl-C/Ctrl-Break, SIGINT/SIGTERM/SIGHUP, closing the console window, T-301); only a
+hard kill (`kill -9`, Task Manager's End task, power loss) can leave a `<out>.uacrypt-tmp-<hex>`
+file and an empty `<out>` behind - delete both by hand, the temp file may hold decrypted data. `--force` replaces a symlink at the
 output path, never the file it points to. Every output file is created owner-only, also when
 `--force` replaces a shared file: mode `0600` on Unix (`chmod` it to share it), and on Windows a
 protected ACL granting only the current user, with nothing inherited from the folder (T-300;

@@ -10539,7 +10539,7 @@ names (`create_new`, 64-bit random), `--force` never over a key, passphrase hand
   Recipe: a directory with `Everyone:(OI)(CI)R`, `uacrypt keygen --out d\k.key`, `icacls d\k.key`
   shows `Everyone:(I)(R)`; `C:\work` inherits `BUILTIN\Users:RX`. Fix: a protected owner-only DACL
   at create (`windows-sys`, already a dependency) + test; `docs/CLI.md` states both platforms.
-- [ ] **T-301** (Low-Medium) A kill/Ctrl-C during `decrypt`/`box-open` leaves
+- [x] **T-301** (Low-Medium; **done 2026-10-22, D-252**: `cleanup.rs` signal/console handlers delete registered paths; `smoke_interrupt.rs`, Windows + Pi) A kill/Ctrl-C during `decrypt`/`box-open` leaves
   `<out>.uacrypt-tmp-<hex>` holding verified plaintext and the empty `--out` placeholder, so a
   re-run fails "already exists" (cleanup is only in `Drop`, lib.rs:2257-2366). Fix: a Ctrl-C /
   console-ctrl handler that removes the registered paths; document leftovers for kill -9.
