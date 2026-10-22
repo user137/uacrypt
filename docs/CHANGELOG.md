@@ -77,6 +77,31 @@ All notable changes to this project are documented in this file. Format follows
 - **Windows release binary links the C runtime statically** (T-295, `docs/DECISIONS.md` D-238):
   `uacrypt.exe` no longer needs the Visual C++ redistributable (`VCRUNTIME140.dll`).
 
+### Fixed
+
+- **`dstu-core`: DSTU 4145 verifying keys with a coordinate >= 2^m are refused** (T-299,
+  `docs/DECISIONS.md` D-246). Such bytes verified on std builds (several encodings of one key) and
+  failed on no_std builds; `Point::is_on_curve` now rejects them, so every entry point (CLI, C ABI,
+  bindings) agrees. No API change.
+- **`dstu-core`: `hazmat::dstu9041::encryption*::encrypt` refuses a degenerate recipient point**
+  (T-307, D-248): `EncryptError::InvalidPublicKey` for `q` off the curve or of order 1, 2 or 4.
+  `crypto_box*` was not affected. The docs' group-structure argument is corrected (`Z/2 x Z/2 x
+  Z/n`; no point of order 4 exists).
+- **`dstu-core`: key, nonce and seed copies are wiped** (T-302, D-249): Kupyna's state under KMAC,
+  the Kalyna key schedule's temporaries, KW intermediates, GCM's `H`, the DSTU 4145 nonce, and
+  dstu9041's `Message` (whose `Debug` no longer prints the seed).
+- **`uacrypt`: output files are owner-only on Windows too** (T-300, D-250): a protected ACL for the
+  current user, set when the file is created, instead of the folder's inherited ACL.
+- **`uacrypt`: Ctrl-C no longer leaves a temp file with decrypted data** (T-301, D-252), nor the
+  empty `--out` placeholder that made the re-run refuse.
+- **`uacrypt hash --check` opens only local regular files** (T-303): a device, FIFO, directory or
+  (Windows) UNC entry in the list is reported as failed without being opened.
+- **`uacrypt`: bounded reads** (T-304, D-251): `verify --sig` reads at most 67 bytes; a 0.4-0.6
+  `box-open` file is read only from a regular file, not stdin.
+- **`uacrypt`: an argument that is not valid Unicode is a usage error** (T-305), not a panic.
+- **PHP binding CI:** `webpki-root-certs` 1.0.10 (T-308, RUSTSEC-2026-0383, a build-only
+  dependency of `ext-php-rs`).
+
 ## [0.6.0] - 2026-10-11
 
 ### Added
