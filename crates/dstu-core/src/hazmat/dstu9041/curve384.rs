@@ -2,8 +2,9 @@
 //! `docs/DECISIONS.md` D-241/D-244). Curve equation (the x/y-swapped form of `curve256.rs`):
 //! `x^2 + a*y^2 = d*x^2*y^2 + 1 (mod p)`, `a=2`, `d=0x214`. A third sibling of `curve256.rs`/
 //! `curve512.rs`, generated from `curve512.rs` by script with the constants computed from
-//! `curve-E384-1.json` - same addition law (Додаток Б.4), same complete-formula reasoning (`d` a
-//! non-square, re-checked for E384/1 in D-241).
+//! `curve-E384-1.json` - same addition law (Додаток Б.4), same group structure as `curve256.rs`'s
+//! module doc states (`a` a non-residue, `a*d` a residue: `Z/2 x Z/2 x Z/n`, not complete outside
+//! `<P>`, T-307).
 //!
 //! **Finding 1/2 re-derived for E384/1, not copied (D-241)**: cofactor 4 (Hasse interval), and
 //! `x=p-1` reconstructs an order-2 point outside `<P>` - checked in `tests/dstu9041_curve_384.rs`.
@@ -77,8 +78,8 @@ impl Point {
         lhs == rhs
     }
 
-    /// Point addition (also correct for doubling and the neutral element - the formula is
-    /// complete). A convenience wrapper around `ProjectivePoint::add`.
+    /// Point addition (also correct for doubling and the neutral element, exact inside `<P>`;
+    /// see `curve256.rs`'s module doc for points outside it). A convenience wrapper around `ProjectivePoint::add`.
     #[must_use]
     #[allow(clippy::should_implement_trait)]
     pub fn add(self, other: Self) -> Self {
@@ -131,7 +132,7 @@ impl ProjectivePoint {
         }
     }
 
-    /// Додаток Б.4's complete addition law - identical to `curve256.rs`'s own, just over the
+    /// Додаток Б.4's addition law - identical to `curve256.rs`'s own, just over the
     /// 384-bit field.
     #[allow(clippy::many_single_char_names)]
     fn add(self, other: Self) -> Self {

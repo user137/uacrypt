@@ -5,7 +5,9 @@
 //! confirms (`r`, `kappa`, `M'`) and pins its printed `t` as not DSTU 7624 KW-p (D-241).
 
 use dstu_core::hazmat::dstu9041::curve384::{base_point, order, Point};
-use dstu_core::hazmat::dstu9041::encryption384::{decrypt, encrypt, CIPHERTEXT_BYTES};
+use dstu_core::hazmat::dstu9041::encryption384::{
+    decrypt, encrypt, EncryptError, CIPHERTEXT_BYTES,
+};
 use dstu_core::hazmat::dstu9041::fp384::FieldElement;
 use dstu_core::hazmat::kalyna_kw_p::Kalyna256_256KwP;
 use proptest::prelude::*;
@@ -318,4 +320,26 @@ fn epsilon_at_maximum_valid_value_round_trips() {
     eps[47] -= 2;
     let c = encrypt(&message(), MESSAGE_BITS, q_point(), &eps).expect("epsilon=n-2 is valid");
     assert!(decrypt(&c, &private_key_e()).is_ok());
+}
+
+// T-307: `encrypt` takes a caller-built `Point` (public fields). A recipient point of small order
+// or off the curve makes `T = eps*Q` - and so the KW key - computable without any secret; such a
+// `Q` is refused before anything is wrapped.
+#[test]
+fn t307_degenerate_recipient_point_is_rejected() {
+    let p_minus_1 = FieldElement::ZERO.sub(FieldElement::ONE);
+    let order_two = Point {
+        x: p_minus_1,
+        y: FieldElement::ZERO,
+    };
+    let off_curve = Point {
+        x: FieldElement::ZERO,
+        y: FieldElement::ZERO,
+    };
+    for q in [Point::NEUTRAL, order_two, off_curve] {
+        assert_eq!(
+            encrypt(&message(), MESSAGE_BITS, q, &epsilon()),
+            Err(EncryptError::InvalidPublicKey)
+        );
+    }
 }

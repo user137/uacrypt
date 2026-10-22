@@ -12,10 +12,15 @@
 //! covered by the standard's literal clause 12 text; see `r_equals_p_minus_1_reconstructs_the_order_2_point`
 //! in `tests/dstu9041_curve.rs` for the arithmetic proof).
 //!
-//! Scalar multiplication uses the complete Edwards addition law (Додаток Б.4) for both doubling
-//! and adding - `d` non-square (guaranteed by 3.18/7.2 for every recommended curve) means this
-//! formula has no exceptional/branching cases, so `scalar_multiply` is a fixed 256-iteration
-//! double-and-select loop with no early exit and no add/double distinction.
+//! Scalar multiplication uses the Edwards addition law of Додаток Б.4 for both doubling and adding,
+//! as a fixed 256-iteration double-and-select loop with no early exit and no add/double
+//! distinction. **The law is not complete on these curves** (T-307): completeness needs `a` a
+//! square and `d` a non-square, and `a = 2` is a non-residue (`p = 5 mod 8`). Because `a*d` is a
+//! square, `E(F_p) = Z/2 x Z/2 x Z/n`: the 2-torsion is `NEUTRAL`, `(p-1, 0)` and the two points at
+//! infinity `D_{1,2}`, and there are no points of order 4. A sum can only be exceptional when it
+//! lands on `D_{1,2}`, which never happens inside the odd-order `<P>`; outside `<P>` the projective
+//! formula then gives `Z = 0`, so [`Point::add`]/[`Point::scalar_multiply`] return the off-curve
+//! `(0, 0)` - which is why every untrusted point goes through [`point_from_x`]'s `n*Q` check.
 
 use super::fp256::FieldElement;
 use crate::hazmat::limb::sbb;
@@ -80,8 +85,8 @@ impl Point {
         lhs == rhs
     }
 
-    /// Point addition (also correct for doubling and the neutral element - the formula is
-    /// complete). A convenience wrapper around `ProjectivePoint::add`; `scalar_multiply` uses the
+    /// Point addition (also correct for doubling and the neutral element, exact inside `<P>`;
+    /// see the module doc for points outside it). A convenience wrapper around `ProjectivePoint::add`; `scalar_multiply` uses the
     /// projective form directly to avoid a per-iteration inversion.
     #[must_use]
     #[allow(clippy::should_implement_trait)] // deliberate: value-returning, not the mutating
@@ -139,10 +144,10 @@ impl ProjectivePoint {
         }
     }
 
-    /// Додаток Б.4's complete addition law: `A=Z1*Z2, B=A^2, C=X1*X2, D=Y1*Y2, E=d*C*D,
+    /// Додаток Б.4's addition law: `A=Z1*Z2, B=A^2, C=X1*X2, D=Y1*Y2, E=d*C*D,
     /// F=B-E, G=B+E`, `X_R=A*G*(C-a*D)`, `Y_R=A*F*((X1+Y1)*(X2+Y2)-C-D)`, `Z_R=F*G`. Used for both
-    /// doubling (`self==other`) and the neutral element uniformly - no exceptional cases, because
-    /// `d` is a non-square (guaranteed by clause 3.18/7.2 for every recommended curve).
+    /// doubling (`self==other`) and the neutral element uniformly - no exceptional case inside
+    /// `<P>`; not complete in general (`a` is a non-square, see the module doc, T-307).
     #[allow(clippy::many_single_char_names)] // a/d/b/c/e/f/g mirror Додаток Б.4's own notation
     fn add(self, other: Self) -> Self {
         let a = curve_a();

@@ -1,9 +1,9 @@
 //! Twisted Edwards point arithmetic over E512/1 (T-192 Phase 2 - see
 //! `docs/pseudocode/dstu9041.md`, `docs/DECISIONS.md` D-176/D-177). Curve equation (same
-//! x/y-swapped form as `curve256.rs`, per the primary text): `x^2 + a*y^2 = d*x^2*y^2 (mod p)`,
+//! x/y-swapped form as `curve256.rs`, per the primary text): `x^2 + a*y^2 = d*x^2*y^2 + 1 (mod p)`,
 //! `a=2`, `d=0x10D`. Direct sibling of `curve256.rs` at the 512-bit field width - same addition
-//! law (Додаток Б.4), same complete-formula reasoning (`d` non-square, guaranteed by 3.18/7.2 for
-//! every recommended curve), same `Point{x,y}`-with-no-`Infinity`-variant shape.
+//! law (Додаток Б.4), same group structure as `curve256.rs`'s module doc states (`Z/2 x Z/2 x
+//! Z/n`, not complete outside `<P>`, T-307), same `Point{x,y}`-with-no-`Infinity`-variant shape.
 //!
 //! **Finding 1/2 re-derived for E512/1 specifically, not copied from E256/1 (D-176)**: cofactor 4
 //! (independently re-checked via the Hasse-interval method), and `x=p-1` reconstructs a genuine
@@ -11,7 +11,8 @@
 //! recurs structurally - still verified here, in `tests/dstu9041_curve_512.rs`, not assumed).
 //! [`point_from_x`] below closes both the same way `curve256.rs`'s does: explicit exclusion of
 //! `x in {0,1,p-1}`/`x^2=a*d^-1`, plus a general subgroup-membership check
-//! (`n*candidate == NEUTRAL`) that catches order-4 points too, independent of locating one by
+//! (`n*candidate == NEUTRAL`) that catches every point outside `<P>` (`Q + D_{1,2}` and `Q +
+//! (p-1, 0)`, order `2n`; there is no order-4 point, T-307), independent of locating one by
 //! coordinates.
 
 use super::fp512::FieldElement;
@@ -85,8 +86,8 @@ impl Point {
         lhs == rhs
     }
 
-    /// Point addition (also correct for doubling and the neutral element - the formula is
-    /// complete). A convenience wrapper around `ProjectivePoint::add`.
+    /// Point addition (also correct for doubling and the neutral element, exact inside `<P>`;
+    /// see `curve256.rs`'s module doc for points outside it). A convenience wrapper around `ProjectivePoint::add`.
     #[must_use]
     #[allow(clippy::should_implement_trait)]
     pub fn add(self, other: Self) -> Self {
@@ -139,7 +140,7 @@ impl ProjectivePoint {
         }
     }
 
-    /// Додаток Б.4's complete addition law - identical to `curve256.rs`'s own, just over the
+    /// Додаток Б.4's addition law - identical to `curve256.rs`'s own, just over the
     /// 512-bit field.
     #[allow(clippy::many_single_char_names)]
     fn add(self, other: Self) -> Self {

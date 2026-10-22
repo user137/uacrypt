@@ -11316,6 +11316,11 @@ case in step 2, kept even though step 4's stricter-than-literal form incidentall
 an explicit, self-documenting check rather than relying on an incidental side effect to carry the
 argument.
 
+**Correction 2026-10-22 (D-248):** the group-theory step below is wrong - it misses the two
+order-2 points at infinity `D_{1,2}` (rational because `a*d` is a square), so the 2-Sylow subgroup
+is `Z/2 x Z/2` and no order-4 point exists. The fix it motivated (the `n*R'` subgroup check) is
+still required: it rejects the order-`2n` points `P' + (p-1,0)` and `P' + D_i`.
+
 **Finding 2 - the bigger one, found by a second `advisor()` review after Phase 3/4 landed: E256/1
 has cofactor 4, so genuine order-4 points exist and are reachable via a crafted `r`.** `#E(F_p)=4n`
 is the unique multiple of `2n` inside the Hasse interval (checked exhaustively for every `k` up to
@@ -11728,7 +11733,7 @@ changed:
   foreclosed-by-contract (D-111's `dstu4145` precedent) rather than forced.
 
 **The order-4 regression test was attempted and did not land - a real investigative dead end, not
-an oversight.** Constructing a concrete order-4 point needs `curve256.rs`'s `pub(crate)`
+an oversight.** (Answered 2026-10-22, D-248: there is no order-4 point to find.) Constructing a concrete order-4 point needs `curve256.rs`'s `pub(crate)`
 `curve_a`/`curve_d`, invisible to the black-box `tests/` crate, so it needs an internal
 `#[cfg(test)]` module (`fp256.rs`'s `private_constant_tests` precedent). Two things survive the
 attempt even though the test itself doesn't exist:
@@ -15793,3 +15798,30 @@ section and `uacrypt kalyna-cmac --help`/`docs/CLI.md` warnings, a COMPATIBILITY
 `crypto_*` API uses CMAC (`crypto_auth` is Kupyna-KMAC). **Open for the owner:** keep the
 `uacrypt kalyna-cmac` command (interop/benchmark tool, D-31/D-71, used by `docs/PERFORMANCE.md`)
 or remove it; whether this warrants an advisory, and any report on the standard itself.
+
+## D-248: dstu9041 `encrypt` refuses a degenerate recipient; the group is `Z/2 x Z/2 x Z/n` (T-307, 2026-10-22)
+
+**`encrypt` and an unchecked `q`.** `hazmat::dstu9041::encryption*::encrypt` took any `Point`
+(public fields). With `q = NEUTRAL`, `(p-1, 0)` or the off-curve `(0, 0)`, `kappa = x(eps*q)` is one
+of `{1, p-1, 0}` and anyone unwraps `t` (red-team PoC). `crypto_box*` was never affected - its
+`PublicKey` only comes from `point_from_x` or keygen. New `EncryptError::InvalidPublicKey`: `q` must
+be on the curve with `4q` neither `NEUTRAL` nor off the curve, i.e. not of order 1, 2 or 4 (a point
+at infinity reached on the way comes out of the projective formula as `(0, 0)`). Two additions,
+not the full `n*q` ladder: a large-order `q` with a small component only hurts its own owner (who
+cannot decrypt), so the cheap check closes the leak without slowing `crypto_box` seal. Tests:
+`t307_degenerate_recipient_point_is_rejected` in all three `tests/dstu9041_encryption*.rs`.
+
+**The group structure, corrected.** D-167 Finding 2 (and the docs that copied it) argued: the only
+affine 2-torsion besides `NEUTRAL` is `(p-1, 0)`, so the 2-Sylow subgroup is `Z/4` and `E(F_p)` is
+cyclic with order-4 points. That misses the two points at infinity `D_{1,2} = (+-sqrt(a/d), inf)`
+that clause 3.18 itself counts: `a/d` (equivalently `a*d`) is a square on E256/1, E384/1 and E512/1
+(checked from the committed curve JSON), so both are rational and of order 2. Three involutions
+make the 2-Sylow subgroup `Z/2 x Z/2`: `E(F_p) = Z/2 x Z/2 x Z/n`, and **no point of order 4
+exists** - which answers D-173's open "is an order-4 point reachable" question (its search found
+none for that reason) and closes `docs/SECURITY.md`'s matching gap. Also `a = 2` is a non-residue
+(`p = 5 mod 8`), so the addition law is **not complete** (completeness needs `a` square, `d`
+non-square): it is exact inside the odd-order `<P>`, and outside `<P>` a sum landing on `D_{1,2}`
+gives `Z = 0`, i.e. `(0, 0)`. Nothing changes in the code that matters: the `n*R'` subgroup check
+in `point_from_x` was and is required, because `P' + (p-1, 0)` and `P' + D_i` (order `2n`) leak bits
+of `e`; only its stated reason was wrong. Docs corrected: `curve256/384/512.rs`, `encryption.rs`,
+`docs/SECURITY.md`, `docs/pseudocode/dstu9041.md`, `CLAUDE.md`, with correction notes on D-167/D-173.

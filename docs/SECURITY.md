@@ -49,12 +49,10 @@ observable at the real process boundary. Two real findings from this suite: `str
 (`docs/DECISIONS.md` D-187); and confirmation, at this same CLI/file boundary rather than only
 `hazmat`'s in-process API, that both a constructed order-2 DSTU 4145 public key (`verify --key`)
 and a constructed order-2 `crypto_box` ciphertext (`box-open`, the `r=p-1` case, D-167 Finding 1)
-are genuinely rejected. **One gap remains, not closed and not silently dropped**: an order-4 (not
-order-2) attack against `crypto_box`/`dstu9041` is still open - D-173 investigated this directly at
-the `dstu-core` level, with full internal-crate access, and could not confirm either way whether a
-concrete order-4 point is even reachable through the public reconstruction API (`point_from_x`) -
-existence is proven, reachability isn't. This needs an analytic answer, not more test-writing;
-tracked in `docs/TASKS.md` T-200/D-173.
+are genuinely rejected. The order-4 question D-173 left open is answered (D-248, 2026-10-22): no
+point of order 4 exists on E256/1, E384/1 or E512/1 - `a*d` is a square, so the two points at
+infinity are rational and of order 2, and `E(F_p) = Z/2 x Z/2 x Z/n`. The points outside `<P>`
+have order `2n`, and `point_from_x`'s `n*Q` check rejects all of them.
 
 ## Known cryptanalysis (third-party literature)
 

@@ -21,16 +21,13 @@
 //! `T'` - **not optional hardening**. `#E(F_p) = 4n` (the unique multiple of `2n` inside the Hasse
 //! interval - confirmed by checking every `k` up to 20, only `k=2` lands `2n*k` in
 //! `[p+1-2*sqrt(p), p+1+2*sqrt(p)]`). The curve equation's only `y=0` solutions are `x^2=1`, i.e.
-//! `x in {1, p-1}` - exactly `NEUTRAL` and the order-2 point, no third one. A finite abelian group
-//! of order `4n` (`n` odd prime) has its 2-Sylow subgroup either cyclic (`Z/4`, one non-trivial
-//! order-2 element) or Klein four (`Z/2 x Z/2`, three) - since there is provably only one, the
-//! 2-Sylow subgroup is `Z/4`, making `E(F_p)` cyclic of order `4n` overall. **A cyclic group of
-//! order `4n` has genuine order-4 elements** - so an `r` reconstructing to an order-4 point is a
-//! real, reachable ciphertext, not a hypothetical: it would leak `e mod 4` (not just `e`'s parity)
-//! through which of the 3 distinguishable `kappa` values (`x` of `NEUTRAL`/the order-2
-//! point/the order-4 point pair, the latter two sharing an `x` by `x_T=x_{-T}`) `T'=e*R'` lands
-//! on. The subgroup check closes this generally, independent of locating a concrete order-4 point
-//! by coordinates.
+//! `x in {1, p-1}` - `NEUTRAL` and one order-2 point. **Corrected 2026-10-22 (T-307):** the earlier
+//! text concluded from this that the 2-Sylow subgroup is `Z/4` and the group cyclic, but it missed
+//! the two points at infinity `D_{1,2}` that clause 3.18 counts: `a*d` is a square, so they are
+//! rational and of order 2, the 2-Sylow subgroup is `Z/2 x Z/2`, `E(F_p) = Z/2 x Z/2 x Z/n`, and
+//! no point has order 4. An `r` whose `R'` is `P' + (p-1, 0)` or `P' + D_i` (order `2n`) still
+//! leaks bits of `e` through `T' = e*R'` - the conclusion stands - and the subgroup check closes
+//! every such case, independent of locating one by coordinates.
 //!
 //! Step 4 (`if !v.euler_criterion()`) is stricter than clause 12's literal `if δ==p-1`: it also
 //! rejects `δ==0` (i.e. `v==0`), which is exactly the `r=p-1` case. The explicit `r=p-1` check in
@@ -56,6 +53,19 @@ pub enum EncryptError {
     InvalidMessage,
     /// `epsilon` is outside the valid scalar range `{2, ..., n-2}`.
     InvalidEphemeralKey,
+    /// `q` is off the curve or of order 1, 2 or 4 (T-307).
+    InvalidPublicKey,
+}
+
+/// T-307: `q` is on the curve and its order is not 1, 2 or 4, so `T = eps*q` is not computable
+/// without `eps`. `4q` takes two additions; a point at infinity on the way comes out of the
+/// projective formula as `(0, 0)`, which is off the curve, so it is refused too. Cheap on purpose:
+/// a large-order `q` with a small-order component is the recipient's own problem (it cannot
+/// decrypt), not a leak - the full `n*q` check stays in `point_from_x` for keys built from bytes.
+fn is_usable_recipient(q: Point) -> bool {
+    let q2 = q.add(q);
+    let q4 = q2.add(q2);
+    q.is_on_curve() && q4 != Point::NEUTRAL && q4.is_on_curve()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,6 +88,9 @@ pub fn encrypt(
 ) -> Result<[u8; 128], EncryptError> {
     if !is_valid_scalar(epsilon) {
         return Err(EncryptError::InvalidEphemeralKey);
+    }
+    if !is_usable_recipient(q) {
+        return Err(EncryptError::InvalidPublicKey);
     }
     let m_tilde =
         format_m_tilde(message, message_bits).map_err(|_| EncryptError::InvalidMessage)?;

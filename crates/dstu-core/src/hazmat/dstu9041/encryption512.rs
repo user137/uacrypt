@@ -33,6 +33,19 @@ pub enum EncryptError {
     InvalidMessage,
     /// `epsilon` is outside the valid scalar range `{2, ..., n-2}`.
     InvalidEphemeralKey,
+    /// `q` is off the curve or of order 1, 2 or 4 (T-307).
+    InvalidPublicKey,
+}
+
+/// T-307: `q` is on the curve and its order is not 1, 2 or 4, so `T = eps*q` is not computable
+/// without `eps`. `4q` takes two additions; a point at infinity on the way comes out of the
+/// projective formula as `(0, 0)`, which is off the curve, so it is refused too. Cheap on purpose:
+/// a large-order `q` with a small-order component is the recipient's own problem (it cannot
+/// decrypt), not a leak - the full `n*q` check stays in `point_from_x` for keys built from bytes.
+fn is_usable_recipient(q: Point) -> bool {
+    let q2 = q.add(q);
+    let q4 = q2.add(q2);
+    q.is_on_curve() && q4 != Point::NEUTRAL && q4.is_on_curve()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,6 +68,9 @@ pub fn encrypt(
 ) -> Result<[u8; 256], EncryptError> {
     if !is_valid_scalar(epsilon) {
         return Err(EncryptError::InvalidEphemeralKey);
+    }
+    if !is_usable_recipient(q) {
+        return Err(EncryptError::InvalidPublicKey);
     }
     let m_tilde =
         format_m_tilde(message, message_bits).map_err(|_| EncryptError::InvalidMessage)?;

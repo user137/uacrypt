@@ -10559,7 +10559,7 @@ names (`create_new`, 64-bit random), `--force` never over a key, passphrase hand
 - [ ] **T-306** (Low, docs) `crypto_auth`, `crypto_kdf` and the `secretstream` subkey are all bare
   `Kupyna256Kmac(key, msg)`: `derive_subkey(id, ctx) == auth(k, ctx || id_le)`. A real fix changes
   wire formats; document "one key, one API" instead.
-- [ ] **T-307** (Low) dstu9041 hazmat: `encryption*::encrypt` takes an unchecked `Point` (public
+- [x] **T-307** (Low; **done 2026-10-22, D-248**: `EncryptError::InvalidPublicKey`; docs corrected, no order-4 points exist - answers D-173) dstu9041 hazmat: `encryption*::encrypt` takes an unchecked `Point` (public
   fields): `Q` = NEUTRAL, `(p-1,0)` or `(0,0)` makes kappa trivial. And the docs' "complete
   addition law"/"cyclic Z/4n" arguments are wrong: `a = 2` is a non-residue on all three curves
   (`a*d` a residue), so 2-torsion is Z/2 x Z/2 with two points at infinity; `scalar_multiply` gives

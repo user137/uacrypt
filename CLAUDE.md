@@ -522,7 +522,7 @@ check) is in `docs/dstu-crypto-project.md` "Resources found".
   written test-first against that source, verified end-to-end against Додаток Г's own worked
   example (the sole oracle for this primitive, `docs/ORACLES.md`). Two security findings beyond
   clause 12's literal text were caught and fixed before closure (an order-2 point via `r=p-1`, and
-  a genuine order-4 subgroup from E256/1's cofactor 4) — see `docs/DECISIONS.md`'s T-177 entry.
+  order-`2n` points outside `<P>` from cofactor 4 - no order-4 points exist, D-248) — see `docs/DECISIONS.md`'s T-177 entry.
   **`l(p)=512`/E512/1 is implemented too (T-192, 2026-08-08)** — `message512.rs`/`fp512.rs`/
   `curve512.rs`/`encryption512.rs`, same test-first/worked-example-verified pattern, both security
   findings independently re-derived (not assumed to carry over) and re-confirmed applicable.
