@@ -2196,15 +2196,20 @@ impl OutputFile {
             message: e.to_string(),
         })?;
         drop(file);
-        // Out of the interruption table before the rename puts the output at `self.path`, so a
-        // Ctrl-C from here on can never delete the finished output.
-        self.placeholder_guard = None;
-        if let Some(tmp_path) = &self.tmp_path {
-            std::fs::rename(tmp_path, &self.path).map_err(|e| CliError::Io {
-                path: self.path.clone(),
-                message: e.to_string(),
-            })?;
-        }
+        // Out of the interruption table before the rename puts the output at `self.path`, and
+        // both with the cleanup held off, so a Ctrl-C can neither delete the finished output nor
+        // leave the placeholder behind.
+        cleanup::hold_off(|| {
+            self.placeholder_guard = None;
+            match &self.tmp_path {
+                Some(tmp_path) => std::fs::rename(tmp_path, &self.path),
+                None => Ok(()),
+            }
+        })
+        .map_err(|e| CliError::Io {
+            path: self.path.clone(),
+            message: e.to_string(),
+        })?;
         self.committed = true;
         Ok(())
     }
@@ -3261,15 +3266,28 @@ fn run_hash_check(list: &Source) -> Result<(), CliError> {
 }
 
 /// `Ok` only for a local regular file (T-303). On Windows a path with a prefix other than a drive
-/// letter (`\\host\share`, `\\?\`, `\\.\`) is refused before any file-system call, which for a UNC
-/// path would already connect to the host. A `metadata` failure is reported as is, without trying
-/// to open the path anyway.
+/// letter (`\\host\share`, `\\?\`, `\\.\`) or starting `\??\` is refused before any file-system
+/// call, which for a UNC path would already connect to the host. A `metadata` failure is reported
+/// as is, without trying to read the path anyway.
 fn check_list_entry_is_local_file(path: &std::path::Path) -> Result<(), String> {
     const REFUSED: &str = "not a local regular file; a check list only names local files";
     #[cfg(windows)]
-    if let Some(std::path::Component::Prefix(prefix)) = path.components().next() {
-        if !matches!(prefix.kind(), std::path::Prefix::Disk(_)) {
-            return Err(REFUSED.to_string());
+    {
+        let mut components = path.components();
+        match components.next() {
+            Some(std::path::Component::Prefix(prefix))
+                if !matches!(prefix.kind(), std::path::Prefix::Disk(_)) =>
+            {
+                return Err(REFUSED.to_string());
+            }
+            // `\??\` is the NT object namespace, which Win32 passes through to UNC hosts, pipes
+            // and devices; `Path` parses it as a root followed by a `??` name, not as a prefix.
+            Some(std::path::Component::RootDir)
+                if components.next() == Some(std::path::Component::Normal("??".as_ref())) =>
+            {
+                return Err(REFUSED.to_string());
+            }
+            _ => {}
         }
     }
     match std::fs::metadata(path) {

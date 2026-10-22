@@ -95,8 +95,9 @@ All notable changes to this project are documented in this file. Format follows
   current user, set when the file is created, instead of the folder's inherited ACL.
 - **`uacrypt`: Ctrl-C no longer leaves a temp file with decrypted data** (T-301, D-252), nor the
   empty `--out` placeholder that made the re-run refuse.
-- **`uacrypt hash --check` opens only local regular files** (T-303): a device, FIFO, directory or
-  (Windows) UNC entry in the list is reported as failed without being opened.
+- **`uacrypt hash --check` reads only local regular files** (T-303, T-309): a device, FIFO,
+  directory or (Windows) UNC, `\\?\`, `\\.\` or `\??\` entry in the list is reported as failed
+  without being read.
 - **`uacrypt`: bounded reads** (T-304, D-251): `verify --sig` reads at most 67 bytes; a 0.4-0.6
   `box-open` file is read only from a regular file, not stdin.
 - **`uacrypt`: an argument that is not valid Unicode is a usage error** (T-305), not a panic.

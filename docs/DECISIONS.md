@@ -15919,8 +15919,8 @@ re-raises the signal with the default disposition (exit status as before; a sign
 parent, e.g. under `nohup`, stays ignored). Windows: a console control handler `DeleteFileW`s them
 and returns FALSE so the default exit follows; the open temp file was created with
 `FILE_SHARE_DELETE`, so it is deleted when the process closes it. `commit` drops the placeholder's
-guard **before** the rename, so an interruption after the rename can never delete the finished
-output. The table is 8 `AtomicPtr` slots holding leaked NUL-terminated paths: a signal handler may
+guard **before** the rename, and both run inside `cleanup::hold_off` (T-309, below), so an
+interruption can neither delete the finished output nor leave the placeholder. The table is 8 `AtomicPtr` slots holding leaked NUL-terminated paths: a signal handler may
 not lock or free, and a released string may still be read by a handler on another thread.
 
 **Not covered:** `kill -9`/End task/power loss (documented in `docs/CLI.md`), a path registered
@@ -15932,3 +15932,28 @@ whatever was there; the prompt runs before any output exists.
 both files exist - SIGINT on Unix (Pi), Ctrl-Break to its own process group on Windows. Failed on
 Windows before the fix ("left behind: out, out.uacrypt-tmp-..."). Where Ctrl-Break cannot be
 delivered (no shared console) the test prints SKIPPED instead of passing silently.
+
+**Addendum (T-309, 2026-10-23, independent review).** The "can never delete the finished output"
+claim held only on Unix, where the handler runs on the interrupted thread. Windows runs the console
+handler on its own thread: it could load the placeholder's entry, the main thread then drop the
+guard and rename, and the handler delete the finished output. On both platforms an interruption
+between dropping the guard and the rename left the empty placeholder (the symptom T-301 fixed).
+Fix: `cleanup::hold_off` runs those two steps with the cleanup held off - Unix blocks the three
+signals for the thread (`pthread_sigmask`; a pending signal is delivered after the rename, finds
+only the already-renamed temp path, and ends the process as before), Windows holds a `Mutex` the
+console handler also takes (it is an ordinary thread, so it may block). Both are best effort: if
+the mask cannot be set the window is the few instructions it was before. Not tested by a timing
+test (the window is microseconds); checked by reading. The review also asked for an explicit
+decision on `signal`'s `SIG_ERR` and `SetConsoleCtrlHandler`'s failure: both leave the pre-T-301
+behaviour (files left on interruption), recorded in the code as best effort.
+
+**`hash --check` and `\??\` (T-309, same review).** T-303's Windows guard refused a path whose
+first `Path` component is a non-disk prefix. `\??\C:\x` and `\??\UNC\host\share\x` parse as a
+root followed by a `??` name, not as a prefix, and Win32 passes `\??\` through to the NT object
+namespace - so a hostile check list could make `uacrypt` connect to an SMB host (sending the
+user's NTLM credentials) or a named pipe. Confirmed by the reviewer and again here (a `\??\` entry
+for a local file hashed and reported `OK`). Fix: a root followed by `??` is refused too, before
+any file-system call. Also corrected: on Windows `std::fs::metadata` opens a device (`CONIN$`) with
+no access rights to query it, so the docs now say "not read", not "not opened". Not fixed: a
+disk-letter path that is a symlink to a UNC target is followed by `metadata`; creating such a link
+needs the victim's own disk and (by default) admin rights, which a check list does not give.

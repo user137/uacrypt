@@ -67,8 +67,10 @@ cat report.pdf | uacrypt hash --in -          # prints "<hex>  -"
   consume or wait on your script's stdin - so it is reported as `-: FAILED (stdin is not read from
   a check list ...)` and counts as a failure; a file really named `-` is listed as `./-`. For the
   same reason a list entry is opened only if it is a local regular file: a directory, a device
-  (`CONIN$`, `/dev/tty`, `/dev/zero`), a FIFO or, on Windows, a UNC or `\\?\`/`\\.\` path is
-  reported as `FAILED (not a local regular file ...)` without being opened (T-303).
+  (`CONIN$`, `/dev/tty`, `/dev/zero`), a FIFO or, on Windows, a UNC or `\\?\`/`\\.\`/`\??\` path
+  is reported as `FAILED (not a local regular file ...)` without being read (T-303, T-309). A UNC
+  or `\??\` path is refused before any file-system call, so no connection is made; on Windows the
+  type check itself opens a device with no access rights, which reads nothing.
 - Every other path flag (`--key`, `--sig`, `key-import --in`, and all paths of
   the lower-level `kalyna-*`/`kupyna-digest`/`strumok-crypt` commands) refuses `-` as a usage
   error, so `-` never silently names a file. A file really named `-` is `./-`.

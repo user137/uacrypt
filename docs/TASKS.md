@@ -10568,5 +10568,12 @@ names (`create_new`, 64-bit random), `--force` never over a key, passphrase hand
   (`webpki-root-certs` 1.0.9, build-only via `ext-php-rs` -> `ureq`). Fix: `cargo update -p
   webpki-root-certs` (1.0.10).
 
+- [x] **T-309** (Medium, security; **done 2026-10-23**, D-252 addendum; from the owner-approved
+  independent review of `252cf9c..HEAD`) `hash --check` on Windows let `\??\` entries through to
+  UNC hosts/pipes (Medium, reproduced); `commit` could race the Windows console handler or leave
+  the placeholder (Low); docs said a device entry is "not opened" (Low); `install()` ignored
+  handler-installation failures without a stated decision (Low). Fix: refuse a root + `??`;
+  `cleanup::hold_off` around guard drop + rename; doc wording; best-effort comments.
+
 **State 2026-10-22: all eleven done, local commits `ff6e2f5`..HEAD, not pushed** (advisory-relevant for released 0.6.0: T-298, T-299, T-300, T-301 - the owner decides on an advisory before the push; the pushed tree would carry D-246..D-252's recipes and the CHANGELOG `[Unreleased]` lines; `5141320`'s subject names the CMAC warning). **Wave order (Claude, 2026-10-22):** T-308; T-299 (+ capi/bindings); T-298 (docs/test part); T-307;
 T-302; then the CLI batch T-300, T-303, T-304, T-305, T-301; T-306 docs. Commit per task.

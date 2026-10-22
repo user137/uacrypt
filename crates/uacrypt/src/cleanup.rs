@@ -79,6 +79,55 @@ pub(crate) fn register(path: &std::path::Path) -> Option<Guard> {
     }
 }
 
+/// Runs `f` (taking a path out of the table and renaming the finished output onto it) so that the
+/// cleanup cannot run in the middle: between the two steps it would leave the placeholder, and
+/// on Windows, where the console handler is another thread, it could read the placeholder entry
+/// before `f` and delete the finished output after. An interruption arriving meanwhile is handled
+/// once `f` returns. Unix blocks the three signals for this thread (the only one that writes an
+/// output); Windows holds the lock the console handler takes.
+pub(crate) fn hold_off<R>(f: impl FnOnce() -> R) -> R {
+    #[cfg(unix)]
+    {
+        if cfg!(miri) {
+            return f();
+        }
+        // SAFETY: `sigemptyset`/`sigaddset` initialise a local set; `pthread_sigmask` reads it and
+        // writes the previous mask into a local, both valid for the calls.
+        unsafe {
+            let mut block: libc::sigset_t = core::mem::zeroed();
+            let mut previous: libc::sigset_t = core::mem::zeroed();
+            libc::sigemptyset(&raw mut block);
+            for signal in [libc::SIGINT, libc::SIGTERM, libc::SIGHUP] {
+                libc::sigaddset(&raw mut block, signal);
+            }
+            // Best effort: if the mask cannot be set, `f` runs unprotected - the window is then
+            // the few instructions it was before this function existed.
+            let blocked =
+                libc::pthread_sigmask(libc::SIG_BLOCK, &raw const block, &raw mut previous) == 0;
+            let result = f();
+            if blocked {
+                libc::pthread_sigmask(libc::SIG_SETMASK, &raw const previous, std::ptr::null_mut());
+            }
+            result
+        }
+    }
+    #[cfg(windows)]
+    {
+        let _held = HANDLER_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        f()
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        f()
+    }
+}
+
+/// Taken by the console handler around its deletions and by [`hold_off`] around a commit.
+#[cfg(windows)]
+static HANDLER_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(unix)]
 fn encode(path: &std::path::Path) -> Option<*mut Unit> {
     use std::os::unix::ffi::OsStrExt;
@@ -124,6 +173,8 @@ fn install() {
         // SAFETY: `on_signal` is an `extern "C" fn(c_int)` doing only async-signal-safe calls.
         let previous =
             unsafe { libc::signal(signal, on_signal as *const () as libc::sighandler_t) };
+        // `SIG_ERR` (cannot happen for these three) leaves the default disposition: the files are
+        // then left on interruption, as before T-301 - best effort, not a reason to refuse to run.
         if previous == libc::SIG_IGN {
             // Ignored by whoever started us (`nohup`, a background job): keep it ignored.
             // SAFETY: restores the disposition `signal` just returned.
@@ -152,6 +203,8 @@ extern "C" fn on_signal(signal: libc::c_int) {
 
 #[cfg(windows)]
 fn install() {
+    // A failure (no console attached, for one) leaves the files on interruption, as before T-301 -
+    // best effort, not a reason to refuse to run.
     // SAFETY: `on_console_event` has the PHANDLER_ROUTINE signature and lives for the whole
     // process.
     unsafe {
@@ -161,9 +214,13 @@ fn install() {
 
 /// Deletes every registered path, then returns FALSE so the default handler still ends the
 /// process. An open temp file is only marked for deletion (it was opened with
-/// `FILE_SHARE_DELETE`); it disappears when the process exits and closes its handle.
+/// `FILE_SHARE_DELETE`); it disappears when the process exits and closes its handle. It runs on
+/// its own thread, so unlike a Unix signal handler it may block on [`HANDLER_LOCK`].
 #[cfg(windows)]
 unsafe extern "system" fn on_console_event(_event: u32) -> windows_sys::core::BOOL {
+    let _held = HANDLER_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     for entry in &PATHS {
         let path = entry.load(Ordering::SeqCst);
         if !path.is_null() {
