@@ -8738,7 +8738,17 @@ Moved to `docs/SECURITY.md` "Standards baseline" (T-246, 2026-10-11): policy liv
   all eight bindings (964191c..79e91ed, 2026-10-20; each runner reads `curve: 384`). Local checks
   green per binding. Pi (aarch64, 2026-10-20): workspace clippy + `cargo test --workspace
   --all-features`, `xtask cpp`, clang-tidy on the C++ binding, all clean. Perf: docs/PERFORMANCE.md.
-  Left: CI after the owner's push (Miri timing of the new 384 files, Sonar gate, asm-check).
+  Left: CI after the owner's push (Miri timing of the new 384 files incl. the 3-way
+  `dstu9041_encryption_384` shards, Sonar gate via api/qualitygates, asm-check and Kani on CI's
+  rustc, cppcheck - installed neither here nor on the Pi). UAPKI 2.0.3 run on KW-p (4f6b331).
+  RESUME (2026-10-22): 19 local commits c14c83d..4f6b331 not pushed; after the push check
+  `gh run list`, record Miri times here, then close T-297 and move to step 4 (T-264). Open offer to
+  the owner: one independent read-only review on the strongest model (crypto + parser change), spawn
+  only on a yes. Forks decided without asking (reported 2026-10-20): KW-p refuses block-aligned
+  input; padding errors reuse `ChecksumMismatch`; no v2 at 384; KDF label `cryptbx3`; `box/v3.json`
+  regenerated (256/512 cases re-sealed, v3 unreleased). Machine-local, not in git: `rustup override`
+  for `bindings/php` (old one was on the `cipher_ua` path), noted in `.claude.local.md`. `46b1dc9`
+  alone fails clippy, `e009e06` fixes it.
 - [x] **T-252** (**done locally 2026-09-24, not yet run in CI** - `release.yml`: `cargo auditable
   build --locked`, a CycloneDX SBOM job, `assemble-release-assets` with provenance attestations and a
   Sigstore keyless-signed `SHA256SUMS`, every publish job gated to a `v*` tag push, and
