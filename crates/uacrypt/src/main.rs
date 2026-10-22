@@ -10,7 +10,23 @@
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    // T-305: `env::args()` panics on an argument that is not valid Unicode; refuse it as a usage
+    // error instead (exit 2, the same as any other bad command line).
+    let mut args = Vec::new();
+    for (position, arg) in std::env::args_os().skip(1).enumerate() {
+        match arg.into_string() {
+            Ok(arg) => args.push(arg),
+            Err(arg) => {
+                eprintln!(
+                    "uacrypt: argument {} is not valid Unicode ({}) - uacrypt takes paths and \
+                     flags as Unicode text only",
+                    position + 1,
+                    arg.to_string_lossy()
+                );
+                return ExitCode::from(2);
+            }
+        }
+    }
     match uacrypt::run(&args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {

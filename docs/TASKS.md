@@ -10554,7 +10554,7 @@ names (`create_new`, 64-bit random), `--force` never over a key, passphrase hand
 - [x] **T-304** (Low, DoS; **done 2026-10-22, D-251**: `--sig` read capped at 67 bytes; legacy v2 only from a regular file, bounded by its size) Unbounded reads: `verify --sig` (lib.rs:3949 `fs::read`, 512 MiB ->
   517 MB peak) and `box-open` with a leading `0x02` (legacy v2 path reads all of `--in`, D-239).
   Fix: bounded read for the signature; a size cap on the legacy path.
-- [ ] **T-305** (Low) A non-UTF-8 argument panics (`main.rs` `env::args()`, exit 101). Fix: a clean
+- [x] **T-305** (Low; **done 2026-10-22**: `args_os`, exit 2 naming the argument's position; non-Unicode file names stay unsupported) A non-UTF-8 argument panics (`main.rs` `env::args()`, exit 101). Fix: a clean
   usage error.
 - [ ] **T-306** (Low, docs) `crypto_auth`, `crypto_kdf` and the `secretstream` subkey are all bare
   `Kupyna256Kmac(key, msg)`: `derive_subkey(id, ctx) == auth(k, ctx || id_le)`. A real fix changes

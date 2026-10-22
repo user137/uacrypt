@@ -13,7 +13,7 @@ with `--` can be passed as `--in=--odd-name`. `uacrypt help` prints the overview
 |---|---|---|
 | 0 | success | also `--help`, `help`, `--version` |
 | 1 | the input was checked and rejected | authentication failed, bad signature, truncated or malformed ciphertext, an empty or over-long message for a mode that forbids it, a wrong-length signature or tag, a `hash --check` file that is malformed or lists a file that does not match or cannot be read |
-| 2 | usage error | unknown command or flag, missing/repeated flag, missing value, missing subcommand |
+| 2 | usage error | unknown command or flag, missing/repeated flag, missing value, missing subcommand, an argument that is not valid Unicode (T-305) |
 | 3 | a file or key could not be used | missing or unreadable file, a key file of the wrong kind, damaged or not typed (see [Key files](#key-files)), wrong-size or invalid key/nonce/IV/tweak, an `--out` that already exists (see below) |
 
 A script can therefore tell "this file was forged" (1) from "I typed the command wrong" (2).

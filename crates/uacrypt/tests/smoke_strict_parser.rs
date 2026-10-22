@@ -436,3 +436,33 @@ fn unwritable_output_exits_3_and_leaves_nothing() {
     assert!(!out.exists());
     assert!(!dir.file("no-such-dir").exists());
 }
+
+/// T-305: an argument that is not valid Unicode is a usage error (exit 2) naming its position, not
+/// a panic (exit 101).
+#[test]
+#[cfg_attr(
+    miri,
+    ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
+)]
+fn a_non_unicode_argument_is_a_usage_error_not_a_panic() {
+    #[cfg(windows)]
+    let bad: std::ffi::OsString = {
+        use std::os::windows::ffi::OsStringExt;
+        std::ffi::OsString::from_wide(&[0x61, 0xDC80, 0x62])
+    };
+    #[cfg(unix)]
+    let bad: std::ffi::OsString = {
+        use std::os::unix::ffi::OsStringExt;
+        std::ffi::OsString::from_vec(vec![b'a', 0xFF, b'b'])
+    };
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_uacrypt"))
+        .arg("hash")
+        .arg("--in")
+        .arg(&bad)
+        .output()
+        .expect("spawn the real uacrypt binary");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(2), "{stderr}");
+    assert!(stderr.contains("argument 3 is not valid Unicode"), "{stderr}");
+    assert!(!stderr.contains("panicked"), "{stderr}");
+}
