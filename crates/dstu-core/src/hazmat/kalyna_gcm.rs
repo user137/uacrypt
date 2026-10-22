@@ -143,7 +143,9 @@ macro_rules! kalyna_gcm_variant {
                 aad_len_bits: u64,
                 ct_len_bits: u64,
             ) -> [u8; $block_bytes] {
-                let h_key = <$gf>::from_le_bytes(&self.key.encrypt_block(&[0u8; $block_bytes]));
+                // T-302: `H = E_K(0)` forges GHASH; both copies are wiped before returning.
+                let h_block = zeroize::Zeroizing::new(self.key.encrypt_block(&[0u8; $block_bytes]));
+                let mut h_key = <$gf>::from_le_bytes(&h_block);
                 let acc = Self::absorb_padded(<$gf>::ZERO, h_key, aad);
                 let acc = Self::absorb_padded(acc, h_key, ciphertext);
 
@@ -159,7 +161,9 @@ macro_rules! kalyna_gcm_variant {
                     combined[i] = length_block[i] ^ acc_bytes[i];
                 }
 
-                self.key.encrypt_block(&combined)
+                let tag = self.key.encrypt_block(&combined);
+                zeroize::Zeroize::zeroize(&mut h_key);
+                tag
             }
 
             /// Encrypts `plaintext` into `ciphertext_out` (same length) and returns the

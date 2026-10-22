@@ -279,8 +279,9 @@ fn rekey(subkey: &mut [u8; 32]) {
     let Ok(new_subkey) = Kupyna256Kmac::mac(subkey, REKEY_CONTEXT) else {
         unreachable!("subkey is always exactly 32 bytes, Kupyna256Kmac's own mac_len")
     };
+    let new_subkey = zeroize::Zeroizing::new(new_subkey);
     subkey.zeroize();
-    *subkey = new_subkey;
+    *subkey = *new_subkey;
 }
 
 fn chunk_iv(counter: u64) -> [u8; 32] {

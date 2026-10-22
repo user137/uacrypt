@@ -10543,7 +10543,7 @@ names (`create_new`, 64-bit random), `--force` never over a key, passphrase hand
   `<out>.uacrypt-tmp-<hex>` holding verified plaintext and the empty `--out` placeholder, so a
   re-run fails "already exists" (cleanup is only in `Drop`, lib.rs:2257-2366). Fix: a Ctrl-C /
   console-ctrl handler that removes the registered paths; document leftovers for kill -9.
-- [ ] **T-302** (Low) Zeroization gaps: `KupynaCore` (no zeroize; after absorbing PAD(K) its `h`
+- [x] **T-302** (Low; **done 2026-10-22, D-249**) Zeroization gaps: `KupynaCore` (no zeroize; after absorbing PAD(K) its `h`
   forges KMAC under K), `kupyna.rs` `tail`/`block` copies, Kalyna key-expansion temporaries
   (`k0`/`k1`/`initial_data`/`kt`), `kalyna_kw` intermediates, `secretstream` `new_subkey`,
   `kalyna_gcm` `h_key`; dstu9041 `m_tilde`/`hashed_input` and `Message` (derived `Debug` prints the

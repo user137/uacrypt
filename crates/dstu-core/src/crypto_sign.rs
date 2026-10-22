@@ -219,7 +219,9 @@ impl SigningKey {
     #[must_use]
     pub fn verifying_key(&self) -> VerifyingKey {
         let g = Point::generator();
-        let q = g.scalar_multiply(&self.0.to_be_bytes()).negate();
+        // T-302: the byte copy of `d` is wiped on drop.
+        let d_bytes = zeroize::Zeroizing::new(self.0.to_be_bytes());
+        let q = g.scalar_multiply(&d_bytes).negate();
         VerifyingKey(q)
     }
 
@@ -242,8 +244,11 @@ impl SigningKey {
         let g = Point::generator();
         let mut counter: u8 = 0;
         loop {
-            let e = derive_nonce(self.0, digest, counter);
-            if let Some((r, s)) = signature::sign(digest, self.0, e, g) {
+            let mut e = derive_nonce(self.0, digest, counter);
+            let signed = signature::sign(digest, self.0, e, g);
+            // T-302: the nonce plus one signature gives `d`.
+            e.zeroize();
+            if let Some((r, s)) = signed {
                 return Signature { r, s };
             }
             counter = counter.wrapping_add(1);
@@ -297,7 +302,8 @@ impl VerifyingKey {
 /// truncation, so no information about `d` is lost.
 fn derive_nonce(d: Scalar, hash: &[u8; 32], counter: u8) -> Scalar {
     let mut key = [0u8; 32];
-    key[11..].copy_from_slice(&d.to_be_bytes());
+    let d_bytes = zeroize::Zeroizing::new(d.to_be_bytes());
+    key[11..].copy_from_slice(&d_bytes[..]);
     let mut message = [0u8; 33];
     message[..32].copy_from_slice(hash);
     message[32] = counter;

@@ -72,8 +72,10 @@ pub fn encrypt(
     if !is_usable_recipient(q) {
         return Err(EncryptError::InvalidPublicKey);
     }
-    let m_tilde =
-        format_m_tilde(message, message_bits).map_err(|_| EncryptError::InvalidMessage)?;
+    // T-302: `m_tilde` is the plaintext (the KEM seed under `crypto_box*`).
+    let m_tilde = Zeroizing::new(
+        format_m_tilde(message, message_bits).map_err(|_| EncryptError::InvalidMessage)?,
+    );
     let l_m_tilde = encode_l_m_tilde(message_bits);
     let m_prime = Zeroizing::new(build_m_prime(HASH_ID_KUPYNA256, &m_tilde, &l_m_tilde));
 

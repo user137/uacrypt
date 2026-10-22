@@ -53,9 +53,8 @@ fn kmac_generic(
     // PAD(K): always exactly one block for all three MAC sizes (key.len() + 13 <= block_bytes
     // holds for 32+13<=64, 48+13<=128, 64+13<=128 - not a coincidence, the same margin the
     // official vectors themselves rely on).
+    // T-242/T-302: the padded copy of the key is wiped as soon as it is absorbed.
     let (padded_key, padded_key_len) = kupyna_padding(key, bits(key.len()), block_bytes);
-    // T-242: the padded copy of the key is wiped as soon as it is absorbed.
-    let padded_key = zeroize::Zeroizing::new(padded_key);
     core.update(&padded_key[..padded_key_len]);
 
     // M, raw - contributes to `core`'s own running `total_len` normally, same as any other

@@ -330,7 +330,10 @@ pub(crate) fn read_key(
         path: path.to_path_buf(),
         message: e.to_string(),
     };
-    let mut text = Zeroizing::new(Vec::new());
+    // T-302: sized up front so `read_to_end` never reallocates, which would leave un-wiped copies
+    // of the key hex behind (as `passphrase.rs` does for the same reason).
+    #[allow(clippy::cast_possible_truncation)] // MAX_KEY_FILE_BYTES is 256
+    let mut text = Zeroizing::new(Vec::with_capacity(MAX_KEY_FILE_BYTES as usize + 1));
     std::fs::File::open(path)
         .and_then(|f| f.take(MAX_KEY_FILE_BYTES + 1).read_to_end(&mut text))
         .map_err(io_err)?;

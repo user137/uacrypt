@@ -41,11 +41,24 @@ pub enum MessageError {
 }
 
 /// The recovered fields from a successfully parsed `M'` (clause 12 steps 9-17).
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// `m_tilde` is the plaintext (in `crypto_box*` the whole KEM seed): wiped on drop and redacted in
+/// `Debug` (T-302).
+#[derive(Clone, PartialEq, Eq, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
 pub struct Message {
     pub hash_id: u8,
     pub bit_length: usize,
     pub m_tilde: [u8; M_TILDE_BYTES],
+}
+
+impl core::fmt::Debug for Message {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Message")
+            .field("hash_id", &self.hash_id)
+            .field("bit_length", &self.bit_length)
+            .field("m_tilde", &"<redacted>")
+            .finish()
+    }
 }
 
 /// Clause 11 steps 3-4: left-pad `message` (exactly `message_bits.div_ceil(8)` bytes, big-endian)
@@ -90,10 +103,10 @@ pub fn build_m_prime(
     m_tilde: &[u8; M_TILDE_BYTES],
     l_m_tilde: &[u8; 2],
 ) -> [u8; M_PRIME_BYTES] {
-    let mut hashed_input = [0u8; 2 + M_TILDE_BYTES];
+    let mut hashed_input = zeroize::Zeroizing::new([0u8; 2 + M_TILDE_BYTES]);
     hashed_input[..2].copy_from_slice(l_m_tilde);
     hashed_input[2..].copy_from_slice(m_tilde);
-    let digest = Kupyna256::digest(&hashed_input);
+    let digest = Kupyna256::digest(&hashed_input[..]);
 
     let mut m_prime = [0u8; M_PRIME_BYTES];
     m_prime[0] = hash_id;
@@ -124,7 +137,7 @@ pub fn parse_m_prime(m_prime: &[u8; M_PRIME_BYTES]) -> Result<Message, MessageEr
     let embedded_hash = &m_prime[1..=L_H_BYTES];
     let mut l_m_tilde = [0u8; 2];
     l_m_tilde.copy_from_slice(&m_prime[1 + L_H_BYTES..3 + L_H_BYTES]);
-    let mut m_tilde = [0u8; M_TILDE_BYTES];
+    let mut m_tilde = zeroize::Zeroizing::new([0u8; M_TILDE_BYTES]);
     m_tilde.copy_from_slice(&m_prime[3 + L_H_BYTES..]);
 
     let bit_length = usize::from(u16::from_be_bytes(l_m_tilde));
@@ -135,10 +148,10 @@ pub fn parse_m_prime(m_prime: &[u8; M_PRIME_BYTES]) -> Result<Message, MessageEr
         return Err(MessageError::MessageTooLong);
     }
 
-    let mut hashed_input = [0u8; 2 + M_TILDE_BYTES];
+    let mut hashed_input = zeroize::Zeroizing::new([0u8; 2 + M_TILDE_BYTES]);
     hashed_input[..2].copy_from_slice(&l_m_tilde);
-    hashed_input[2..].copy_from_slice(&m_tilde);
-    let digest = Kupyna256::digest(&hashed_input);
+    hashed_input[2..].copy_from_slice(&m_tilde[..]);
+    let digest = Kupyna256::digest(&hashed_input[..]);
     // Constant-time: this compares secret-key-adjacent (KW-unwrapped, hence caller-secret-derived
     // in the `decrypt` call path) data - `!=` on slices is not a documented constant-time
     // primitive (`docs/SECURITY.md`'s standing rule).
@@ -167,6 +180,6 @@ pub fn parse_m_prime(m_prime: &[u8; M_PRIME_BYTES]) -> Result<Message, MessageEr
     Ok(Message {
         hash_id,
         bit_length,
-        m_tilde,
+        m_tilde: *m_tilde,
     })
 }

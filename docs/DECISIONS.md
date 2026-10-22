@@ -15825,3 +15825,30 @@ gives `Z = 0`, i.e. `(0, 0)`. Nothing changes in the code that matters: the `n*R
 in `point_from_x` was and is required, because `P' + (p-1, 0)` and `P' + D_i` (order `2n`) leak bits
 of `e`; only its stated reason was wrong. Docs corrected: `curve256/384/512.rs`, `encryption.rs`,
 `docs/SECURITY.md`, `docs/pseudocode/dstu9041.md`, `CLAUDE.md`, with correction notes on D-167/D-173.
+
+## D-249: zeroization gaps closed (T-302, 2026-10-22)
+
+**Finding** (red-team wave; measured by a stack scan for `KupynaCore`/Kalyna key expansion, the rest
+by reading). Copies of keys, nonces and plaintext outlived their use. **Wiped now** (`Zeroizing`
+or `ZeroizeOnDrop`):
+- `hazmat::kupyna`: `KupynaCore` (`h` after `PAD(K)` computes KMAC under `K` for any message;
+  `buffer` holds `~K`), `kupyna_padding`'s returned buffer (holds `K` for `PAD(K)`), the buffered
+  block copy in `update`, `output`'s `t_final`/`flat`.
+- `hazmat::kalyna` key schedule: `k0`/`k1`, `initial_data`, `kt`, `kt_round`, the per-round keys
+  before they are stored, `key_expand_odd`'s copies.
+- `hazmat::kalyna_kw`: `big_b`, the per-step blocks and their encryptions/decryptions.
+- `hazmat::kalyna_gcm`: `H = E_K(0)` (block and field element; the GF type gained `Zeroize`).
+- `crypto_secretstream` rekey: the new subkey's temporary.
+- `hazmat::dstu9041`: `encrypt`'s `m_tilde` (the KEM seed under `crypto_box*`), `build_m_prime`/
+  `parse_m_prime` locals, and `Message` (`ZeroizeOnDrop`, `Debug` redacts `m_tilde` - it used to
+  print the seed).
+- DSTU 4145: the nonce `e` after each signing attempt, the byte copies of `d` and `e`.
+- `uacrypt` `read_key`: the buffer is sized up front, so `read_to_end` never reallocates and leaves
+  key-hex copies behind (as `passphrase.rs` already did).
+
+**Not done, best effort only:** values passed by value through `Copy` types (field elements,
+`Scalar`, ladder accumulators) and function-return temporaries can still leave register/stack
+copies the compiler places; Rust cannot guarantee their erasure. Per-block `compress_block` column
+buffers in Kupyna are left (they hold message bytes, overwritten by the next block; wiping them
+would cost every hash). No test: zeroization is not observable through the public API (a
+type-signature-level gap, recorded here per the project's misuse-category rule).

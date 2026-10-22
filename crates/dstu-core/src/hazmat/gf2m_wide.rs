@@ -45,7 +45,7 @@ macro_rules! gf2m_field {
     ($elem:ident, $limbs:literal, $limbs2:literal, $m:literal, $f1:literal, $f2:literal, $f3:literal) => {
         #[doc = concat!("An element of GF(2^", stringify!($m), ") - see the module doc comment ",
             "for the reduction polynomial citation and the little-endian byte-order derivation.")]
-        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, zeroize::Zeroize)]
         pub struct $elem(pub [u64; $limbs]);
 
         // [`$elem::reduce`]'s word-wise closed form folds a whole word `T` down by XORing

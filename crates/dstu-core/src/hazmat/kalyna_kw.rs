@@ -117,7 +117,8 @@ macro_rules! kalyna_kw_variant {
                 let n = 2 * (r + 1);
                 let v = (n - 1) * 6;
 
-                let mut big_b = [0u8; $half_bytes];
+                // T-302: `big_b` and the per-step blocks below carry wrapped plaintext.
+                let mut big_b = zeroize::Zeroizing::new([0u8; $half_bytes]);
                 big_b.copy_from_slice(&plaintext[..$half_bytes]);
 
                 // T-242: holds key-wrapped secret material; wiped on every return path.
@@ -132,12 +133,10 @@ macro_rules! kalyna_kw_variant {
                 // Remaining slots up to index n - 2 stay zero - the appended checksum block.
 
                 for i in 1..=v {
-                    let mut block = [0u8; $block_bytes];
-                    block[..$half_bytes].copy_from_slice(&big_b);
+                    let mut block = zeroize::Zeroizing::new([0u8; $block_bytes]);
+                    block[..$half_bytes].copy_from_slice(&*big_b);
                     block[$half_bytes..].copy_from_slice(&b[0]);
-                    let r_block = cipher.encrypt_block(&block);
-
-                    let mut tweaked = r_block;
+                    let mut tweaked = zeroize::Zeroizing::new(cipher.encrypt_block(&block));
                     #[allow(clippy::cast_possible_truncation)] // i <= v <= 246, fits u32 trivially
                     let tweak = (i as u32).to_le_bytes();
                     for k in 0..4 {
@@ -148,10 +147,11 @@ macro_rules! kalyna_kw_variant {
                     for j in 0..(n - 2) {
                         b[j] = b[j + 1];
                     }
-                    b[n - 2].copy_from_slice(&r_block[..$half_bytes]);
+                    // The tweak touched only the upper half, so this is `E(block)`'s lower half.
+                    b[n - 2].copy_from_slice(&tweaked[..$half_bytes]);
                 }
 
-                out[..$half_bytes].copy_from_slice(&big_b);
+                out[..$half_bytes].copy_from_slice(&*big_b);
                 let mut off = $half_bytes;
                 for j in 0..(n - 1) {
                     out[off..off + $half_bytes].copy_from_slice(&b[j]);
@@ -203,7 +203,8 @@ macro_rules! kalyna_kw_variant {
                 let n = 2 * (r + 1);
                 let v = (n - 1) * 6;
 
-                let mut big_b = [0u8; $half_bytes];
+                // T-302: `big_b` and the per-step blocks below carry unwrapped plaintext.
+                let mut big_b = zeroize::Zeroizing::new([0u8; $half_bytes]);
                 big_b.copy_from_slice(&ciphertext[..$half_bytes]);
 
                 // T-242: holds key-wrapped secret material; wiped on every return path.
@@ -215,19 +216,19 @@ macro_rules! kalyna_kw_variant {
                 }
 
                 for i in (1..=v).rev() {
-                    let last = b[n - 2];
-                    let mut block = [0u8; $block_bytes];
-                    block[..$half_bytes].copy_from_slice(&last);
+                    let last = zeroize::Zeroizing::new(b[n - 2]);
+                    let mut block = zeroize::Zeroizing::new([0u8; $block_bytes]);
+                    block[..$half_bytes].copy_from_slice(&*last);
 
-                    let mut tweaked_b = big_b;
+                    let mut tweaked_b = zeroize::Zeroizing::new(*big_b);
                     #[allow(clippy::cast_possible_truncation)] // i <= v <= 246, fits u32 trivially
                     let tweak = (i as u32).to_le_bytes();
                     for k in 0..4 {
                         tweaked_b[k] ^= tweak[k];
                     }
-                    block[$half_bytes..].copy_from_slice(&tweaked_b);
+                    block[$half_bytes..].copy_from_slice(&*tweaked_b);
 
-                    let d = cipher.decrypt_block(&block);
+                    let d = zeroize::Zeroizing::new(cipher.decrypt_block(&block));
                     big_b.copy_from_slice(&d[..$half_bytes]);
 
                     for j in (1..=(n - 2)).rev() {
@@ -244,7 +245,7 @@ macro_rules! kalyna_kw_variant {
                     return Err(KwError::ChecksumMismatch);
                 }
 
-                out[..$half_bytes].copy_from_slice(&big_b);
+                out[..$half_bytes].copy_from_slice(&*big_b);
                 let mut off = $half_bytes;
                 for j in 0..(n - 3) {
                     out[off..off + $half_bytes].copy_from_slice(&b[j]);

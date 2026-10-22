@@ -111,7 +111,9 @@ pub fn sign(hash: &[u8], d: Scalar, e: Scalar, g: Point) -> Option<([u8; 21], [u
         h = FieldElement::ONE;
     }
 
-    let (fe_x, _) = match g.scalar_multiply(&e.to_be_bytes()) {
+    // T-302: the byte copy of the nonce is wiped on drop.
+    let e_bytes = zeroize::Zeroizing::new(e.to_be_bytes());
+    let (fe_x, _) = match g.scalar_multiply(&e_bytes) {
         Point::Affine(x, y) => (x, y),
         Point::Infinity => return None,
     };

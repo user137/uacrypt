@@ -314,13 +314,14 @@ fn h_to_array<const COLUMNS: usize>(h: &[[u8; ROWS]; MAX_COLUMNS]) -> [[u8; ROWS
 /// finalize`'s own padding and `hazmat::kupyna_kmac`'s two independent padding points (`PAD(K)`,
 /// `PAD(M)`), which each need this formula applied with a length value other than `KupynaCore`'s
 /// own running `total_len` - factored out so there is one implementation of this formula, not
-/// three. Returns the padding buffer and how many of its bytes are actually used.
+/// three. Returns the padding buffer and how many of its bytes are actually used. Wiped on drop:
+/// for `PAD(K)` it holds the key (T-302).
 pub(crate) fn kupyna_padding(
     prefix: &[u8],
     msg_bits: u128,
     block_bytes: usize,
-) -> ([u8; 2 * MAX_BLOCK_BYTES], usize) {
-    let mut tail = [0u8; 2 * MAX_BLOCK_BYTES];
+) -> (zeroize::Zeroizing<[u8; 2 * MAX_BLOCK_BYTES]>, usize) {
+    let mut tail = zeroize::Zeroizing::new([0u8; 2 * MAX_BLOCK_BYTES]);
     let mut pos = prefix.len();
     tail[..pos].copy_from_slice(prefix);
     tail[pos] = 0x80;
@@ -340,6 +341,10 @@ pub(crate) fn kupyna_padding(
 /// padding/length-tracking logic, not two. `pub(crate)` (not `pub`) since `kupyna_kmac` needs
 /// direct access to feed its two independent padding points into the same running compression
 /// state, a lower level of control than the public `Kupyna*Hasher` streaming API exposes.
+///
+/// Wiped on drop (T-302): under `kupyna_kmac`, `h` after `PAD(K)` computes the MAC under that key
+/// for any message, and `buffer` holds `~K` before `finalize`.
+#[derive(zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
 pub(crate) struct KupynaCore {
     h: [[u8; ROWS]; MAX_COLUMNS],
     /// Bytes not yet folded into `h` - always fewer than `block_bytes()`, per `update`'s invariant.
@@ -429,7 +434,7 @@ impl KupynaCore {
                 debug_assert_eq!(data, []);
                 return;
             }
-            let block = self.buffer;
+            let block = zeroize::Zeroizing::new(self.buffer);
             self.compress_block(&block[..block_bytes]);
             self.buffer_len = 0;
         }
@@ -480,7 +485,7 @@ impl KupynaCore {
         #[allow(clippy::needless_range_loop)]
         match self.columns {
             8 => {
-                let mut t_final = h_to_array::<8>(&self.h);
+                let mut t_final = zeroize::Zeroizing::new(h_to_array::<8>(&self.h));
                 t_transform_n::<8, 10>(&mut t_final, self.last_row_shift);
                 for col in 0..8 {
                     for row in 0..ROWS {
@@ -489,7 +494,7 @@ impl KupynaCore {
                 }
             }
             16 => {
-                let mut t_final = h_to_array::<16>(&self.h);
+                let mut t_final = zeroize::Zeroizing::new(h_to_array::<16>(&self.h));
                 t_transform_n::<16, 14>(&mut t_final, self.last_row_shift);
                 for col in 0..16 {
                     for row in 0..ROWS {
@@ -503,7 +508,7 @@ impl KupynaCore {
         // Truncate to the `output_bytes` most-significant bytes of the column-major byte stream
         // (mirrors oracles/kupyna-reference/kupyna.c `Trunc`: copies from `state + nbytes -
         // hash_nbytes`).
-        let mut flat = [0u8; MAX_BLOCK_BYTES];
+        let mut flat = zeroize::Zeroizing::new([0u8; MAX_BLOCK_BYTES]);
         for col in 0..self.columns {
             flat[col * ROWS..(col + 1) * ROWS].copy_from_slice(&self.h[col]);
         }

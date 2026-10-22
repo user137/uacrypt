@@ -313,12 +313,13 @@ fn key_expand_kt(key: &[u8], nb: usize, nk: usize) -> [Column; MAX_NB] {
     let tmv = (nb + nk + 1) as u64;
     state[0] = tmv.to_le_bytes();
 
-    let k0 = columns_from_bytes(key, nb);
-    let k1 = if nk == nb {
-        k0
+    // T-302: the key-schedule temporaries below are key material and are wiped on drop.
+    let k0 = zeroize::Zeroizing::new(columns_from_bytes(key, nb));
+    let k1 = zeroize::Zeroizing::new(if nk == nb {
+        *k0
     } else {
         columns_from_bytes(&key[nb * ROWS..], nb)
-    };
+    });
 
     add_round_key(&mut state[..nb], &k0[..nb]);
     encipher_round(&mut state[..nb]);
@@ -342,7 +343,7 @@ fn key_expand_even(
     nr: usize,
     round_keys: &mut [[Column; MAX_NB]; ROUND_KEYS_LEN],
 ) {
-    let mut initial_data = columns_from_bytes(key, nk);
+    let mut initial_data = zeroize::Zeroizing::new(columns_from_bytes(key, nk));
     let mut tmv = [ZERO_COLUMN; MAX_NB];
     for column in &mut tmv[..nb] {
         *column = 0x0001_0001_0001_0001u64.to_le_bytes();
@@ -350,8 +351,8 @@ fn key_expand_even(
 
     let mut round = 0usize;
     loop {
-        let kt_round = mod_add_columns(&kt[..nb], &tmv[..nb]);
-        let key_a = round_key_from(&initial_data[..nb], &kt_round[..nb]);
+        let kt_round = zeroize::Zeroizing::new(mod_add_columns(&kt[..nb], &tmv[..nb]));
+        let key_a = zeroize::Zeroizing::new(round_key_from(&initial_data[..nb], &kt_round[..nb]));
         round_keys[round][..nb].copy_from_slice(&key_a[..nb]);
         if round == nr {
             break;
@@ -360,8 +361,9 @@ fn key_expand_even(
         if nk != nb {
             round += 2;
             shift_left_words(&mut tmv[..nb]);
-            let kt_round = mod_add_columns(&kt[..nb], &tmv[..nb]);
-            let key_b = round_key_from(&initial_data[nb..nk], &kt_round[..nb]);
+            let kt_round = zeroize::Zeroizing::new(mod_add_columns(&kt[..nb], &tmv[..nb]));
+            let key_b =
+                zeroize::Zeroizing::new(round_key_from(&initial_data[nb..nk], &kt_round[..nb]));
             round_keys[round][..nb].copy_from_slice(&key_b[..nb]);
             if round == nr {
                 break;
@@ -389,10 +391,10 @@ fn mod_add_columns(a: &[Column], b: &[Column]) -> [Column; MAX_NB] {
 fn key_expand_odd(round_keys: &mut [[Column; MAX_NB]; ROUND_KEYS_LEN], nb: usize, nr: usize) {
     let mut i = 1;
     while i < nr {
-        let previous = round_keys[i - 1];
+        let previous = zeroize::Zeroizing::new(round_keys[i - 1]);
         round_keys[i][..nb].copy_from_slice(&previous[..nb]);
 
-        let mut bytes = [0u8; MAX_NB * ROWS];
+        let mut bytes = zeroize::Zeroizing::new([0u8; MAX_NB * ROWS]);
         let len = nb * ROWS;
         for c in 0..nb {
             bytes[c * ROWS..(c + 1) * ROWS].copy_from_slice(&round_keys[i][c]);
@@ -407,7 +409,7 @@ fn key_expand_odd(round_keys: &mut [[Column; MAX_NB]; ROUND_KEYS_LEN], nb: usize
 }
 
 fn key_expand(key: &[u8], nb: usize, nk: usize, nr: usize) -> RoundKeys {
-    let kt = key_expand_kt(key, nb, nk);
+    let kt = zeroize::Zeroizing::new(key_expand_kt(key, nb, nk));
     let mut round_keys = [[ZERO_COLUMN; MAX_NB]; ROUND_KEYS_LEN];
     key_expand_even(key, &kt, nb, nk, nr, &mut round_keys);
     key_expand_odd(&mut round_keys, nb, nr);
