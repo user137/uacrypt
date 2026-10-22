@@ -17,6 +17,14 @@
 //! Provenance is otherwise identical to the `hazmat` layer: dual-oracle-cited, and confirmed against
 //! the DSTU 7564:2014 draft text's annex В (D-44, T-234).
 //!
+//! # One key, one API (T-306)
+//!
+//! `crypto_auth`, `crypto_kdf` and `crypto_secretstream`'s subkey derivation are all plain
+//! Kupyna-256-KMAC under the key, with no domain label of their own: `MasterKey::derive_subkey(id,
+//! ctx)` equals `crypto_auth::auth(key, ctx || id as 8 little-endian bytes)` for the same 32 bytes.
+//! The distinct key types keep them apart; never build two of them from the same bytes with
+//! `from_bytes`. Adding labels would change every existing tag, subkey and stream file.
+//!
 //! # Example
 //!
 //! A MAC lets two parties who share a secret key confirm a message hasn't been altered in transit.

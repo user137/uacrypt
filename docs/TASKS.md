@@ -10556,7 +10556,7 @@ names (`create_new`, 64-bit random), `--force` never over a key, passphrase hand
   Fix: bounded read for the signature; a size cap on the legacy path.
 - [x] **T-305** (Low; **done 2026-10-22**: `args_os`, exit 2 naming the argument's position; non-Unicode file names stay unsupported) A non-UTF-8 argument panics (`main.rs` `env::args()`, exit 101). Fix: a clean
   usage error.
-- [ ] **T-306** (Low, docs) `crypto_auth`, `crypto_kdf` and the `secretstream` subkey are all bare
+- [x] **T-306** (Low, docs; **done 2026-10-22**: "one key, one API" in the `crypto_auth`/`crypto_kdf` module docs) `crypto_auth`, `crypto_kdf` and the `secretstream` subkey are all bare
   `Kupyna256Kmac(key, msg)`: `derive_subkey(id, ctx) == auth(k, ctx || id_le)`. A real fix changes
   wire formats; document "one key, one API" instead.
 - [x] **T-307** (Low; **done 2026-10-22, D-248**: `EncryptError::InvalidPublicKey`; docs corrected, no order-4 points exist - answers D-173) dstu9041 hazmat: `encryption*::encrypt` takes an unchecked `Point` (public

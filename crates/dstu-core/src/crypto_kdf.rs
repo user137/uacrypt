@@ -17,6 +17,14 @@
 //! crate - there is no oracle vector for this construction, ever (D-45); verification is
 //! determinism/distinctness property tests only, inherited unchanged from `hazmat::kupyna_kdf`.
 //!
+//! # One key, one API (T-306)
+//!
+//! `crypto_auth`, `crypto_kdf` and `crypto_secretstream`'s subkey derivation are all plain
+//! Kupyna-256-KMAC under the key, with no domain label of their own: `MasterKey::derive_subkey(id,
+//! ctx)` equals `crypto_auth::auth(key, ctx || id as 8 little-endian bytes)` for the same 32 bytes.
+//! The distinct key types keep them apart; never build two of them from the same bytes with
+//! `from_bytes`. Adding labels would change every existing tag, subkey and stream file.
+//!
 //! # Example
 //!
 //! Derives many independent-looking subkeys from one master key, instead of generating and storing
