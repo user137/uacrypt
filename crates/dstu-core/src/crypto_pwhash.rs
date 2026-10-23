@@ -450,6 +450,7 @@ mod tests {
     /// T-315: the PHC string built over caller-reserved memory is byte-identical to the one
     /// `argon2`'s own `PasswordHasher` encodes (and allocates for) with the same salt.
     #[test]
+    #[cfg_attr(miri, ignore)] // a real 64 MiB Argon2: hours under Miri
     fn hash_with_salt_matches_argon2s_own_phc_encoding() -> Result<(), PwHashError> {
         let salt_bytes = [0x5Au8; 16];
         let ours = hash_with_salt(b"password", &salt_bytes, Strength::Interactive)?;

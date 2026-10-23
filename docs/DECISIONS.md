@@ -13355,7 +13355,8 @@ Strumok history that actually is. **Not closed by this**: Додаток Б/В/�
 π₀-π₃, Tᵢ[a], Mulα/Mulα⁻¹) were read (page numbers, structure) but not transcribed or compared
 against `hazmat::tables` - the 8 passing keystream vectors corroborate only the specific table
 entries those 4 key/IV pairs actually reach, not the tables in full. A future task, not started
-here, not assumed to be low-value just because it's deferred.
+here, not assumed to be low-value just because it's deferred. *Closed by D-263: unit tests derive
+all ten tables in full.*
 
 **Fixed, not left for a future sweep to find stale**: `crates/dstu-core/tests/vectors/strumok/
 keystream-{256,512}.json` (`status`/`provenance` fields - the old provenance text's closing
@@ -13376,6 +13377,9 @@ reasoning, kept local only like `DSTU_9041-2020_Part of.pdf`. This entry cites c
 page number, not the file.
 
 ## D-198: T-229 - Додаток В/Г constant tables spot-checked against the genuine scan - raises confidence, does not close D-197's own remaining caveat
+
+*Superseded by D-263 (2026-10-23): the tables are now derived in full by unit tests, which closes
+the caveat this entry left open.*
 
 **What prompted this**: D-197 explicitly left open that Додаток Б/В/Г's constant tables (S-box,
 `Tᵢ[a]`, `Mulα`/`Mulα⁻¹`) were "read (page numbers, structure) but not transcribed or compared
@@ -14545,7 +14549,8 @@ memory is reserved with `try_reserve_exact` and passed to `hash_password_into_wi
 machine without 256 MiB gets `PwHashError::OutOfMemory` (exit 3 in `uacrypt`) instead of an
 abort, and the blocks are zeroized before they are freed. Two new `PwHashError` variants
 (`OutOfMemory`, `Derive`) break an exhaustive `match`; `dstu-core-capi`'s one match maps them to
-`DSTU_ERR_HASH_ERROR` (`hash_password` never returns them). **Binding gate:** `derive_key` is a
+`DSTU_ERR_HASH_ERROR` (`hash_password` never returns them). *Corrected by D-261: `hash_password`
+now returns both, and capi maps `OutOfMemory` to `DSTU_ERR_OUT_OF_MEMORY` everywhere.* **Binding gate:** `derive_key` is a
 new `crypto_*` function, so T-269 tracks wiring it into the 8 bindings and the C ABI; the
 passphrase file format stays `uacrypt`-only until then. (Superseded 2026-10-18: D-240 moves the
 format into the core and every binding.)
@@ -16356,9 +16361,12 @@ D-256's throwaway table derivation is now three permanent unit tests in `hazmat/
   pairs), so `mul_alpha`/`mul_alpha_inv` are GF(2)-linear; inverse on the 64 unit words then
   holds for every word. This replaces D-256's 100k random words with a proof.
 
-Negative control: one corrupted entry each in `T0`, `MUL_ALPHA` and `MUL_ALPHA_INV` failed all
-three tests and none of the other Strumok unit tests (the keystream tests share `t_function`, so
-they cannot see a table error).
+Negative control: one corrupted entry each in `T0`, `MUL_ALPHA` and `MUL_ALPHA_INV` (one run)
+failed all three tests and none of the other Strumok unit tests (the keystream tests share
+`t_function`, so they cannot see a table error); a second run with only the `MUL_ALPHA_INV` entry
+corrupted failed the inverse test alone. The `hash_password` lib test of D-261 runs a 64 MiB
+Argon2, so it is `cfg_attr(miri, ignore)`: a local `xtask miri` builds the workspace, where capi
+turns `pwhash` on.
 
 What this closes: "not independently transcription-verified in full" (D-15/D-198) is retired
 everywhere it was stated. What it rests on: the S-box/MDS (four sources, D-256), and `g(z)` as
