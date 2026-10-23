@@ -10332,16 +10332,20 @@ runs in order (T-164 deferred, below). Pushes batched
 per phase (`rust.yml`/`miri.yml` are `cancel-in-progress`; a docs push mid-run cost a full run on
 0.7.0 release day).
 
-**RESUME HERE (2026-10-23, third save):** 0.7.0 closed (winget PR #460150 waits on a
-moderator). Done today, all local commits **not pushed yet** (owner: one batched push at the end):
-**T-311** (`779acc7`) and **T-310** (`daeb58f`+`5d32cc2`) are on `master` (CI green, `miri` too);
-**T-223/T-225** phase A (`2563770`) and B (`b795494`), **T-249** (D-256, findings T-312..T-316).
-**T-264** done (D-257). Next: Pi clippy/test, closing
-`advisor`, push `HEAD:master`, `gh run view` every workflow (28 `fuzz-smoke` jobs). Open with the
-owner: the independent reviewer for T-249 and for T-310; whether T-312..T-316 join 0.8.0.
-Local fuzz on Windows: `call vcvars64.bat && cargo +nightly-x86_64-pc-windows-msvc fuzz run
---target x86_64-pc-windows-msvc <t>` from `crates/dstu-core`. Pi: Kani per harness under
-`ulimit -v`, never `gf2m512` (rebooted it, 2026-10-23).
+**RESUME HERE (2026-10-23, fourth save, before /clear):** 0.7.0 closed (winget PR #460150 waits
+on a moderator). Pushed to `master` as `3432912` (one batch): T-223/T-225 phase A+B (28 fuzz
+targets), T-249 (D-256, findings T-312..T-316), T-264 (completions + `uacrypt man`, D-257). CI on
+`3432912` at save time: docs-book, all 8 bindings, oracle-harness, CodeQL, sonarcloud green; `rust`
+(incl. 28 `fuzz-smoke` jobs, macOS bash 3.2 + `zsh -n`, Linux `pwsh` completion tests) and `miri`
+still queued - **first: `gh run list` / `gh run view` both for `3432912`**. This save (D-258 + this
+note) is a local commit, **not pushed** (a push cancels the running `miri`, `cancel-in-progress`);
+push it with the next code change. Owner delegated the open forks (D-258): no reviewer subagent for
+T-249/T-310; **T-312..T-316 join 0.8.0** - next in order T-312, T-313, T-315, T-314, T-316, then
+step 6 (release 0.8.0). Fish completions have never run anywhere, zsh only `zsh -n` (D-257) -
+adding `zsh fish` to the Linux CI job is an open option, not decided. `.git/worktrees/old_wt` is an
+empty leftover Windows would not delete (harmless; remove by hand). Local fuzz on Windows: `call
+vcvars64.bat && cargo +nightly-x86_64-pc-windows-msvc fuzz run --target x86_64-pc-windows-msvc <t>`
+from `crates/dstu-core`. Pi: Kani per harness under `ulimit -v`, never `gf2m512` (rebooted it).
 
 **Code chain:**
 1. [x] **T-311** (done 2026-10-23, D-255: native remainder after an aggressive GC, 2 MiB; Pi:
@@ -10368,7 +10372,7 @@ Local fuzz on Windows: `call vcvars64.bat && cargo +nightly-x86_64-pc-windows-ms
    schedule, `tables.rs`, `dstu9041` l=512 (and l=384) line by line against l=256, D-118's two
    pitfalls read in full in Node.js/PHP/Java/.NET/Go/C++, and actually running Miri/Kani/longer
    fuzz locally. Offer the independent reviewer subagent at the end (owner's yes).
-   **T-249 findings (D-256), all Low, none advisory-relevant; owner: in 0.8.0 or later:**
+   **T-249 findings (D-256), all Low, none advisory-relevant; in 0.8.0 (D-258), order T-312, T-313, T-315, T-314, T-316:**
    - [ ] **T-312** (Low, constant-time) `tables::gf_mul` branches on the secret byte's top bit in
      the source; it is production code under `small-tables` (every Kalyna/Kupyna round, Strumok's
      `T`). Shipped asm is branchless in all 8 cells read (masks/IT/cmov, rustc 1.97.1) only

@@ -16188,3 +16188,15 @@ tcsh`, `completions bash extra`, `man extra`) exits 2 with nothing on stdout; a 
 completions would still need a table). Dynamic completion calling back into `uacrypt` (runs a
 binary on every Tab; a static script is enough for a fixed command set). A checked-in
 `docs/uacrypt.1` (one more generated file to regenerate and diff).
+
+## D-258: delegated forks after T-249/T-264 (2026-10-23, owner: "your choice")
+
+Decided by the delegated-fork rule (app rules > safety > compatibility):
+- **No independent reviewer subagent for T-249 or T-310.** T-249 is itself the review (read-only,
+  findings filed as T-312..T-316, every claim backed by a script, asm read or run, D-256); T-310 is
+  a removal whose new behaviour (format 2 refused as an unsupported version) is pinned by tests.
+  The offer stands for any later change in a silent-costly-failure class.
+- **T-312..T-316 join 0.8.0, before the release step.** 0.8.0 is already a breaking minor
+  (compatibility weighs little, owner 2026-10-23); T-312 (secret branch in `gf_mul`) and T-313
+  (D-249 leftovers) close gaps against the hard constraints in `CLAUDE.md`, and the other three are
+  small. Order: T-312, T-313, T-315, T-314, T-316, then the release.
