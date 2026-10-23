@@ -280,7 +280,8 @@ fn man_page_renders_cleanly_where_a_formatter_exists() {
     write_bytes(&page, r.stdout.as_bytes());
     for (tool, args) in [
         ("mandoc", &["-Tlint", "-Wwarning"][..]),
-        ("groff", &["-man", "-z", "-ww"][..]),
+        // The device `man` uses in a UTF-8 locale; the default (PostScript) lacks Cyrillic glyphs.
+        ("groff", &["-man", "-Tutf8", "-z", "-ww"][..]),
     ] {
         let Ok(out) = Command::new(tool).args(args).arg(&page).output() else {
             skip(tool);

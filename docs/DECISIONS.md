@@ -16173,7 +16173,7 @@ offer flags the command refuses.
 
 **Tests.** Real shells, running the completer: Git Bash on Windows (located through `git
 --exec-path`, since a bare `bash` may be WSL's) and bash elsewhere (`COMP_WORDS`/`COMPREPLY`),
-PowerShell (`TabExpansion2`), fish (`complete -C`), `zsh -n`; `mandoc -Tlint`/`groff -z -ww` on the
+PowerShell (`TabExpansion2`), fish (`complete -C`), `zsh -n`; `mandoc -Tlint`/`groff -Tutf8 -z -ww` on the
 man page. Ten shared cases (command prefix, subcommand slot, a visible and a hidden `--iterations`,
 `--passphrase` vs `--passphrase-file`, `--kind`/`--variant` values, `help <command>`, `completions
 <shell>`, a file name). A missing shell is skipped (a `SKIPPED` line, seen only with `--nocapture`);
