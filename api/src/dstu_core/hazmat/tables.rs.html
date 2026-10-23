@@ -4380,255 +4380,287 @@
 <a href=#4380 id=4380 data-nosnippet>4380</a>/// `MultiplyGF`, identical). Under the default (fused-table) profile this is dead in production,
 <a href=#4381 id=4381 data-nosnippet>4381</a>/// kept only for the exhaustive test below; under `small-tables` (`docs/DECISIONS.md` D-35/D-38) it's a
 <a href=#4382 id=4382 data-nosnippet>4382</a>/// live production function, called from `apply_matrix_via_gf_mul`/`mds_column_via_gf_mul` below.
-<a href=#4383 id=4383 data-nosnippet>4383</a></span><span class="attr">#[allow(dead_code)]
-<a href=#4384 id=4384 data-nosnippet>4384</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>gf_mul(<span class="kw-2">mut </span>x: u8, <span class="kw-2">mut </span>y: u8) -&gt; u8 {
-<a href=#4385 id=4385 data-nosnippet>4385</a>    <span class="kw">let </span><span class="kw-2">mut </span>result = <span class="number">0u8</span>;
-<a href=#4386 id=4386 data-nosnippet>4386</a>    <span class="kw">for _ in </span><span class="number">0</span>..<span class="number">8 </span>{
-<a href=#4387 id=4387 data-nosnippet>4387</a>        <span class="kw">if </span>y &amp; <span class="number">1 </span>== <span class="number">1 </span>{
-<a href=#4388 id=4388 data-nosnippet>4388</a>            result ^= x;
-<a href=#4389 id=4389 data-nosnippet>4389</a>        }
-<a href=#4390 id=4390 data-nosnippet>4390</a>        <span class="kw">let </span>high_bit = x &amp; <span class="number">0x80</span>;
-<a href=#4391 id=4391 data-nosnippet>4391</a>        x &lt;&lt;= <span class="number">1</span>;
-<a href=#4392 id=4392 data-nosnippet>4392</a>        <span class="kw">if </span>high_bit == <span class="number">0x80 </span>{
-<a href=#4393 id=4393 data-nosnippet>4393</a>            x ^= <span class="number">0x1D</span>;
-<a href=#4394 id=4394 data-nosnippet>4394</a>        }
-<a href=#4395 id=4395 data-nosnippet>4395</a>        y &gt;&gt;= <span class="number">1</span>;
-<a href=#4396 id=4396 data-nosnippet>4396</a>    }
-<a href=#4397 id=4397 data-nosnippet>4397</a>    result
-<a href=#4398 id=4398 data-nosnippet>4398</a>}
-<a href=#4399 id=4399 data-nosnippet>4399</a>
-<a href=#4400 id=4400 data-nosnippet>4400</a><span class="doccomment">/// Linear layer (tau) via the precomputed `table` (`MDS_TABLE`/`MDS_INV_TABLE`) - the default
-<a href=#4401 id=4401 data-nosnippet>4401</a>/// resource profile. See module doc.
-<a href=#4402 id=4402 data-nosnippet>4402</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
-<a href=#4403 id=4403 data-nosnippet>4403</a></span><span class="kw">fn </span>apply_matrix(state: <span class="kw-2">&amp;mut </span>[[u8; ROWS]], table: <span class="kw-2">&amp;</span>[[u64; <span class="number">256</span>]; ROWS]) {
-<a href=#4404 id=4404 data-nosnippet>4404</a>    <span class="kw">for </span>column <span class="kw">in </span>state.iter_mut() {
-<a href=#4405 id=4405 data-nosnippet>4405</a>        <span class="kw">let </span><span class="kw-2">mut </span>acc = <span class="number">0u64</span>;
-<a href=#4406 id=4406 data-nosnippet>4406</a>        <span class="kw">for </span>(in_row, <span class="kw-2">&amp;</span>byte) <span class="kw">in </span>column.iter().enumerate() {
-<a href=#4407 id=4407 data-nosnippet>4407</a>            acc ^= table[in_row][byte <span class="kw">as </span>usize];
-<a href=#4408 id=4408 data-nosnippet>4408</a>        }
-<a href=#4409 id=4409 data-nosnippet>4409</a>        <span class="kw-2">*</span>column = acc.to_le_bytes();
-<a href=#4410 id=4410 data-nosnippet>4410</a>    }
-<a href=#4411 id=4411 data-nosnippet>4411</a>}
-<a href=#4412 id=4412 data-nosnippet>4412</a>
-<a href=#4413 id=4413 data-nosnippet>4413</a><span class="doccomment">/// Linear layer (tau) via `gf_mul` directly against `matrix` (`MDS_MATRIX`/`MDS_INV_MATRIX`) - the
-<a href=#4414 id=4414 data-nosnippet>4414</a>/// `small-tables` resource profile (`docs/DECISIONS.md` D-35/D-38): no precomputed table, 64 `gf_mul`
-<a href=#4415 id=4415 data-nosnippet>4415</a>/// calls per column instead of 8 table lookups. This is exactly `apply_matrix`'s pre-D-27 form.
-<a href=#4416 id=4416 data-nosnippet>4416</a></span><span class="attr">#[cfg(feature = <span class="string">"small-tables"</span>)]
-<a href=#4417 id=4417 data-nosnippet>4417</a></span><span class="kw">fn </span>apply_matrix_via_gf_mul(state: <span class="kw-2">&amp;mut </span>[[u8; ROWS]], matrix: <span class="kw-2">&amp;</span>[[u8; ROWS]; ROWS]) {
-<a href=#4418 id=4418 data-nosnippet>4418</a>    <span class="kw">for </span>column <span class="kw">in </span>state.iter_mut() {
-<a href=#4419 id=4419 data-nosnippet>4419</a>        <span class="kw">let </span><span class="kw-2">mut </span>out = [<span class="number">0u8</span>; ROWS];
-<a href=#4420 id=4420 data-nosnippet>4420</a>        <span class="kw">for </span>(out_row, out_byte) <span class="kw">in </span>out.iter_mut().enumerate() {
-<a href=#4421 id=4421 data-nosnippet>4421</a>            <span class="kw">for </span>(in_row, <span class="kw-2">&amp;</span>byte) <span class="kw">in </span>column.iter().enumerate() {
-<a href=#4422 id=4422 data-nosnippet>4422</a>                <span class="kw-2">*</span>out_byte ^= gf_mul(byte, matrix[out_row][in_row]);
-<a href=#4423 id=4423 data-nosnippet>4423</a>            }
-<a href=#4424 id=4424 data-nosnippet>4424</a>        }
-<a href=#4425 id=4425 data-nosnippet>4425</a>        <span class="kw-2">*</span>column = out;
-<a href=#4426 id=4426 data-nosnippet>4426</a>    }
-<a href=#4427 id=4427 data-nosnippet>4427</a>}
-<a href=#4428 id=4428 data-nosnippet>4428</a>
-<a href=#4429 id=4429 data-nosnippet>4429</a><span class="doccomment">/// Applies the forward MDS linear layer (tau) to every column of `state` - callers don't need
-<a href=#4430 id=4430 data-nosnippet>4430</a>/// their own `cfg`, this picks the resource-profile-appropriate implementation (`docs/DECISIONS.md`
-<a href=#4431 id=4431 data-nosnippet>4431</a>/// D-35/D-38). Used by Kalyna's decrypt-direction whitening step and Kupyna's dead-code `mix_
-<a href=#4432 id=4432 data-nosnippet>4432</a>/// columns` reference; the fused per-round path uses `forward_sbox_mds` below instead.
-<a href=#4433 id=4433 data-nosnippet>4433</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
-<a href=#4434 id=4434 data-nosnippet>4434</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>apply_forward_matrix(state: <span class="kw-2">&amp;mut </span>[[u8; ROWS]]) {
-<a href=#4435 id=4435 data-nosnippet>4435</a>    apply_matrix(state, <span class="kw-2">&amp;</span>MDS_TABLE);
-<a href=#4436 id=4436 data-nosnippet>4436</a>}
-<a href=#4437 id=4437 data-nosnippet>4437</a><span class="attr">#[cfg(feature = <span class="string">"small-tables"</span>)]
-<a href=#4438 id=4438 data-nosnippet>4438</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>apply_forward_matrix(state: <span class="kw-2">&amp;mut </span>[[u8; ROWS]]) {
-<a href=#4439 id=4439 data-nosnippet>4439</a>    apply_matrix_via_gf_mul(state, <span class="kw-2">&amp;</span>MDS_MATRIX);
-<a href=#4440 id=4440 data-nosnippet>4440</a>}
-<a href=#4441 id=4441 data-nosnippet>4441</a>
-<a href=#4442 id=4442 data-nosnippet>4442</a><span class="doccomment">/// Inverse of `apply_forward_matrix` - used by Kalyna's `transform_keys_for_decrypt` and the
-<a href=#4443 id=4443 data-nosnippet>4443</a>/// whitening step at the start of `decrypt_with_schedule`/`decipher_round`.
-<a href=#4444 id=4444 data-nosnippet>4444</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
-<a href=#4445 id=4445 data-nosnippet>4445</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>apply_inverse_matrix(state: <span class="kw-2">&amp;mut </span>[[u8; ROWS]]) {
-<a href=#4446 id=4446 data-nosnippet>4446</a>    apply_matrix(state, <span class="kw-2">&amp;</span>MDS_INV_TABLE);
-<a href=#4447 id=4447 data-nosnippet>4447</a>}
-<a href=#4448 id=4448 data-nosnippet>4448</a><span class="attr">#[cfg(feature = <span class="string">"small-tables"</span>)]
-<a href=#4449 id=4449 data-nosnippet>4449</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>apply_inverse_matrix(state: <span class="kw-2">&amp;mut </span>[[u8; ROWS]]) {
-<a href=#4450 id=4450 data-nosnippet>4450</a>    apply_matrix_via_gf_mul(state, <span class="kw-2">&amp;</span>MDS_INV_MATRIX);
-<a href=#4451 id=4451 data-nosnippet>4451</a>}
-<a href=#4452 id=4452 data-nosnippet>4452</a>
-<a href=#4453 id=4453 data-nosnippet>4453</a><span class="doccomment">/// One (pre-substitution) byte's combined forward S-box + MDS contribution, computed via
-<a href=#4454 id=4454 data-nosnippet>4454</a>/// `gf_mul` on demand instead of looked up from `SBOX_MDS` - the `small-tables` resource profile's
-<a href=#4455 id=4455 data-nosnippet>4455</a>/// per-byte primitive for `hazmat::kalyna::encipher_round`/`hazmat::kupyna::sub_shift_mix`'s
-<a href=#4456 id=4456 data-nosnippet>4456</a>/// gather-and-XOR loop. Same formula `build_sbox_mds` composes at compile time (`gf_mul(byte,
-<a href=#4457 id=4457 data-nosnippet>4457</a>/// matrix[out_row][in_row])` for every `out_row`, packed little-endian), just evaluated per call
-<a href=#4458 id=4458 data-nosnippet>4458</a>/// instead of baked into a `[[u64; 256]; ROWS]` table.
-<a href=#4459 id=4459 data-nosnippet>4459</a></span><span class="attr">#[cfg(feature = <span class="string">"small-tables"</span>)]
-<a href=#4460 id=4460 data-nosnippet>4460</a></span><span class="kw">fn </span>mds_column_via_gf_mul(matrix: <span class="kw-2">&amp;</span>[[u8; ROWS]; ROWS], in_row: usize, byte: u8) -&gt; u64 {
-<a href=#4461 id=4461 data-nosnippet>4461</a>    <span class="kw">let </span><span class="kw-2">mut </span>word = <span class="number">0u64</span>;
-<a href=#4462 id=4462 data-nosnippet>4462</a>    <span class="comment">// `out_row` drives both the `matrix` index and the byte-shift amount, not a plain
-<a href=#4463 id=4463 data-nosnippet>4463</a>    // single-collection enumerate candidate.
-<a href=#4464 id=4464 data-nosnippet>4464</a>    </span><span class="attr">#[allow(clippy::needless_range_loop)]
-<a href=#4465 id=4465 data-nosnippet>4465</a>    </span><span class="kw">for </span>out_row <span class="kw">in </span><span class="number">0</span>..ROWS {
-<a href=#4466 id=4466 data-nosnippet>4466</a>        word |= u64::from(gf_mul(byte, matrix[out_row][in_row])) &lt;&lt; (<span class="number">8 </span>* out_row);
-<a href=#4467 id=4467 data-nosnippet>4467</a>    }
-<a href=#4468 id=4468 data-nosnippet>4468</a>    word
-<a href=#4469 id=4469 data-nosnippet>4469</a>}
-<a href=#4470 id=4470 data-nosnippet>4470</a>
-<a href=#4471 id=4471 data-nosnippet>4471</a><span class="doccomment">/// Combined S-box + MDS forward lookup: `SBOX_MDS[row][byte] = MDS_TABLE[row][SBOXES[row %
-<a href=#4472 id=4472 data-nosnippet>4472</a>/// 4][byte]]` - the contribution a raw (pre-substitution) byte sitting at row `row` makes to the
-<a href=#4473 id=4473 data-nosnippet>4473</a>/// output column once substituted and mixed. Computed by the compiler at build time by directly
-<a href=#4474 id=4474 data-nosnippet>4474</a>/// composing the two already-verified tables above (`const fn`, `while`-loop since `for`/iterators
-<a href=#4475 id=4475 data-nosnippet>4475</a>/// aren't allowed in const context) - no hand transcription, no generation script, so there is no
-<a href=#4476 id=4476 data-nosnippet>4476</a>/// new correctness risk beyond `SBOXES`/`MDS_TABLE` themselves.
-<a href=#4477 id=4477 data-nosnippet>4477</a>///
-<a href=#4478 id=4478 data-nosnippet>4478</a>/// This is `nb`/block-size independent, unlike `D-27`'s stated blocker for full S-box+shift+MDS
-<a href=#4479 id=4479 data-nosnippet>4479</a>/// fusion assumed: `sub_bytes` substitutes per row, and `shift_rows`/Kupyna's `shift_bytes` permute
-<a href=#4480 id=4480 data-nosnippet>4480</a>/// columns while preserving row - the two operations commute, so this table alone (no per-variant
-<a href=#4481 id=4481 data-nosnippet>4481</a>/// copies) is enough. The `nb`- or `columns`-dependent part is only the *gather index* used by the
-<a href=#4482 id=4482 data-nosnippet>4482</a>/// caller (`hazmat::kalyna::encipher_round`, `hazmat::kupyna::t_transform`/`t_plus_transform`),
-<a href=#4483 id=4483 data-nosnippet>4483</a>/// which is cheap arithmetic on `nb`/`shift`, not a table. See `docs/DECISIONS.md` D-28.
-<a href=#4484 id=4484 data-nosnippet>4484</a>///
-<a href=#4485 id=4485 data-nosnippet>4485</a>/// Not compiled under `small-tables` (`docs/DECISIONS.md` D-35/D-38) - `forward_sbox_mds` below calls
-<a href=#4486 id=4486 data-nosnippet>4486</a>/// `mds_column_via_gf_mul` on demand instead in that profile.
-<a href=#4487 id=4487 data-nosnippet>4487</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
-<a href=#4488 id=4488 data-nosnippet>4488</a></span><span class="kw">const fn </span>build_sbox_mds() -&gt; [[u64; <span class="number">256</span>]; ROWS] {
-<a href=#4489 id=4489 data-nosnippet>4489</a>    <span class="kw">let </span><span class="kw-2">mut </span>table = [[<span class="number">0u64</span>; <span class="number">256</span>]; ROWS];
-<a href=#4490 id=4490 data-nosnippet>4490</a>    <span class="kw">let </span><span class="kw-2">mut </span>row = <span class="number">0</span>;
-<a href=#4491 id=4491 data-nosnippet>4491</a>    <span class="kw">while </span>row &lt; ROWS {
-<a href=#4492 id=4492 data-nosnippet>4492</a>        <span class="kw">let </span><span class="kw-2">mut </span>byte = <span class="number">0usize</span>;
-<a href=#4493 id=4493 data-nosnippet>4493</a>        <span class="kw">while </span>byte &lt; <span class="number">256 </span>{
-<a href=#4494 id=4494 data-nosnippet>4494</a>            <span class="kw">let </span>substituted = SBOXES[row % <span class="number">4</span>][byte] <span class="kw">as </span>usize;
-<a href=#4495 id=4495 data-nosnippet>4495</a>            table[row][byte] = MDS_TABLE[row][substituted];
-<a href=#4496 id=4496 data-nosnippet>4496</a>            byte += <span class="number">1</span>;
-<a href=#4497 id=4497 data-nosnippet>4497</a>        }
-<a href=#4498 id=4498 data-nosnippet>4498</a>        row += <span class="number">1</span>;
-<a href=#4499 id=4499 data-nosnippet>4499</a>    }
-<a href=#4500 id=4500 data-nosnippet>4500</a>    table
-<a href=#4501 id=4501 data-nosnippet>4501</a>}
+<a href=#4383 id=4383 data-nosnippet>4383</a>///
+<a href=#4384 id=4384 data-nosnippet>4384</a>/// `x` is a secret state byte there, so the reference's two `if`s became masks (T-312): the
+<a href=#4385 id=4385 data-nosnippet>4385</a>/// shipped asm was already branchless, but only because LLVM chose so (D-256).
+<a href=#4386 id=4386 data-nosnippet>4386</a></span><span class="attr">#[allow(dead_code)]
+<a href=#4387 id=4387 data-nosnippet>4387</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>gf_mul(<span class="kw-2">mut </span>x: u8, <span class="kw-2">mut </span>y: u8) -&gt; u8 {
+<a href=#4388 id=4388 data-nosnippet>4388</a>    <span class="kw">let </span><span class="kw-2">mut </span>result = <span class="number">0u8</span>;
+<a href=#4389 id=4389 data-nosnippet>4389</a>    <span class="kw">for _ in </span><span class="number">0</span>..<span class="number">8 </span>{
+<a href=#4390 id=4390 data-nosnippet>4390</a>        result ^= x &amp; <span class="number">0u8</span>.wrapping_sub(y &amp; <span class="number">1</span>);
+<a href=#4391 id=4391 data-nosnippet>4391</a>        x = (x &lt;&lt; <span class="number">1</span>) ^ (<span class="number">0x1D </span>&amp; <span class="number">0u8</span>.wrapping_sub(x &gt;&gt; <span class="number">7</span>));
+<a href=#4392 id=4392 data-nosnippet>4392</a>        y &gt;&gt;= <span class="number">1</span>;
+<a href=#4393 id=4393 data-nosnippet>4393</a>    }
+<a href=#4394 id=4394 data-nosnippet>4394</a>    result
+<a href=#4395 id=4395 data-nosnippet>4395</a>}
+<a href=#4396 id=4396 data-nosnippet>4396</a>
+<a href=#4397 id=4397 data-nosnippet>4397</a><span class="doccomment">/// Linear layer (tau) via the precomputed `table` (`MDS_TABLE`/`MDS_INV_TABLE`) - the default
+<a href=#4398 id=4398 data-nosnippet>4398</a>/// resource profile. See module doc.
+<a href=#4399 id=4399 data-nosnippet>4399</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
+<a href=#4400 id=4400 data-nosnippet>4400</a></span><span class="kw">fn </span>apply_matrix(state: <span class="kw-2">&amp;mut </span>[[u8; ROWS]], table: <span class="kw-2">&amp;</span>[[u64; <span class="number">256</span>]; ROWS]) {
+<a href=#4401 id=4401 data-nosnippet>4401</a>    <span class="kw">for </span>column <span class="kw">in </span>state.iter_mut() {
+<a href=#4402 id=4402 data-nosnippet>4402</a>        <span class="kw">let </span><span class="kw-2">mut </span>acc = <span class="number">0u64</span>;
+<a href=#4403 id=4403 data-nosnippet>4403</a>        <span class="kw">for </span>(in_row, <span class="kw-2">&amp;</span>byte) <span class="kw">in </span>column.iter().enumerate() {
+<a href=#4404 id=4404 data-nosnippet>4404</a>            acc ^= table[in_row][byte <span class="kw">as </span>usize];
+<a href=#4405 id=4405 data-nosnippet>4405</a>        }
+<a href=#4406 id=4406 data-nosnippet>4406</a>        <span class="kw-2">*</span>column = acc.to_le_bytes();
+<a href=#4407 id=4407 data-nosnippet>4407</a>    }
+<a href=#4408 id=4408 data-nosnippet>4408</a>}
+<a href=#4409 id=4409 data-nosnippet>4409</a>
+<a href=#4410 id=4410 data-nosnippet>4410</a><span class="doccomment">/// Linear layer (tau) via `gf_mul` directly against `matrix` (`MDS_MATRIX`/`MDS_INV_MATRIX`) - the
+<a href=#4411 id=4411 data-nosnippet>4411</a>/// `small-tables` resource profile (`docs/DECISIONS.md` D-35/D-38): no precomputed table, 64 `gf_mul`
+<a href=#4412 id=4412 data-nosnippet>4412</a>/// calls per column instead of 8 table lookups. This is exactly `apply_matrix`'s pre-D-27 form.
+<a href=#4413 id=4413 data-nosnippet>4413</a></span><span class="attr">#[cfg(feature = <span class="string">"small-tables"</span>)]
+<a href=#4414 id=4414 data-nosnippet>4414</a></span><span class="kw">fn </span>apply_matrix_via_gf_mul(state: <span class="kw-2">&amp;mut </span>[[u8; ROWS]], matrix: <span class="kw-2">&amp;</span>[[u8; ROWS]; ROWS]) {
+<a href=#4415 id=4415 data-nosnippet>4415</a>    <span class="kw">for </span>column <span class="kw">in </span>state.iter_mut() {
+<a href=#4416 id=4416 data-nosnippet>4416</a>        <span class="kw">let </span><span class="kw-2">mut </span>out = [<span class="number">0u8</span>; ROWS];
+<a href=#4417 id=4417 data-nosnippet>4417</a>        <span class="kw">for </span>(out_row, out_byte) <span class="kw">in </span>out.iter_mut().enumerate() {
+<a href=#4418 id=4418 data-nosnippet>4418</a>            <span class="kw">for </span>(in_row, <span class="kw-2">&amp;</span>byte) <span class="kw">in </span>column.iter().enumerate() {
+<a href=#4419 id=4419 data-nosnippet>4419</a>                <span class="kw-2">*</span>out_byte ^= gf_mul(byte, matrix[out_row][in_row]);
+<a href=#4420 id=4420 data-nosnippet>4420</a>            }
+<a href=#4421 id=4421 data-nosnippet>4421</a>        }
+<a href=#4422 id=4422 data-nosnippet>4422</a>        <span class="kw-2">*</span>column = out;
+<a href=#4423 id=4423 data-nosnippet>4423</a>    }
+<a href=#4424 id=4424 data-nosnippet>4424</a>}
+<a href=#4425 id=4425 data-nosnippet>4425</a>
+<a href=#4426 id=4426 data-nosnippet>4426</a><span class="doccomment">/// Applies the forward MDS linear layer (tau) to every column of `state` - callers don't need
+<a href=#4427 id=4427 data-nosnippet>4427</a>/// their own `cfg`, this picks the resource-profile-appropriate implementation (`docs/DECISIONS.md`
+<a href=#4428 id=4428 data-nosnippet>4428</a>/// D-35/D-38). Used by Kalyna's decrypt-direction whitening step and Kupyna's dead-code `mix_
+<a href=#4429 id=4429 data-nosnippet>4429</a>/// columns` reference; the fused per-round path uses `forward_sbox_mds` below instead.
+<a href=#4430 id=4430 data-nosnippet>4430</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
+<a href=#4431 id=4431 data-nosnippet>4431</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>apply_forward_matrix(state: <span class="kw-2">&amp;mut </span>[[u8; ROWS]]) {
+<a href=#4432 id=4432 data-nosnippet>4432</a>    apply_matrix(state, <span class="kw-2">&amp;</span>MDS_TABLE);
+<a href=#4433 id=4433 data-nosnippet>4433</a>}
+<a href=#4434 id=4434 data-nosnippet>4434</a><span class="attr">#[cfg(feature = <span class="string">"small-tables"</span>)]
+<a href=#4435 id=4435 data-nosnippet>4435</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>apply_forward_matrix(state: <span class="kw-2">&amp;mut </span>[[u8; ROWS]]) {
+<a href=#4436 id=4436 data-nosnippet>4436</a>    apply_matrix_via_gf_mul(state, <span class="kw-2">&amp;</span>MDS_MATRIX);
+<a href=#4437 id=4437 data-nosnippet>4437</a>}
+<a href=#4438 id=4438 data-nosnippet>4438</a>
+<a href=#4439 id=4439 data-nosnippet>4439</a><span class="doccomment">/// Inverse of `apply_forward_matrix` - used by Kalyna's `transform_keys_for_decrypt` and the
+<a href=#4440 id=4440 data-nosnippet>4440</a>/// whitening step at the start of `decrypt_with_schedule`/`decipher_round`.
+<a href=#4441 id=4441 data-nosnippet>4441</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
+<a href=#4442 id=4442 data-nosnippet>4442</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>apply_inverse_matrix(state: <span class="kw-2">&amp;mut </span>[[u8; ROWS]]) {
+<a href=#4443 id=4443 data-nosnippet>4443</a>    apply_matrix(state, <span class="kw-2">&amp;</span>MDS_INV_TABLE);
+<a href=#4444 id=4444 data-nosnippet>4444</a>}
+<a href=#4445 id=4445 data-nosnippet>4445</a><span class="attr">#[cfg(feature = <span class="string">"small-tables"</span>)]
+<a href=#4446 id=4446 data-nosnippet>4446</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>apply_inverse_matrix(state: <span class="kw-2">&amp;mut </span>[[u8; ROWS]]) {
+<a href=#4447 id=4447 data-nosnippet>4447</a>    apply_matrix_via_gf_mul(state, <span class="kw-2">&amp;</span>MDS_INV_MATRIX);
+<a href=#4448 id=4448 data-nosnippet>4448</a>}
+<a href=#4449 id=4449 data-nosnippet>4449</a>
+<a href=#4450 id=4450 data-nosnippet>4450</a><span class="doccomment">/// One (pre-substitution) byte's combined forward S-box + MDS contribution, computed via
+<a href=#4451 id=4451 data-nosnippet>4451</a>/// `gf_mul` on demand instead of looked up from `SBOX_MDS` - the `small-tables` resource profile's
+<a href=#4452 id=4452 data-nosnippet>4452</a>/// per-byte primitive for `hazmat::kalyna::encipher_round`/`hazmat::kupyna::sub_shift_mix`'s
+<a href=#4453 id=4453 data-nosnippet>4453</a>/// gather-and-XOR loop. Same formula `build_sbox_mds` composes at compile time (`gf_mul(byte,
+<a href=#4454 id=4454 data-nosnippet>4454</a>/// matrix[out_row][in_row])` for every `out_row`, packed little-endian), just evaluated per call
+<a href=#4455 id=4455 data-nosnippet>4455</a>/// instead of baked into a `[[u64; 256]; ROWS]` table.
+<a href=#4456 id=4456 data-nosnippet>4456</a></span><span class="attr">#[cfg(feature = <span class="string">"small-tables"</span>)]
+<a href=#4457 id=4457 data-nosnippet>4457</a></span><span class="kw">fn </span>mds_column_via_gf_mul(matrix: <span class="kw-2">&amp;</span>[[u8; ROWS]; ROWS], in_row: usize, byte: u8) -&gt; u64 {
+<a href=#4458 id=4458 data-nosnippet>4458</a>    <span class="kw">let </span><span class="kw-2">mut </span>word = <span class="number">0u64</span>;
+<a href=#4459 id=4459 data-nosnippet>4459</a>    <span class="comment">// `out_row` drives both the `matrix` index and the byte-shift amount, not a plain
+<a href=#4460 id=4460 data-nosnippet>4460</a>    // single-collection enumerate candidate.
+<a href=#4461 id=4461 data-nosnippet>4461</a>    </span><span class="attr">#[allow(clippy::needless_range_loop)]
+<a href=#4462 id=4462 data-nosnippet>4462</a>    </span><span class="kw">for </span>out_row <span class="kw">in </span><span class="number">0</span>..ROWS {
+<a href=#4463 id=4463 data-nosnippet>4463</a>        word |= u64::from(gf_mul(byte, matrix[out_row][in_row])) &lt;&lt; (<span class="number">8 </span>* out_row);
+<a href=#4464 id=4464 data-nosnippet>4464</a>    }
+<a href=#4465 id=4465 data-nosnippet>4465</a>    word
+<a href=#4466 id=4466 data-nosnippet>4466</a>}
+<a href=#4467 id=4467 data-nosnippet>4467</a>
+<a href=#4468 id=4468 data-nosnippet>4468</a><span class="doccomment">/// Combined S-box + MDS forward lookup: `SBOX_MDS[row][byte] = MDS_TABLE[row][SBOXES[row %
+<a href=#4469 id=4469 data-nosnippet>4469</a>/// 4][byte]]` - the contribution a raw (pre-substitution) byte sitting at row `row` makes to the
+<a href=#4470 id=4470 data-nosnippet>4470</a>/// output column once substituted and mixed. Computed by the compiler at build time by directly
+<a href=#4471 id=4471 data-nosnippet>4471</a>/// composing the two already-verified tables above (`const fn`, `while`-loop since `for`/iterators
+<a href=#4472 id=4472 data-nosnippet>4472</a>/// aren't allowed in const context) - no hand transcription, no generation script, so there is no
+<a href=#4473 id=4473 data-nosnippet>4473</a>/// new correctness risk beyond `SBOXES`/`MDS_TABLE` themselves.
+<a href=#4474 id=4474 data-nosnippet>4474</a>///
+<a href=#4475 id=4475 data-nosnippet>4475</a>/// This is `nb`/block-size independent, unlike `D-27`'s stated blocker for full S-box+shift+MDS
+<a href=#4476 id=4476 data-nosnippet>4476</a>/// fusion assumed: `sub_bytes` substitutes per row, and `shift_rows`/Kupyna's `shift_bytes` permute
+<a href=#4477 id=4477 data-nosnippet>4477</a>/// columns while preserving row - the two operations commute, so this table alone (no per-variant
+<a href=#4478 id=4478 data-nosnippet>4478</a>/// copies) is enough. The `nb`- or `columns`-dependent part is only the *gather index* used by the
+<a href=#4479 id=4479 data-nosnippet>4479</a>/// caller (`hazmat::kalyna::encipher_round`, `hazmat::kupyna::t_transform`/`t_plus_transform`),
+<a href=#4480 id=4480 data-nosnippet>4480</a>/// which is cheap arithmetic on `nb`/`shift`, not a table. See `docs/DECISIONS.md` D-28.
+<a href=#4481 id=4481 data-nosnippet>4481</a>///
+<a href=#4482 id=4482 data-nosnippet>4482</a>/// Not compiled under `small-tables` (`docs/DECISIONS.md` D-35/D-38) - `forward_sbox_mds` below calls
+<a href=#4483 id=4483 data-nosnippet>4483</a>/// `mds_column_via_gf_mul` on demand instead in that profile.
+<a href=#4484 id=4484 data-nosnippet>4484</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
+<a href=#4485 id=4485 data-nosnippet>4485</a></span><span class="kw">const fn </span>build_sbox_mds() -&gt; [[u64; <span class="number">256</span>]; ROWS] {
+<a href=#4486 id=4486 data-nosnippet>4486</a>    <span class="kw">let </span><span class="kw-2">mut </span>table = [[<span class="number">0u64</span>; <span class="number">256</span>]; ROWS];
+<a href=#4487 id=4487 data-nosnippet>4487</a>    <span class="kw">let </span><span class="kw-2">mut </span>row = <span class="number">0</span>;
+<a href=#4488 id=4488 data-nosnippet>4488</a>    <span class="kw">while </span>row &lt; ROWS {
+<a href=#4489 id=4489 data-nosnippet>4489</a>        <span class="kw">let </span><span class="kw-2">mut </span>byte = <span class="number">0usize</span>;
+<a href=#4490 id=4490 data-nosnippet>4490</a>        <span class="kw">while </span>byte &lt; <span class="number">256 </span>{
+<a href=#4491 id=4491 data-nosnippet>4491</a>            <span class="kw">let </span>substituted = SBOXES[row % <span class="number">4</span>][byte] <span class="kw">as </span>usize;
+<a href=#4492 id=4492 data-nosnippet>4492</a>            table[row][byte] = MDS_TABLE[row][substituted];
+<a href=#4493 id=4493 data-nosnippet>4493</a>            byte += <span class="number">1</span>;
+<a href=#4494 id=4494 data-nosnippet>4494</a>        }
+<a href=#4495 id=4495 data-nosnippet>4495</a>        row += <span class="number">1</span>;
+<a href=#4496 id=4496 data-nosnippet>4496</a>    }
+<a href=#4497 id=4497 data-nosnippet>4497</a>    table
+<a href=#4498 id=4498 data-nosnippet>4498</a>}
+<a href=#4499 id=4499 data-nosnippet>4499</a>
+<a href=#4500 id=4500 data-nosnippet>4500</a><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
+<a href=#4501 id=4501 data-nosnippet>4501</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">const </span>SBOX_MDS: [[u64; <span class="number">256</span>]; ROWS] = build_sbox_mds();
 <a href=#4502 id=4502 data-nosnippet>4502</a>
-<a href=#4503 id=4503 data-nosnippet>4503</a><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
-<a href=#4504 id=4504 data-nosnippet>4504</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">const </span>SBOX_MDS: [[u64; <span class="number">256</span>]; ROWS] = build_sbox_mds();
-<a href=#4505 id=4505 data-nosnippet>4505</a>
-<a href=#4506 id=4506 data-nosnippet>4506</a><span class="doccomment">/// One (pre-substitution) byte's combined forward S-box + MDS contribution -
-<a href=#4507 id=4507 data-nosnippet>4507</a>/// `hazmat::kalyna::encipher_round`/`hazmat::kupyna::sub_shift_mix`'s gather-and-XOR loop calls
-<a href=#4508 id=4508 data-nosnippet>4508</a>/// this once per input byte, without needing its own `cfg` (`docs/DECISIONS.md` D-35/D-38).
-<a href=#4509 id=4509 data-nosnippet>4509</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
-<a href=#4510 id=4510 data-nosnippet>4510</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>forward_sbox_mds(row: usize, byte: u8) -&gt; u64 {
-<a href=#4511 id=4511 data-nosnippet>4511</a>    SBOX_MDS[row][byte <span class="kw">as </span>usize]
-<a href=#4512 id=4512 data-nosnippet>4512</a>}
-<a href=#4513 id=4513 data-nosnippet>4513</a><span class="attr">#[cfg(feature = <span class="string">"small-tables"</span>)]
-<a href=#4514 id=4514 data-nosnippet>4514</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>forward_sbox_mds(row: usize, byte: u8) -&gt; u64 {
-<a href=#4515 id=4515 data-nosnippet>4515</a>    mds_column_via_gf_mul(<span class="kw-2">&amp;</span>MDS_MATRIX, row, SBOXES[row % <span class="number">4</span>][byte <span class="kw">as </span>usize])
-<a href=#4516 id=4516 data-nosnippet>4516</a>}
-<a href=#4517 id=4517 data-nosnippet>4517</a>
-<a href=#4518 id=4518 data-nosnippet>4518</a><span class="doccomment">/// Combined inverse-S-box + inverse-MDS lookup for Kalyna's decrypt direction (D-28 follow-up,
-<a href=#4519 id=4519 data-nosnippet>4519</a>/// `docs/DECISIONS.md` D-30): `SBOX_MDS_DEC[row][byte] = MDS_INV_TABLE[row][SBOXES_DEC[row % 4][byte]]`.
-<a href=#4520 id=4520 data-nosnippet>4520</a>/// Decrypt's *un-transformed* round order is mix-then-substitute (opposite of encrypt), which by
-<a href=#4521 id=4521 data-nosnippet>4521</a>/// itself isn't fusable this way - `hazmat::kalyna::fused_inv_round` uses this table only after an
-<a href=#4522 id=4522 data-nosnippet>4522</a>/// equivalent-inverse-cipher restructuring (transformed interior round keys, `DK[j] =
-<a href=#4523 id=4523 data-nosnippet>4523</a>/// apply_matrix(K[j], MDS_INV_TABLE)`) that reorders each interior round to substitute-then-mix,
-<a href=#4524 id=4524 data-nosnippet>4524</a>/// the same shape `SBOX_MDS`/`encipher_round` already use - see D-30 for the derivation.
-<a href=#4525 id=4525 data-nosnippet>4525</a>///
-<a href=#4526 id=4526 data-nosnippet>4526</a>/// Not compiled under `small-tables` - same reasoning as `build_sbox_mds`.
-<a href=#4527 id=4527 data-nosnippet>4527</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
-<a href=#4528 id=4528 data-nosnippet>4528</a></span><span class="kw">const fn </span>build_sbox_mds_dec() -&gt; [[u64; <span class="number">256</span>]; ROWS] {
-<a href=#4529 id=4529 data-nosnippet>4529</a>    <span class="kw">let </span><span class="kw-2">mut </span>table = [[<span class="number">0u64</span>; <span class="number">256</span>]; ROWS];
-<a href=#4530 id=4530 data-nosnippet>4530</a>    <span class="kw">let </span><span class="kw-2">mut </span>row = <span class="number">0</span>;
-<a href=#4531 id=4531 data-nosnippet>4531</a>    <span class="kw">while </span>row &lt; ROWS {
-<a href=#4532 id=4532 data-nosnippet>4532</a>        <span class="kw">let </span><span class="kw-2">mut </span>byte = <span class="number">0usize</span>;
-<a href=#4533 id=4533 data-nosnippet>4533</a>        <span class="kw">while </span>byte &lt; <span class="number">256 </span>{
-<a href=#4534 id=4534 data-nosnippet>4534</a>            <span class="kw">let </span>substituted = SBOXES_DEC[row % <span class="number">4</span>][byte] <span class="kw">as </span>usize;
-<a href=#4535 id=4535 data-nosnippet>4535</a>            table[row][byte] = MDS_INV_TABLE[row][substituted];
-<a href=#4536 id=4536 data-nosnippet>4536</a>            byte += <span class="number">1</span>;
-<a href=#4537 id=4537 data-nosnippet>4537</a>        }
-<a href=#4538 id=4538 data-nosnippet>4538</a>        row += <span class="number">1</span>;
-<a href=#4539 id=4539 data-nosnippet>4539</a>    }
-<a href=#4540 id=4540 data-nosnippet>4540</a>    table
-<a href=#4541 id=4541 data-nosnippet>4541</a>}
+<a href=#4503 id=4503 data-nosnippet>4503</a><span class="doccomment">/// One (pre-substitution) byte's combined forward S-box + MDS contribution -
+<a href=#4504 id=4504 data-nosnippet>4504</a>/// `hazmat::kalyna::encipher_round`/`hazmat::kupyna::sub_shift_mix`'s gather-and-XOR loop calls
+<a href=#4505 id=4505 data-nosnippet>4505</a>/// this once per input byte, without needing its own `cfg` (`docs/DECISIONS.md` D-35/D-38).
+<a href=#4506 id=4506 data-nosnippet>4506</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
+<a href=#4507 id=4507 data-nosnippet>4507</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>forward_sbox_mds(row: usize, byte: u8) -&gt; u64 {
+<a href=#4508 id=4508 data-nosnippet>4508</a>    SBOX_MDS[row][byte <span class="kw">as </span>usize]
+<a href=#4509 id=4509 data-nosnippet>4509</a>}
+<a href=#4510 id=4510 data-nosnippet>4510</a><span class="attr">#[cfg(feature = <span class="string">"small-tables"</span>)]
+<a href=#4511 id=4511 data-nosnippet>4511</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>forward_sbox_mds(row: usize, byte: u8) -&gt; u64 {
+<a href=#4512 id=4512 data-nosnippet>4512</a>    mds_column_via_gf_mul(<span class="kw-2">&amp;</span>MDS_MATRIX, row, SBOXES[row % <span class="number">4</span>][byte <span class="kw">as </span>usize])
+<a href=#4513 id=4513 data-nosnippet>4513</a>}
+<a href=#4514 id=4514 data-nosnippet>4514</a>
+<a href=#4515 id=4515 data-nosnippet>4515</a><span class="doccomment">/// Combined inverse-S-box + inverse-MDS lookup for Kalyna's decrypt direction (D-28 follow-up,
+<a href=#4516 id=4516 data-nosnippet>4516</a>/// `docs/DECISIONS.md` D-30): `SBOX_MDS_DEC[row][byte] = MDS_INV_TABLE[row][SBOXES_DEC[row % 4][byte]]`.
+<a href=#4517 id=4517 data-nosnippet>4517</a>/// Decrypt's *un-transformed* round order is mix-then-substitute (opposite of encrypt), which by
+<a href=#4518 id=4518 data-nosnippet>4518</a>/// itself isn't fusable this way - `hazmat::kalyna::fused_inv_round` uses this table only after an
+<a href=#4519 id=4519 data-nosnippet>4519</a>/// equivalent-inverse-cipher restructuring (transformed interior round keys, `DK[j] =
+<a href=#4520 id=4520 data-nosnippet>4520</a>/// apply_matrix(K[j], MDS_INV_TABLE)`) that reorders each interior round to substitute-then-mix,
+<a href=#4521 id=4521 data-nosnippet>4521</a>/// the same shape `SBOX_MDS`/`encipher_round` already use - see D-30 for the derivation.
+<a href=#4522 id=4522 data-nosnippet>4522</a>///
+<a href=#4523 id=4523 data-nosnippet>4523</a>/// Not compiled under `small-tables` - same reasoning as `build_sbox_mds`.
+<a href=#4524 id=4524 data-nosnippet>4524</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
+<a href=#4525 id=4525 data-nosnippet>4525</a></span><span class="kw">const fn </span>build_sbox_mds_dec() -&gt; [[u64; <span class="number">256</span>]; ROWS] {
+<a href=#4526 id=4526 data-nosnippet>4526</a>    <span class="kw">let </span><span class="kw-2">mut </span>table = [[<span class="number">0u64</span>; <span class="number">256</span>]; ROWS];
+<a href=#4527 id=4527 data-nosnippet>4527</a>    <span class="kw">let </span><span class="kw-2">mut </span>row = <span class="number">0</span>;
+<a href=#4528 id=4528 data-nosnippet>4528</a>    <span class="kw">while </span>row &lt; ROWS {
+<a href=#4529 id=4529 data-nosnippet>4529</a>        <span class="kw">let </span><span class="kw-2">mut </span>byte = <span class="number">0usize</span>;
+<a href=#4530 id=4530 data-nosnippet>4530</a>        <span class="kw">while </span>byte &lt; <span class="number">256 </span>{
+<a href=#4531 id=4531 data-nosnippet>4531</a>            <span class="kw">let </span>substituted = SBOXES_DEC[row % <span class="number">4</span>][byte] <span class="kw">as </span>usize;
+<a href=#4532 id=4532 data-nosnippet>4532</a>            table[row][byte] = MDS_INV_TABLE[row][substituted];
+<a href=#4533 id=4533 data-nosnippet>4533</a>            byte += <span class="number">1</span>;
+<a href=#4534 id=4534 data-nosnippet>4534</a>        }
+<a href=#4535 id=4535 data-nosnippet>4535</a>        row += <span class="number">1</span>;
+<a href=#4536 id=4536 data-nosnippet>4536</a>    }
+<a href=#4537 id=4537 data-nosnippet>4537</a>    table
+<a href=#4538 id=4538 data-nosnippet>4538</a>}
+<a href=#4539 id=4539 data-nosnippet>4539</a>
+<a href=#4540 id=4540 data-nosnippet>4540</a><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
+<a href=#4541 id=4541 data-nosnippet>4541</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">const </span>SBOX_MDS_DEC: [[u64; <span class="number">256</span>]; ROWS] = build_sbox_mds_dec();
 <a href=#4542 id=4542 data-nosnippet>4542</a>
-<a href=#4543 id=4543 data-nosnippet>4543</a><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
-<a href=#4544 id=4544 data-nosnippet>4544</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">const </span>SBOX_MDS_DEC: [[u64; <span class="number">256</span>]; ROWS] = build_sbox_mds_dec();
-<a href=#4545 id=4545 data-nosnippet>4545</a>
-<a href=#4546 id=4546 data-nosnippet>4546</a><span class="doccomment">/// Inverse of `forward_sbox_mds` - Kalyna's `fused_inv_round` gather-and-XOR loop.
-<a href=#4547 id=4547 data-nosnippet>4547</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
-<a href=#4548 id=4548 data-nosnippet>4548</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>inverse_sbox_mds(row: usize, byte: u8) -&gt; u64 {
-<a href=#4549 id=4549 data-nosnippet>4549</a>    SBOX_MDS_DEC[row][byte <span class="kw">as </span>usize]
-<a href=#4550 id=4550 data-nosnippet>4550</a>}
-<a href=#4551 id=4551 data-nosnippet>4551</a><span class="attr">#[cfg(feature = <span class="string">"small-tables"</span>)]
-<a href=#4552 id=4552 data-nosnippet>4552</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>inverse_sbox_mds(row: usize, byte: u8) -&gt; u64 {
-<a href=#4553 id=4553 data-nosnippet>4553</a>    mds_column_via_gf_mul(<span class="kw-2">&amp;</span>MDS_INV_MATRIX, row, SBOXES_DEC[row % <span class="number">4</span>][byte <span class="kw">as </span>usize])
-<a href=#4554 id=4554 data-nosnippet>4554</a>}
-<a href=#4555 id=4555 data-nosnippet>4555</a>
-<a href=#4556 id=4556 data-nosnippet>4556</a><span class="doccomment">/// Exhaustively confirms `MDS_TABLE`/`MDS_INV_TABLE` (generated, D-27) against `gf_mul` +
-<a href=#4557 id=4557 data-nosnippet>4557</a>/// `MDS_MATRIX`/`MDS_INV_MATRIX` (the original, still-verified computation) - every input row and
-<a href=#4558 id=4558 data-nosnippet>4558</a>/// every possible byte value, not a sample. This is what justifies `gf_mul`/`MDS_MATRIX`/
-<a href=#4559 id=4559 data-nosnippet>4559</a>/// `MDS_INV_MATRIX` still being here even though no production code path calls them anymore: they
-<a href=#4560 id=4560 data-nosnippet>4560</a>/// are the independent reference this test checks the fast tables against, not dead weight.
-<a href=#4561 id=4561 data-nosnippet>4561</a>///
-<a href=#4562 id=4562 data-nosnippet>4562</a>/// Only meaningful under the default profile - `small-tables` (`docs/DECISIONS.md` D-35/D-38) has no
-<a href=#4563 id=4563 data-nosnippet>4563</a>/// `MDS_TABLE`/`SBOX_MDS` to check in the first place, since its production code calls `gf_mul`
-<a href=#4564 id=4564 data-nosnippet>4564</a>/// directly (this module's own `expected_column` formula, promoted to `mds_column_via_gf_mul`).
-<a href=#4565 id=4565 data-nosnippet>4565</a></span><span class="attr">#[cfg(all(test, not(feature = <span class="string">"small-tables"</span>)))]
-<a href=#4566 id=4566 data-nosnippet>4566</a></span><span class="kw">mod </span>tests {
-<a href=#4567 id=4567 data-nosnippet>4567</a>    <span class="kw">use super</span>::{
-<a href=#4568 id=4568 data-nosnippet>4568</a>        gf_mul, MDS_INV_MATRIX, MDS_INV_TABLE, MDS_MATRIX, MDS_TABLE, ROWS, SBOXES, SBOXES_DEC,
-<a href=#4569 id=4569 data-nosnippet>4569</a>        SBOX_MDS, SBOX_MDS_DEC,
-<a href=#4570 id=4570 data-nosnippet>4570</a>    };
-<a href=#4571 id=4571 data-nosnippet>4571</a>
-<a href=#4572 id=4572 data-nosnippet>4572</a>    <span class="kw">fn </span>expected_column(matrix: <span class="kw-2">&amp;</span>[[u8; ROWS]; ROWS], in_row: usize, byte: u8) -&gt; u64 {
-<a href=#4573 id=4573 data-nosnippet>4573</a>        <span class="kw">let </span><span class="kw-2">mut </span>word = <span class="number">0u64</span>;
-<a href=#4574 id=4574 data-nosnippet>4574</a>        <span class="kw">for </span>(out_row, row) <span class="kw">in </span>matrix.iter().enumerate() {
-<a href=#4575 id=4575 data-nosnippet>4575</a>            word |= u64::from(gf_mul(byte, row[in_row])) &lt;&lt; (<span class="number">8 </span>* out_row);
-<a href=#4576 id=4576 data-nosnippet>4576</a>        }
-<a href=#4577 id=4577 data-nosnippet>4577</a>        word
-<a href=#4578 id=4578 data-nosnippet>4578</a>    }
-<a href=#4579 id=4579 data-nosnippet>4579</a>
-<a href=#4580 id=4580 data-nosnippet>4580</a>    <span class="attr">#[test]
-<a href=#4581 id=4581 data-nosnippet>4581</a>    </span><span class="kw">fn </span>mds_table_matches_gf_mul_exhaustively() {
-<a href=#4582 id=4582 data-nosnippet>4582</a>        <span class="kw">for </span>(in_row, table_row) <span class="kw">in </span>MDS_TABLE.iter().enumerate() {
-<a href=#4583 id=4583 data-nosnippet>4583</a>            <span class="kw">for </span>byte <span class="kw">in </span><span class="number">0</span>..=u8::MAX {
-<a href=#4584 id=4584 data-nosnippet>4584</a>                <span class="macro">assert_eq!</span>(
-<a href=#4585 id=4585 data-nosnippet>4585</a>                    table_row[byte <span class="kw">as </span>usize],
-<a href=#4586 id=4586 data-nosnippet>4586</a>                    expected_column(<span class="kw-2">&amp;</span>MDS_MATRIX, in_row, byte),
-<a href=#4587 id=4587 data-nosnippet>4587</a>                    <span class="string">"MDS_TABLE[{in_row}][{byte}] mismatch"
-<a href=#4588 id=4588 data-nosnippet>4588</a>                </span>);
+<a href=#4543 id=4543 data-nosnippet>4543</a><span class="doccomment">/// Inverse of `forward_sbox_mds` - Kalyna's `fused_inv_round` gather-and-XOR loop.
+<a href=#4544 id=4544 data-nosnippet>4544</a></span><span class="attr">#[cfg(not(feature = <span class="string">"small-tables"</span>))]
+<a href=#4545 id=4545 data-nosnippet>4545</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>inverse_sbox_mds(row: usize, byte: u8) -&gt; u64 {
+<a href=#4546 id=4546 data-nosnippet>4546</a>    SBOX_MDS_DEC[row][byte <span class="kw">as </span>usize]
+<a href=#4547 id=4547 data-nosnippet>4547</a>}
+<a href=#4548 id=4548 data-nosnippet>4548</a><span class="attr">#[cfg(feature = <span class="string">"small-tables"</span>)]
+<a href=#4549 id=4549 data-nosnippet>4549</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>inverse_sbox_mds(row: usize, byte: u8) -&gt; u64 {
+<a href=#4550 id=4550 data-nosnippet>4550</a>    mds_column_via_gf_mul(<span class="kw-2">&amp;</span>MDS_INV_MATRIX, row, SBOXES_DEC[row % <span class="number">4</span>][byte <span class="kw">as </span>usize])
+<a href=#4551 id=4551 data-nosnippet>4551</a>}
+<a href=#4552 id=4552 data-nosnippet>4552</a>
+<a href=#4553 id=4553 data-nosnippet>4553</a><span class="doccomment">/// Exhaustively confirms `MDS_TABLE`/`MDS_INV_TABLE` (generated, D-27) against `gf_mul` +
+<a href=#4554 id=4554 data-nosnippet>4554</a>/// `MDS_MATRIX`/`MDS_INV_MATRIX` (the original, still-verified computation) - every input row and
+<a href=#4555 id=4555 data-nosnippet>4555</a>/// every possible byte value, not a sample. This is what justifies `gf_mul`/`MDS_MATRIX`/
+<a href=#4556 id=4556 data-nosnippet>4556</a>/// `MDS_INV_MATRIX` still being here even though no production code path calls them anymore: they
+<a href=#4557 id=4557 data-nosnippet>4557</a>/// are the independent reference this test checks the fast tables against, not dead weight.
+<a href=#4558 id=4558 data-nosnippet>4558</a>///
+<a href=#4559 id=4559 data-nosnippet>4559</a>/// Only meaningful under the default profile - `small-tables` (`docs/DECISIONS.md` D-35/D-38) has no
+<a href=#4560 id=4560 data-nosnippet>4560</a>/// `MDS_TABLE`/`SBOX_MDS` to check in the first place, since its production code calls `gf_mul`
+<a href=#4561 id=4561 data-nosnippet>4561</a>/// directly (this module's own `expected_column` formula, promoted to `mds_column_via_gf_mul`).
+<a href=#4562 id=4562 data-nosnippet>4562</a></span><span class="attr">#[cfg(all(test, not(feature = <span class="string">"small-tables"</span>)))]
+<a href=#4563 id=4563 data-nosnippet>4563</a></span><span class="kw">mod </span>tests {
+<a href=#4564 id=4564 data-nosnippet>4564</a>    <span class="kw">use super</span>::{
+<a href=#4565 id=4565 data-nosnippet>4565</a>        gf_mul, MDS_INV_MATRIX, MDS_INV_TABLE, MDS_MATRIX, MDS_TABLE, ROWS, SBOXES, SBOXES_DEC,
+<a href=#4566 id=4566 data-nosnippet>4566</a>        SBOX_MDS, SBOX_MDS_DEC,
+<a href=#4567 id=4567 data-nosnippet>4567</a>    };
+<a href=#4568 id=4568 data-nosnippet>4568</a>
+<a href=#4569 id=4569 data-nosnippet>4569</a>    <span class="kw">fn </span>expected_column(matrix: <span class="kw-2">&amp;</span>[[u8; ROWS]; ROWS], in_row: usize, byte: u8) -&gt; u64 {
+<a href=#4570 id=4570 data-nosnippet>4570</a>        <span class="kw">let </span><span class="kw-2">mut </span>word = <span class="number">0u64</span>;
+<a href=#4571 id=4571 data-nosnippet>4571</a>        <span class="kw">for </span>(out_row, row) <span class="kw">in </span>matrix.iter().enumerate() {
+<a href=#4572 id=4572 data-nosnippet>4572</a>            word |= u64::from(gf_mul(byte, row[in_row])) &lt;&lt; (<span class="number">8 </span>* out_row);
+<a href=#4573 id=4573 data-nosnippet>4573</a>        }
+<a href=#4574 id=4574 data-nosnippet>4574</a>        word
+<a href=#4575 id=4575 data-nosnippet>4575</a>    }
+<a href=#4576 id=4576 data-nosnippet>4576</a>
+<a href=#4577 id=4577 data-nosnippet>4577</a>    <span class="doccomment">/// `MultiplyGF` as `oracles/kalyna-reference/kalyna.c` writes it, branches and all - the
+<a href=#4578 id=4578 data-nosnippet>4578</a>    /// reference the branchless `gf_mul` (T-312) is checked against.
+<a href=#4579 id=4579 data-nosnippet>4579</a>    </span><span class="kw">fn </span>reference_multiply_gf(<span class="kw-2">mut </span>x: u8, <span class="kw-2">mut </span>y: u8) -&gt; u8 {
+<a href=#4580 id=4580 data-nosnippet>4580</a>        <span class="kw">let </span><span class="kw-2">mut </span>r = <span class="number">0u8</span>;
+<a href=#4581 id=4581 data-nosnippet>4581</a>        <span class="kw">for _ in </span><span class="number">0</span>..<span class="number">8 </span>{
+<a href=#4582 id=4582 data-nosnippet>4582</a>            <span class="kw">if </span>y &amp; <span class="number">1 </span>== <span class="number">1 </span>{
+<a href=#4583 id=4583 data-nosnippet>4583</a>                r ^= x;
+<a href=#4584 id=4584 data-nosnippet>4584</a>            }
+<a href=#4585 id=4585 data-nosnippet>4585</a>            <span class="kw">let </span>hbit = x &amp; <span class="number">0x80</span>;
+<a href=#4586 id=4586 data-nosnippet>4586</a>            x &lt;&lt;= <span class="number">1</span>;
+<a href=#4587 id=4587 data-nosnippet>4587</a>            <span class="kw">if </span>hbit == <span class="number">0x80 </span>{
+<a href=#4588 id=4588 data-nosnippet>4588</a>                x ^= <span class="number">0x1D</span>;
 <a href=#4589 id=4589 data-nosnippet>4589</a>            }
-<a href=#4590 id=4590 data-nosnippet>4590</a>        }
-<a href=#4591 id=4591 data-nosnippet>4591</a>    }
-<a href=#4592 id=4592 data-nosnippet>4592</a>
-<a href=#4593 id=4593 data-nosnippet>4593</a>    <span class="attr">#[test]
-<a href=#4594 id=4594 data-nosnippet>4594</a>    </span><span class="kw">fn </span>mds_inv_table_matches_gf_mul_exhaustively() {
-<a href=#4595 id=4595 data-nosnippet>4595</a>        <span class="kw">for </span>(in_row, table_row) <span class="kw">in </span>MDS_INV_TABLE.iter().enumerate() {
-<a href=#4596 id=4596 data-nosnippet>4596</a>            <span class="kw">for </span>byte <span class="kw">in </span><span class="number">0</span>..=u8::MAX {
-<a href=#4597 id=4597 data-nosnippet>4597</a>                <span class="macro">assert_eq!</span>(
-<a href=#4598 id=4598 data-nosnippet>4598</a>                    table_row[byte <span class="kw">as </span>usize],
-<a href=#4599 id=4599 data-nosnippet>4599</a>                    expected_column(<span class="kw-2">&amp;</span>MDS_INV_MATRIX, in_row, byte),
-<a href=#4600 id=4600 data-nosnippet>4600</a>                    <span class="string">"MDS_INV_TABLE[{in_row}][{byte}] mismatch"
-<a href=#4601 id=4601 data-nosnippet>4601</a>                </span>);
-<a href=#4602 id=4602 data-nosnippet>4602</a>            }
-<a href=#4603 id=4603 data-nosnippet>4603</a>        }
-<a href=#4604 id=4604 data-nosnippet>4604</a>    }
-<a href=#4605 id=4605 data-nosnippet>4605</a>
-<a href=#4606 id=4606 data-nosnippet>4606</a>    <span class="attr">#[test]
-<a href=#4607 id=4607 data-nosnippet>4607</a>    </span><span class="kw">fn </span>sbox_mds_matches_gf_mul_and_sbox_exhaustively() {
-<a href=#4608 id=4608 data-nosnippet>4608</a>        <span class="kw">for </span>row <span class="kw">in </span><span class="number">0</span>..ROWS {
-<a href=#4609 id=4609 data-nosnippet>4609</a>            <span class="kw">for </span>byte <span class="kw">in </span><span class="number">0</span>..=u8::MAX {
-<a href=#4610 id=4610 data-nosnippet>4610</a>                <span class="kw">let </span>substituted = SBOXES[row % <span class="number">4</span>][byte <span class="kw">as </span>usize];
-<a href=#4611 id=4611 data-nosnippet>4611</a>                <span class="macro">assert_eq!</span>(
-<a href=#4612 id=4612 data-nosnippet>4612</a>                    SBOX_MDS[row][byte <span class="kw">as </span>usize],
-<a href=#4613 id=4613 data-nosnippet>4613</a>                    expected_column(<span class="kw-2">&amp;</span>MDS_MATRIX, row, substituted),
-<a href=#4614 id=4614 data-nosnippet>4614</a>                    <span class="string">"SBOX_MDS[{row}][{byte}] mismatch"
-<a href=#4615 id=4615 data-nosnippet>4615</a>                </span>);
-<a href=#4616 id=4616 data-nosnippet>4616</a>            }
-<a href=#4617 id=4617 data-nosnippet>4617</a>        }
-<a href=#4618 id=4618 data-nosnippet>4618</a>    }
-<a href=#4619 id=4619 data-nosnippet>4619</a>
-<a href=#4620 id=4620 data-nosnippet>4620</a>    <span class="attr">#[test]
-<a href=#4621 id=4621 data-nosnippet>4621</a>    </span><span class="kw">fn </span>sbox_mds_dec_matches_gf_mul_and_sbox_dec_exhaustively() {
-<a href=#4622 id=4622 data-nosnippet>4622</a>        <span class="kw">for </span>row <span class="kw">in </span><span class="number">0</span>..ROWS {
-<a href=#4623 id=4623 data-nosnippet>4623</a>            <span class="kw">for </span>byte <span class="kw">in </span><span class="number">0</span>..=u8::MAX {
-<a href=#4624 id=4624 data-nosnippet>4624</a>                <span class="kw">let </span>substituted = SBOXES_DEC[row % <span class="number">4</span>][byte <span class="kw">as </span>usize];
-<a href=#4625 id=4625 data-nosnippet>4625</a>                <span class="macro">assert_eq!</span>(
-<a href=#4626 id=4626 data-nosnippet>4626</a>                    SBOX_MDS_DEC[row][byte <span class="kw">as </span>usize],
-<a href=#4627 id=4627 data-nosnippet>4627</a>                    expected_column(<span class="kw-2">&amp;</span>MDS_INV_MATRIX, row, substituted),
-<a href=#4628 id=4628 data-nosnippet>4628</a>                    <span class="string">"SBOX_MDS_DEC[{row}][{byte}] mismatch"
-<a href=#4629 id=4629 data-nosnippet>4629</a>                </span>);
-<a href=#4630 id=4630 data-nosnippet>4630</a>            }
-<a href=#4631 id=4631 data-nosnippet>4631</a>        }
-<a href=#4632 id=4632 data-nosnippet>4632</a>    }
-<a href=#4633 id=4633 data-nosnippet>4633</a>}
+<a href=#4590 id=4590 data-nosnippet>4590</a>            y &gt;&gt;= <span class="number">1</span>;
+<a href=#4591 id=4591 data-nosnippet>4591</a>        }
+<a href=#4592 id=4592 data-nosnippet>4592</a>        r
+<a href=#4593 id=4593 data-nosnippet>4593</a>    }
+<a href=#4594 id=4594 data-nosnippet>4594</a>
+<a href=#4595 id=4595 data-nosnippet>4595</a>    <span class="attr">#[test]
+<a href=#4596 id=4596 data-nosnippet>4596</a>    #[cfg_attr(
+<a href=#4597 id=4597 data-nosnippet>4597</a>        miri,
+<a href=#4598 id=4598 data-nosnippet>4598</a>        ignore = <span class="string">"65536 products take minutes; the tests below run gf_mul under Miri too"
+<a href=#4599 id=4599 data-nosnippet>4599</a>    </span>)]
+<a href=#4600 id=4600 data-nosnippet>4600</a>    </span><span class="kw">fn </span>gf_mul_matches_reference_multiply_gf_exhaustively() {
+<a href=#4601 id=4601 data-nosnippet>4601</a>        <span class="kw">for </span>x <span class="kw">in </span><span class="number">0</span>..=u8::MAX {
+<a href=#4602 id=4602 data-nosnippet>4602</a>            <span class="kw">for </span>y <span class="kw">in </span><span class="number">0</span>..=u8::MAX {
+<a href=#4603 id=4603 data-nosnippet>4603</a>                <span class="macro">assert_eq!</span>(
+<a href=#4604 id=4604 data-nosnippet>4604</a>                    gf_mul(x, y),
+<a href=#4605 id=4605 data-nosnippet>4605</a>                    reference_multiply_gf(x, y),
+<a href=#4606 id=4606 data-nosnippet>4606</a>                    <span class="string">"gf_mul({x}, {y})"
+<a href=#4607 id=4607 data-nosnippet>4607</a>                </span>);
+<a href=#4608 id=4608 data-nosnippet>4608</a>            }
+<a href=#4609 id=4609 data-nosnippet>4609</a>        }
+<a href=#4610 id=4610 data-nosnippet>4610</a>    }
+<a href=#4611 id=4611 data-nosnippet>4611</a>
+<a href=#4612 id=4612 data-nosnippet>4612</a>    <span class="attr">#[test]
+<a href=#4613 id=4613 data-nosnippet>4613</a>    </span><span class="kw">fn </span>mds_table_matches_gf_mul_exhaustively() {
+<a href=#4614 id=4614 data-nosnippet>4614</a>        <span class="kw">for </span>(in_row, table_row) <span class="kw">in </span>MDS_TABLE.iter().enumerate() {
+<a href=#4615 id=4615 data-nosnippet>4615</a>            <span class="kw">for </span>byte <span class="kw">in </span><span class="number">0</span>..=u8::MAX {
+<a href=#4616 id=4616 data-nosnippet>4616</a>                <span class="macro">assert_eq!</span>(
+<a href=#4617 id=4617 data-nosnippet>4617</a>                    table_row[byte <span class="kw">as </span>usize],
+<a href=#4618 id=4618 data-nosnippet>4618</a>                    expected_column(<span class="kw-2">&amp;</span>MDS_MATRIX, in_row, byte),
+<a href=#4619 id=4619 data-nosnippet>4619</a>                    <span class="string">"MDS_TABLE[{in_row}][{byte}] mismatch"
+<a href=#4620 id=4620 data-nosnippet>4620</a>                </span>);
+<a href=#4621 id=4621 data-nosnippet>4621</a>            }
+<a href=#4622 id=4622 data-nosnippet>4622</a>        }
+<a href=#4623 id=4623 data-nosnippet>4623</a>    }
+<a href=#4624 id=4624 data-nosnippet>4624</a>
+<a href=#4625 id=4625 data-nosnippet>4625</a>    <span class="attr">#[test]
+<a href=#4626 id=4626 data-nosnippet>4626</a>    </span><span class="kw">fn </span>mds_inv_table_matches_gf_mul_exhaustively() {
+<a href=#4627 id=4627 data-nosnippet>4627</a>        <span class="kw">for </span>(in_row, table_row) <span class="kw">in </span>MDS_INV_TABLE.iter().enumerate() {
+<a href=#4628 id=4628 data-nosnippet>4628</a>            <span class="kw">for </span>byte <span class="kw">in </span><span class="number">0</span>..=u8::MAX {
+<a href=#4629 id=4629 data-nosnippet>4629</a>                <span class="macro">assert_eq!</span>(
+<a href=#4630 id=4630 data-nosnippet>4630</a>                    table_row[byte <span class="kw">as </span>usize],
+<a href=#4631 id=4631 data-nosnippet>4631</a>                    expected_column(<span class="kw-2">&amp;</span>MDS_INV_MATRIX, in_row, byte),
+<a href=#4632 id=4632 data-nosnippet>4632</a>                    <span class="string">"MDS_INV_TABLE[{in_row}][{byte}] mismatch"
+<a href=#4633 id=4633 data-nosnippet>4633</a>                </span>);
+<a href=#4634 id=4634 data-nosnippet>4634</a>            }
+<a href=#4635 id=4635 data-nosnippet>4635</a>        }
+<a href=#4636 id=4636 data-nosnippet>4636</a>    }
+<a href=#4637 id=4637 data-nosnippet>4637</a>
+<a href=#4638 id=4638 data-nosnippet>4638</a>    <span class="attr">#[test]
+<a href=#4639 id=4639 data-nosnippet>4639</a>    </span><span class="kw">fn </span>sbox_mds_matches_gf_mul_and_sbox_exhaustively() {
+<a href=#4640 id=4640 data-nosnippet>4640</a>        <span class="kw">for </span>row <span class="kw">in </span><span class="number">0</span>..ROWS {
+<a href=#4641 id=4641 data-nosnippet>4641</a>            <span class="kw">for </span>byte <span class="kw">in </span><span class="number">0</span>..=u8::MAX {
+<a href=#4642 id=4642 data-nosnippet>4642</a>                <span class="kw">let </span>substituted = SBOXES[row % <span class="number">4</span>][byte <span class="kw">as </span>usize];
+<a href=#4643 id=4643 data-nosnippet>4643</a>                <span class="macro">assert_eq!</span>(
+<a href=#4644 id=4644 data-nosnippet>4644</a>                    SBOX_MDS[row][byte <span class="kw">as </span>usize],
+<a href=#4645 id=4645 data-nosnippet>4645</a>                    expected_column(<span class="kw-2">&amp;</span>MDS_MATRIX, row, substituted),
+<a href=#4646 id=4646 data-nosnippet>4646</a>                    <span class="string">"SBOX_MDS[{row}][{byte}] mismatch"
+<a href=#4647 id=4647 data-nosnippet>4647</a>                </span>);
+<a href=#4648 id=4648 data-nosnippet>4648</a>            }
+<a href=#4649 id=4649 data-nosnippet>4649</a>        }
+<a href=#4650 id=4650 data-nosnippet>4650</a>    }
+<a href=#4651 id=4651 data-nosnippet>4651</a>
+<a href=#4652 id=4652 data-nosnippet>4652</a>    <span class="attr">#[test]
+<a href=#4653 id=4653 data-nosnippet>4653</a>    </span><span class="kw">fn </span>sbox_mds_dec_matches_gf_mul_and_sbox_dec_exhaustively() {
+<a href=#4654 id=4654 data-nosnippet>4654</a>        <span class="kw">for </span>row <span class="kw">in </span><span class="number">0</span>..ROWS {
+<a href=#4655 id=4655 data-nosnippet>4655</a>            <span class="kw">for </span>byte <span class="kw">in </span><span class="number">0</span>..=u8::MAX {
+<a href=#4656 id=4656 data-nosnippet>4656</a>                <span class="kw">let </span>substituted = SBOXES_DEC[row % <span class="number">4</span>][byte <span class="kw">as </span>usize];
+<a href=#4657 id=4657 data-nosnippet>4657</a>                <span class="macro">assert_eq!</span>(
+<a href=#4658 id=4658 data-nosnippet>4658</a>                    SBOX_MDS_DEC[row][byte <span class="kw">as </span>usize],
+<a href=#4659 id=4659 data-nosnippet>4659</a>                    expected_column(<span class="kw-2">&amp;</span>MDS_INV_MATRIX, row, substituted),
+<a href=#4660 id=4660 data-nosnippet>4660</a>                    <span class="string">"SBOX_MDS_DEC[{row}][{byte}] mismatch"
+<a href=#4661 id=4661 data-nosnippet>4661</a>                </span>);
+<a href=#4662 id=4662 data-nosnippet>4662</a>            }
+<a href=#4663 id=4663 data-nosnippet>4663</a>        }
+<a href=#4664 id=4664 data-nosnippet>4664</a>    }
+<a href=#4665 id=4665 data-nosnippet>4665</a>}
 </code></pre></div></section></main></body></html>
