@@ -15980,3 +15980,25 @@ rules, then safety, then compatibility:**
   then favours the yank (T-251/D-233 precedent): once 0.7.0/0.5.0 are live on every registry,
   yank `dstu-core`/`uacrypt` < 0.7.0 on crates.io and the bindings <= 0.4.0 on PyPI/RubyGems,
   `npm deprecate` on npm, each run with the owner's approval.
+
+## D-254: the 12 open CodeQL alerts (#89-#101) are false positives, dismissed (2026-10-23)
+
+**Context.** Owner surfaced the Code Scanning page after the 0.7.0 release: 12 open High alerts,
+first seen 2026-10-08..19, read against `895f82a` (the `v0.7.0` commit). Same two rules as D-210.
+
+- **`rust/access-invalid-pointer` #100, #101** - `bindings/nodejs/src/secretstream.rs:147/239`,
+  the `#[napi] pub struct SecretStreamFileEncryptor`/`SecretStreamFileDecryptor` (T-284). The same
+  `napi-derive` ownership transfer D-210 expanded for #82-#85 (`Box::into_raw` handed to `napi_wrap`
+  with the finalizer that frees it); the analyzer does not model the finalizer.
+- **`rust/cleartext-logging`, tests** - `crates/uacrypt/src/lib.rs:9648/9653/9697` (`#[cfg(test)]`,
+  source `secret_keygens()`): the sink is the assert message `{label}`, a `&'static str` such as
+  `"keygen"`. `crates/uacrypt/tests/smoke_stdio.rs:481-484`: the message prints the argument list
+  and the run's stderr of a command that must refuse to print a secret. `crates/dstu-core/tests/
+  crypto_pwhash.rs:62`: the PHC hash of the literal test password `"password"`.
+- **`rust/cleartext-logging`, production** - `crates/uacrypt/src/lib.rs:3039/4703`: the bench
+  summary `eprintln!` of the `kupyna-digest`/`strumok-crypt` `--iterations` path, printing only
+  `args.iterations`, nanoseconds and MB/s. The flagged source `secretstream_args(...)` builds
+  `SecretstreamArgs`, whose `Credential` holds only a key-file path, a passphrase-file path or the
+  terminal marker - never a key or a passphrase - and does not reach these lines at all.
+
+Nothing to change. Dismissed as false positives with a pointer to this entry.
