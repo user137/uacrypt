@@ -17,7 +17,7 @@ in the argument. <code>PublicKey::from_bytes</code> reuses <code>point_from_x</c
 only <a href="enum.OpenError.html#variant.Truncated" title="variant dstu_core::crypto_box384::OpenError::Truncated"><code>OpenError::Truncated</code></a> and <a href="enum.OpenError.html#variant.UnsupportedVersion" title="variant dstu_core::crypto_box384::OpenError::UnsupportedVersion"><code>OpenError::UnsupportedVersion</code></a> stay separate. Wire format
 version 3 only (D-239): <code>version (1, = 3) || dstu9041_ciphertext (176) || &lt;D-208 stream file&gt;</code>,
 through <a href="fn.seal_stream.html" title="fn dstu_core::crypto_box384::seal_stream"><code>seal_stream</code></a>/<a href="fn.open_stream.html" title="fn dstu_core::crypto_box384::open_stream"><code>open_stream</code></a> or <a href="fn.seal.html" title="fn dstu_core::crypto_box384::seal"><code>seal</code></a>/<a href="fn.open.html" title="fn dstu_core::crypto_box384::open"><code>open</code></a>. There is no version 2 at this
-size and no <code>open_v2_legacy</code>: nothing was ever sealed with it. Stream key:
+size: nothing was ever sealed with it. Stream key:
 <code>Kupyna256Kmac(key = seed, message = b"cryptbx3" || version || kem_ciphertext || recipient_public_key)</code> (D-201’s binding, its own label).</p>
 <p>A blob for another curve size fails as <code>InvalidCiphertext</code> or <code>Truncated</code>, the same posture as
 between <code>crypto_box</code> and <code>crypto_box512</code>.</p>

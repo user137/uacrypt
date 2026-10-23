@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["FORMAT_VERSION","LEGACY_FORMAT_VERSION","OPEN_STREAM_PREFIX_BYTES","SEAL_STREAM_PREFIX_BYTES"],"enum":["OpenError","SealError"],"fn":["open","open_stream","open_v2_legacy","seal","seal_stream","sealed_len"],"struct":["PublicKey","SecretKey"]};
+window.SIDEBAR_ITEMS = {"constant":["FORMAT_VERSION","OPEN_STREAM_PREFIX_BYTES","SEAL_STREAM_PREFIX_BYTES"],"enum":["OpenError","SealError"],"fn":["open","open_stream","seal","seal_stream","sealed_len"],"struct":["PublicKey","SecretKey"]};

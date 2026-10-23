@@ -23,7 +23,7 @@
 <a href=#23 id=23 data-nosnippet>23</a>//! only [`OpenError::Truncated`] and [`OpenError::UnsupportedVersion`] stay separate. Wire format
 <a href=#24 id=24 data-nosnippet>24</a>//! version 3 only (D-239): `version (1, = 3) || dstu9041_ciphertext (176) || &lt;D-208 stream file&gt;`,
 <a href=#25 id=25 data-nosnippet>25</a>//! through [`seal_stream`]/[`open_stream`] or [`seal`]/[`open`]. There is no version 2 at this
-<a href=#26 id=26 data-nosnippet>26</a>//! size and no `open_v2_legacy`: nothing was ever sealed with it. Stream key:
+<a href=#26 id=26 data-nosnippet>26</a>//! size: nothing was ever sealed with it. Stream key:
 <a href=#27 id=27 data-nosnippet>27</a>//! `Kupyna256Kmac(key = seed, message = b"cryptbx3" || version || kem_ciphertext ||
 <a href=#28 id=28 data-nosnippet>28</a>//! recipient_public_key)` (D-201's binding, its own label).
 <a href=#29 id=29 data-nosnippet>29</a>//!
