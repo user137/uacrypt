@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e5c2d428.js";
+            window.path_to_searchindex_js = "searchindex-cdcd6347.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -11412,11 +11412,12 @@ per phase (<code>rust.yml</code>/<code>miri.yml</code> are <code>cancel-in-progr
 GHSA published, yanks done, CodeQL clean, winget PR #460150 waiting on a moderator). <code>master</code> =
 <code>1b13b68</code> (PHP <code>ctutils</code> RUSTSEC fix): every workflow green, <code>rust</code> still running at save time -
 check it first. Unpushed, docs only: <code>8397cf6</code>, <code>2a9c0c0</code>, <code>25060fd</code> (push after <code>rust</code> is done).
-Owner confirmed the order below; <strong>next: T-311</strong>, then T-310. Pi: packages up to date (PHP 8.2.35
+Owner confirmed the order below. <strong>T-311 done 2026-10-23 (D-255); next: T-310.</strong> Pi: packages up to date (PHP 8.2.35
 by unattended-upgrades, Docker 29.9.2), Docker stays disabled. Nothing uncommitted.</p>
 <p><strong>Code chain:</strong></p>
 <ol>
-<li><strong>T-311</strong> .NET leak test on the native remainder (VmRSS minus managed committed), threshold
+<li><input disabled="" type="checkbox" checked=""> <strong>T-311</strong> (done 2026-10-23, D-255: native remainder after an aggressive GC, 2 MiB; Pi:
+normal 0.62-0.70 MB, leak control 7.9 MB) .NET leak test on the native remainder (VmRSS minus managed committed), threshold
 ~2 MiB. Committed GC memory need not be resident, so the new metric needs a deliberate-leak
 control first, as D-234 had for Java: a test-only P/Invoke allocation through capi that is never
 freed, shown to fail the new threshold (“never Dispose” is no control in .NET, T-231).</li>
@@ -33833,6 +33834,40 @@ summary <code>eprintln!</code> of the <code>kupyna-digest</code>/<code>strumok-c
 terminal marker - never a key or a passphrase - and does not reach these lines at all.</li>
 </ul>
 <p>Nothing to change. Dismissed as false positives with a pointer to this entry.</p>
+<h2 id="d-255-net-leak-test-asserts-on-the-native-remainder-after-an-aggressive-gc-t-311-2026-10-23"><a class="header" href="#d-255-net-leak-test-asserts-on-the-native-remainder-after-an-aggressive-gc-t-311-2026-10-23">D-255: .NET leak test asserts on the native remainder, after an aggressive GC (T-311, 2026-10-23)</a></h2>
+<p><strong>Finding.</strong> <code>bindings-dotnet</code>’s <code>MemoryLeakTests</code> failed again on <code>587c148</code> (run <code>39941079817</code>,
+Xeon Platinum 8573C): VmRSS +27.68 MB, managed committed +26.80 MB, at n/2 +26.85 / +26.67 MB -
+the same numbers as on <code>895f82a</code>. GC retention that levels off; native remainder 0.88 MB (T-231).</p>
+<p><strong>Decision.</strong> The assert is on the native remainder (VmRSS growth minus <code>TotalCommittedBytes</code>
+growth), threshold 2 MiB over 20000 iterations - a detection floor of ~105 B per iteration. Every
+reading is taken after <code>GC.Collect(MaxGeneration, Aggressive, blocking, compacting)</code>: with the
+default collect the Pi showed committed shrinking 2.3-2.6 MB while VmRSS fell less (decommit of
+never-resident pages), inflating the remainder to 1.57-1.72 MB in 4 of 11 runs (1.2x headroom).
+Measured on the Pi (aarch64, .NET 8, N = 20000):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Collect</th><th>Loop</th><th>native remainder</th><th>managed committed</th></tr>
+</thead>
+<tbody>
+<tr><td>default</td><td>normal (11 runs)</td><td>0.15-1.72 MB</td><td>-2.6..+1.3 MB</td></tr>
+<tr><td>default</td><td>leak control (2)</td><td>7.47-7.52 MB</td><td>+1.3 MB</td></tr>
+<tr><td>default, <code>DOTNET_GCgen0size=0x4000000</code></td><td>normal (3) / control (2)</td><td>0.62-0.97 / 7.68-7.72 MB</td><td>+10.5 / +8.9 MB</td></tr>
+<tr><td>aggressive</td><td>normal (5)</td><td>0.62-0.70 MB</td><td>-0.03..0 MB</td></tr>
+<tr><td>aggressive</td><td>leak control (2)</td><td>7.86-7.91 MB</td><td>-0.03..0 MB</td></tr>
+<tr><td>aggressive, <code>DOTNET_GCgen0size=0x4000000</code></td><td>normal (2) / control (1)</td><td>0.74-0.75 / 7.68 MB</td><td>-0.02 MB</td></tr>
+</tbody>
+</table>
+</div>
+<p>The leak control (<code>LeakControlIsDetected</code>, runs only with <code>DSTU_LEAK_CONTROL=1</code>, never on CI) adds
+one never-freed <code>dstu_kupyna512_hasher_new</code> per iteration through a test-local <code>LibraryImport</code>
+(~300 B native payload); it grows linearly (half at n/2) and reads ~3.8x the threshold. “Never
+Dispose” is no control: <code>SafeHandle</code> finalizers free it (T-231). The gen0 row simulates CI’s large
+managed growth: committed growth that is resident is subtracted cleanly, the control stays visible.</p>
+<p><strong>Rejected.</strong> Clamping the committed delta at zero (<code>VmRSS - max(committed, 0)</code>): also removes the
+inflation, but lowers the floor to ~235 B per iteration whenever the GC shrinks; the aggressive
+collect fixes the cause instead and keeps the formula. Raising the raw-VmRSS threshold (hides the
+retention and still cannot see a leak, D-234).</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows
