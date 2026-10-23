@@ -8623,7 +8623,7 @@ which is exactly why the divergence was never caught.
   RFC 9180's `kem_context = enc ‖ pkR` -> bind `kem_ct ‖ recipient_pk`; `derive_subkey`'s fixed
   8-byte context can't carry it, so add a new Kupyna-KMAC-based KDF entry point + `D-` entry - no
   HKDF/HMAC-Kupyna (uncited construction). No sender static key exists (anonymous sealed box).
-- [ ] **T-249** (coverage gaps - what the 2026-09-22 audit did **not** check) Second pass over:
+- [x] **T-249** (**done 2026-10-23, D-256**: findings T-312..T-316 in the 0.8.0 wave) (coverage gaps - what the 2026-09-22 audit did **not** check) Second pass over:
   the `crypto_auth`/`crypto_kdf`/`crypto_generichash`/`crypto_pwhash`/`crypto_stream` wrappers
   beyond a grep of their compares; `hazmat::strumok`; the Kalyna key schedule; `tables.rs`
   transcription (relies on KATs/BC today); `dstu9041` l=512 files line by line (only structurally
@@ -10332,16 +10332,16 @@ runs in order (T-164 deferred, below). Pushes batched
 per phase (`rust.yml`/`miri.yml` are `cancel-in-progress`; a docs push mid-run cost a full run on
 0.7.0 release day).
 
-**RESUME HERE (state at /clear, 2026-10-23, second save):** 0.7.0 closed (winget PR #460150 waits
-on a moderator). Done today: **T-311** (`779acc7`, D-255), **T-310** (`daeb58f`+`5d32cc2`, D-239
-addendum; all CI green after one transient PHP rerun, `miri` on `5d32cc2` was still running -
-check it), **T-223/T-225 phase A** (`2563770`, **not pushed**: hold until `miri` on `5d32cc2` is
-done, `cancel-in-progress`), **T-225 phase B** (committed, not pushed: 9 hazmat targets, 28 in all;
-local 20 s runs all clean; T-225 closed). Next: push once `miri` is done, read `fuzz-smoke` (28 jobs)
-with `gh run view`, closing `advisor`; then T-249. Local fuzz on Windows:
-`call vcvars64.bat && cargo +nightly-x86_64-pc-windows-msvc fuzz run --target
-x86_64-pc-windows-msvc <t>` from `crates/dstu-core` (as `xtask fuzz`). Open with the owner: the
-one-time offer of a read-only reviewer subagent for T-310 (unanswered). Pi: up to date, Docker off.
+**RESUME HERE (2026-10-23, third save):** 0.7.0 closed (winget PR #460150 waits on a
+moderator). Done today, all local commits **not pushed yet** (owner: one batched push at the end):
+**T-311** (`779acc7`) and **T-310** (`daeb58f`+`5d32cc2`) are on `master` (CI green, `miri` too);
+**T-223/T-225** phase A (`2563770`) and B (`b795494`), **T-249** (D-256, findings T-312..T-316).
+Next: **T-264** (completions + man page, plan approved, D-257), then Pi clippy/test, closing
+`advisor`, push `HEAD:master`, `gh run view` every workflow (28 `fuzz-smoke` jobs). Open with the
+owner: the independent reviewer for T-249 and for T-310; whether T-312..T-316 join 0.8.0.
+Local fuzz on Windows: `call vcvars64.bat && cargo +nightly-x86_64-pc-windows-msvc fuzz run
+--target x86_64-pc-windows-msvc <t>` from `crates/dstu-core`. Pi: Kani per harness under
+`ulimit -v`, never `gf2m512` (rebooted it, 2026-10-23).
 
 **Code chain:**
 1. [x] **T-311** (done 2026-10-23, D-255: native remainder after an aggressive GC, 2 MiB; Pi:
@@ -10363,11 +10363,40 @@ one-time offer of a read-only reviewer subagent for T-310 (unanswered). Pi: up t
    blob inside the target; `input != original => open fails`; also for `crypto_secretstream`.
    Three-spot sync each (`fuzz/Cargo.toml`, `rust.yml` `fuzz-smoke`, `FUZZ_TARGETS` incl. its
    `[&str; N]` count).
-4. **T-249** second-pass audit (read-only; findings become new tasks, not fixes in the same pass):
+4. [x] **T-249** (done 2026-10-23, D-256; findings T-312..T-316 below) second-pass audit (read-only; findings become new tasks, not fixes in the same pass):
    the `crypto_auth/kdf/generichash/pwhash/stream` wrappers, `hazmat::strumok`, the Kalyna key
    schedule, `tables.rs`, `dstu9041` l=512 (and l=384) line by line against l=256, D-118's two
    pitfalls read in full in Node.js/PHP/Java/.NET/Go/C++, and actually running Miri/Kani/longer
    fuzz locally. Offer the independent reviewer subagent at the end (owner's yes).
+   **T-249 findings (D-256), all Low, none advisory-relevant; owner: in 0.8.0 or later:**
+   - [ ] **T-312** (Low, constant-time) `tables::gf_mul` branches on the secret byte's top bit in
+     the source; it is production code under `small-tables` (every Kalyna/Kupyna round, Strumok's
+     `T`). Shipped asm is branchless in all 8 cells read (masks/IT/cmov, rustc 1.97.1) only
+     because LLVM chooses so; `asm-check` builds the default profile only. Fix: mask-form
+     `gf_mul` (`0u8.wrapping_sub(x >> 7) & 0x1D`, same for `y & 1`), and `small-tables` cells in
+     `asm-check` (a zero-jump row where `gf_mul`/`mds_column_via_gf_mul` is its own symbol, plus
+     a crate scan for a conditional branch in front of a `0x1D` reduction).
+   - [ ] **T-313** (Low, zeroization) D-249 leftovers: (a) KMAC's last `compress_block` (the tail
+     block holding `~K`) leaves `columns_buf`/`compress_n`'s `q_input`/`t_input` and nothing
+     overwrites them - D-249's "message bytes, overwritten by the next block" does not hold for
+     KMAC; (b) `kalyna::rotate_bytes_left`'s `rotated` holds each odd round key; (c)
+     `strumok::Core::new`'s `init_state` result (key words XOR IV). Fix: `Zeroizing` for (b)/(c);
+     for (a) measure a per-block wipe first (every hash pays it), else wipe on the KMAC path only;
+     correct D-249's text either way.
+   - [ ] **T-314** (Low, error path) C++ `SecretStreamDecryptor` (`ReadPrefix`/`Step` ignore
+     `badbit`) and PHP `DstuCoreSecretStreamReader` (`readPrefix`/`step` treat `fread() === false`
+     as EOF): a read error is reported as truncation/"too short", the I/O cause lost (still
+     fail-closed). Fix: check `in.bad()` / `false` and raise an I/O error; a test with a failing
+     stream in each.
+   - [ ] **T-315** (Low, robustness) `crypto_pwhash::hash_password` lets `argon2` allocate its
+     blocks (1 GiB at `Sensitive`), so allocation failure aborts the process instead of
+     `PwHashError::OutOfMemory` as in `derive_key`/`verify_password`. Fix: `try_reserve_exact` +
+     `hash_password_into_with_memory` + PHC encoding, with the existing `hash_password` tests.
+   - [ ] **T-316** (Low, docs/test) Make D-256's table derivation a `cfg(not(small-tables))` unit
+     test in `strumok.rs` (`Ti` from `tables::SBOXES`/MDS; `MUL_ALPHA` from `g(z)`'s coefficients
+     via `gf_mul`; `mul_alpha_inv(mul_alpha(w)) == w`), then retire "not transcription-verified in
+     full" for Strumok's tables (CLAUDE.md x2, `docs/ORACLES.md`, `strumok.rs`/`crypto_stream.rs`
+     module docs, `docs/pseudocode/strumok.md`), citing D-256.
 5. **T-264** completions (bash/zsh/fish/PowerShell) and a man page, hand-written generators, no
    new dependency. Source: the existing `COMMANDS` table (`lib.rs`, help text per command, already
    test-checked against `run`'s dispatch) - flags taken from each help text's `--flag` tokens, with

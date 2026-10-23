@@ -16045,3 +16045,98 @@ managed growth: committed growth that is resident is subtracted cleanly, the con
 inflation, but lowers the floor to ~235 B per iteration whenever the GC shrinks; the aggressive
 collect fixes the cause instead and keeps the formula. Raising the raw-VmRSS threshold (hides the
 retention and still cannot see a leak, D-234).
+
+## D-256: T-249 second-pass audit - method and result (2026-10-23)
+
+**Scope** (T-249, read-only; findings became T-312..T-316, nothing fixed in this pass): the
+`crypto_auth`/`kdf`/`generichash`/`pwhash`/`stream` wrappers, `hazmat::strumok`, the Kalyna key
+schedule, `tables.rs`, `dstu9041` l=384/512 against l=256, D-118's two pitfalls in Node.js, PHP,
+Java, .NET, Go and C++, and actually running the test/Miri/Kani/fuzz layers. Hardware side
+channels stay out of scope.
+
+**Method.** Code read in full where named below; the tables and curve constants checked by
+throwaway scripts (not committed - T-316 makes the table part a test), not by eye:
+- `tables.rs`: `SBOXES`/`SBOXES_DEC` equal `kalyna-reference` `sboxes_enc`/`dec`,
+  `kupyna-reference` `sboxes`, UAPKI `s_blocks_default`/`inv_s_blocks_default` and Bouncy Castle
+  `DSTU7624Engine` `S0..S3`/`T0..T3`; each `SBOXES_DEC[i]` inverts `SBOXES[i]`; `MDS_MATRIX`/
+  `MDS_INV_MATRIX` equal `kalyna-reference` and multiply to the identity over GF(2^8)/0x11D;
+  `MDS_TABLE`/`MDS_INV_TABLE` recomputed from them. Zero mismatches.
+- Strumok: `T0..T7` recomputed as the MDS column of `SBOXES[i % 4]` at row `i` (so they now rest
+  on the four sources above, not on `strumok-dstu8845` alone) and equal to that oracle;
+  `MUL_ALPHA`/`MUL_ALPHA_INV` equal UAPKI and `strumok-dstu8845`, are GF(2)-linear,
+  `mul_alpha_inv(mul_alpha(w)) == w` for 100k random words, and `MUL_ALPHA[b]` byte `j` is
+  `b * g_j` over GF(2^8)/0x11D with `(g_0..g_7) = (γ^2, 0, 0, γ^70, γ^224, γ^2, γ^166, γ^170)`:
+  exactly `g(z) = z^8 + γ^170 z^7 + γ^166 z^6 + γ^2 z^5 + γ^224 z^4 + γ^70 z^3 + γ^2` of
+  `docs/papers/Strumok.pdf` section 2 (γ the root of p(y), checked against the paper's text
+  layer, not the DSTU scan). All ten Strumok tables are now derived independently, not only
+  spot-checked (D-198).
+- `dstu9041`, all three sizes: `p = 2^l - C` prime and `= 5 mod 8`; `P_MINUS_2`,
+  `(p-1)/2`, `(p-1)/4`, `(p+3)/8` and `W = 2^((p-1)/4)` (`W^2 = -1`) consistent; `C^2 < 2^64`
+  (two folds in `reduce_wide` cannot carry out); `A_DIV_D = a/d`; the base point satisfies
+  `x^2 + a*y^2 = 1 + d*x^2*y^2`; `n` prime, `4n` within Hasse's bound, `n*P = (1, 0)` and
+  `(n-1)*P = -P`. `a` and `d` are both non-residues (`a/d` a residue), as T-307 found. A
+  normalized diff (comments, sizes and constants masked) of `fp`/`curve`/`message`/`encryption`
+  384 and 512 against 256 shows only the size-driven lines plus the documented 384 differences
+  (KW-p and `kappa` = the low 32 bytes of `x`, D-241/D-244); `L_MAX_P` = `l - 8 - 8*L_H - 16`
+  at every size.
+- `gf_mul` under `small-tables`: release asm for `--no-default-features --features
+  small-tables`, x86_64-unknown-linux-gnu and aarch64-unknown-none at O3, thumbv7em-none-eabihf and
+  riscv32imc-unknown-none-elf at O3/s/z (rustc 1.97.1). Every conditional branch in
+  `tables`/`kalyna`/`kupyna`/`strumok` listed with the instructions that set it: loop counters,
+  lengths and `columns`/`nb` dispatch only. The reduction step compiles to a sign mask (riscv,
+  `slli 24; srai 31; andi 29`), IT-predication (thumb, `it mi; eormi`) or `cmov`/masks (x86_64,
+  aarch64); no XOR with `0x1D` follows a conditional branch in any cell (two hits of the scan
+  read and dismissed: a loop-setup `movs r1, #29`, an `lsl #29`).
+
+**Clean** (no finding): the five wrappers (fixed-length key types forbid the hazmat error cases,
+`Zeroize` on drop, constant-time compares inherited); `strumok` init/next/strm/bulk path (ring
+index arithmetic and the `head == 0` rotation hold, every slice bound visible at the line);
+the Kalyna key schedule against `kalyna-reference` step for step (Kσ, the even/odd rounds, the
+`nk != nb` half-buffer branch); `crypto_pwhash` verify's bounds before allocation (D-222). D-118
+in the six bindings (a re-confirmation - TASKS' 2026-10-22 audit already covered this item by
+grep and reading): every encryptor finalizes only on an explicit success call (`Complete`/
+`complete()`/`Finish()`/`close()` reached only on success in PHP's `withStream`, Node's `_flush`
+only on `.end()`, never `_destroy`); every decryptor collects exactly `next_len()` bytes and calls
+`finish()` on a short read. The trailing-data rule holds by construction in the codec: after
+`Final`, `next_len()` is 1, so any extra byte arrives as a full `feed` and fails; a partial record
+dropped at `finish()` is `Truncated`.
+
+**Findings** (all Low, none advisory-relevant - nothing exploitable today):
+- T-312: `tables::gf_mul` branches on the secret byte's top bit and on the multiplier's low bit
+  in the source (`if high_bit == 0x80`), and it is production code under `small-tables`
+  (every Kalyna/Kupyna round and Strumok's `T`). The hard constraint is "no secret-dependent
+  branching"; the shipped asm is branchless only because LLVM chooses masks today, and
+  `asm-check` (D-229) builds the default profile only.
+- T-313: D-249 left three key-derived copies. (a) Kupyna's per-block column buffers were kept on
+  the grounds that they hold message bytes the next block overwrites; under KMAC, `finalize`'s
+  last `compress_block` processes the tail block holding `~K` and no later block overwrites it
+  (`compress_block`'s `columns_buf`, `compress_n`'s `q_input`/`t_input`). (b) `kalyna::
+  rotate_bytes_left`'s `rotated` scratch holds each odd round key (D-249 lists `key_expand_odd`'s
+  copies as wiped; its helper's are not). (c) `strumok::Core::new`'s local `s` from `init_state` is
+  key words XOR IV, never wiped.
+- T-314: C++ `SecretStreamDecryptor` (`ReadPrefix`/`Step`, `badbit` not checked) and PHP
+  `DstuCoreSecretStreamReader` (`readPrefix`/`step`, `fread() === false`) treat a read error as end
+  of input: still fail-closed (truncation, or the authenticated `Final` when it falls on a record
+  boundary), but the I/O error is reported as "truncated"/"too short" and its cause is lost. Go,
+  .NET, Java and Node propagate it.
+- T-315: `crypto_pwhash::hash_password` lets `argon2` allocate its blocks itself, so an allocation
+  failure (1 GiB at `Strength::Sensitive`) aborts the process instead of returning
+  `PwHashError::OutOfMemory` as `derive_key` and `verify_password` do.
+- T-316 (docs/test): make the table derivation above a test and retire the "not transcription-
+  verified in full" caveat for Strumok's tables.
+
+**Runs.**
+- `cargo xtask test` on Windows (default + `--all-features`): 176 suites, 2836 passed, 0 failed.
+- Kani on the Pi (`cargo-kani` 0.62.0): 20 of the 21 harnesses `SUCCESSFUL`; the Pi rebooted
+  (8 GB, CBMC) inside `gf2m_wide::kani_proofs::gf2m512::reduce_matches_bit_serial_reference`, which
+  passes in CI's `kani` job (all 21, on `5d32cc2`).
+- Miri on the Pi (CI's flags: default profile, `MIRIFLAGS=-Zmiri-disable-isolation`,
+  `PROPTEST_CASES=1`, `ulimit -v 5 GB`): `dstu-core --lib` 152, `--test strumok` 18,
+  `kupyna_kmac` 7, `crypto_secretstream_file` 10, `kalyna` 17 - all passed, no UB. The full
+  sharded `miri.yml` run on `5d32cc2` was green too.
+- `cargo fuzz` on Windows (MSVC, ASan), all 28 targets 180 s each: 13.6 M executions, no crash or
+  failed property (from 4.3 k for `crypto_pwhash_verify` to 5.4 M for `strumok`).
+
+**Not done.** The independent strongest-model reviewer the 0.8.0 plan offers at the end of T-249
+(owner's call); `gf_mul` timing on real Cortex-M (IT-predicated instructions are assumed
+fixed-cost, not measured - no hardware here, and no side-channel claim follows either way).
