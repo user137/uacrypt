@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5f90025d.js";
+            window.path_to_searchindex_js = "searchindex-55721ac0.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -12322,7 +12322,8 @@ Strumok history that actually is. <strong>Not closed by this</strong>: Дода�
 π₀-π₃, Tᵢ[a], Mulα/Mulα⁻¹) were read (page numbers, structure) but not transcribed or compared
 against <code>hazmat::tables</code> - the 8 passing keystream vectors corroborate only the specific table
 entries those 4 key/IV pairs actually reach, not the tables in full. A future task, not started
-here, not assumed to be low-value just because it’s deferred.</p>
+here, not assumed to be low-value just because it’s deferred. <em>Closed by D-263: unit tests derive
+all ten tables in full.</em></p>
 <p><strong>Fixed, not left for a future sweep to find stale</strong>: <code>crates/dstu-core/tests/vectors/strumok/ keystream-{256,512}.json</code> (<code>status</code>/<code>provenance</code> fields - the old provenance text’s closing
 sentence, “has NOT independently confirmed these values against the official (paid) DSTU 8845:2019
 text itself,” was flatly false once this landed, not just stale framing), <code>crates/dstu-core/tests/ strumok.rs</code>’s own top-of-file doc comment, <code>crates/dstu-core/src/lib.rs</code>’s crate-level doc comment
@@ -12338,6 +12339,8 @@ text redistribution rights are not ours to grant”) is extended to cover this f
 reasoning, kept local only like <code>DSTU_9041-2020_Part of.pdf</code>. This entry cites clause/annex and
 page number, not the file.</p>
 <h2 id="d-198-t-229---додаток-вг-constant-tables-spot-checked-against-the-genuine-scan---raises-confidence-does-not-close-d-197s-own-remaining-caveat"><a class="header" href="#d-198-t-229---додаток-вг-constant-tables-spot-checked-against-the-genuine-scan---raises-confidence-does-not-close-d-197s-own-remaining-caveat">D-198: T-229 - Додаток В/Г constant tables spot-checked against the genuine scan - raises confidence, does not close D-197’s own remaining caveat</a></h2>
+<p><em>Superseded by D-263 (2026-10-23): the tables are now derived in full by unit tests, which closes
+the caveat this entry left open.</em></p>
 <p><strong>What prompted this</strong>: D-197 explicitly left open that Додаток Б/В/Г’s constant tables (S-box,
 <code>Tᵢ[a]</code>, <code>Mulα</code>/<code>Mulα⁻¹</code>) were “read (page numbers, structure) but not transcribed or compared
 against <code>hazmat::tables</code>”. The owner asked whether it’s worth transferring the standard’s own
@@ -13353,7 +13356,8 @@ memory is reserved with <code>try_reserve_exact</code> and passed to <code>hash_
 machine without 256 MiB gets <code>PwHashError::OutOfMemory</code> (exit 3 in <code>uacrypt</code>) instead of an
 abort, and the blocks are zeroized before they are freed. Two new <code>PwHashError</code> variants
 (<code>OutOfMemory</code>, <code>Derive</code>) break an exhaustive <code>match</code>; <code>dstu-core-capi</code>’s one match maps them to
-<code>DSTU_ERR_HASH_ERROR</code> (<code>hash_password</code> never returns them). <strong>Binding gate:</strong> <code>derive_key</code> is a
+<code>DSTU_ERR_HASH_ERROR</code> (<code>hash_password</code> never returns them). <em>Corrected by D-261: <code>hash_password</code>
+now returns both, and capi maps <code>OutOfMemory</code> to <code>DSTU_ERR_OUT_OF_MEMORY</code> everywhere.</em> <strong>Binding gate:</strong> <code>derive_key</code> is a
 new <code>crypto_*</code> function, so T-269 tracks wiring it into the 8 bindings and the C ABI; the
 passphrase file format stays <code>uacrypt</code>-only until then. (Superseded 2026-10-18: D-240 moves the
 format into the core and every binding.)</p>
@@ -15027,6 +15031,63 @@ the stack locals are wiped when <code>new</code> returns.</p>
 </li>
 </ul>
 <p>No new test of erasure itself: it is not observable through the API (D-249’s recorded gap).</p>
+<h2 id="d-261-t-315---hash_password-reserves-its-argon2-memory-2026-10-23"><a class="header" href="#d-261-t-315---hash_password-reserves-its-argon2-memory-2026-10-23">D-261: T-315 - <code>hash_password</code> reserves its Argon2 memory (2026-10-23)</a></h2>
+<p><code>crypto_pwhash::hash_password</code> called <code>argon2</code>’s <code>PasswordHasher::hash_password</code>, which allocates
+the Argon2 blocks itself: an allocation failure (1 GiB at <code>Strength::Sensitive</code>) aborted the
+process. It now runs Argon2 through the same helper as <code>derive_key</code>
+(<code>hash_into_reserved_memory</code>: <code>try_reserve_exact</code>, <code>hash_password_into_with_memory</code>, blocks
+zeroized before they are freed) and encodes the PHC string itself from the <code>argon2</code> crate’s own
+pieces (<code>Algorithm::ident</code>, <code>ParamsString::try_from(&amp;Params)</code>, <code>Output::new</code>), the way its
+<code>PasswordHasher</code> does. Allocation failure is now <code>PwHashError::OutOfMemory</code>; the capi maps it to
+<code>DSTU_ERR_OUT_OF_MEMORY</code> (it was <code>DSTU_ERR_HASH_ERROR</code> for every non-RNG error). The bindings map
+<code>PwHashError</code> by its message or through the capi status, so they need no change.</p>
+<p>Test: the private <code>hash_with_salt</code> (the fixed-salt core of <code>hash_password</code>) gives a string
+byte-identical to <code>argon2</code>’s own <code>PasswordHasher</code> for the same salt and preset; the existing
+<code>hash_password</code> tests (round trip, salts differ, each preset’s PHC parameters) still pass. The
+allocation failure itself is not tested: forcing it needs an allocator hook this crate does not
+have, the same untested gap <code>derive_key</code> and <code>verify_password</code> already carry.</p>
+<h2 id="d-262-t-314---c-and-php-stream-readers-report-a-read-error-2026-10-23"><a class="header" href="#d-262-t-314---c-and-php-stream-readers-report-a-read-error-2026-10-23">D-262: T-314 - C++ and PHP stream readers report a read error (2026-10-23)</a></h2>
+<p>T-249 (D-256) found that two readers took a failed read for end of input: C++
+<code>SecretStreamDecryptor</code> (<code>ReadPrefix</code>/<code>Step</code> looked only at <code>gcount()</code>) and PHP
+<code>DstuCoreSecretStreamReader</code> (<code>readPrefix</code>/<code>step</code> treated <code>fread() === false</code> like <code>''</code>). Both
+still failed closed, but as “truncated”/“input too short”, with the I/O cause lost.</p>
+<ul>
+<li><strong>C++</strong>: after each <code>read</code>, <code>badbit</code> (set by the stream on a read error, never by end of input,
+which sets only <code>eofbit</code>/<code>failbit</code>) throws <code>CryptoError("secretstream: read from the input stream failed")</code>. <code>CryptoError</code> and that wording mirror the writer’s existing check
+(<code>WriteToStream</code>); no new exception class.</li>
+<li><strong>PHP</strong>: both loops go through one <code>readSome</code>: <code>@fread</code>, <code>false</code> throws <code>DstuCoreException</code>
+with the same message, <code>''</code> stays end of input. The notice is suppressed because the exception
+replaces it, as in the writer’s <code>writeAll</code> (T-274).</li>
+</ul>
+<p>Tests, written first and seen failing with the truncation message: C++ <code>TestSecretstreamReadError</code>
+(a <code>streambuf</code> that serves a prefix and then throws from <code>underflow</code>, which <code>std::istream</code> turns
+into <code>badbit</code>; failure at 0, 10 and half of the stream, plus <code>ForBox</code>’s prefix read); PHP
+<code>testAFailingSourceIsAReadErrorNotTruncation</code> (a stream wrapper whose <code>stream_read</code> returns
+<code>false</code> after a prefix; the same positions plus <code>forBox</code>). The other six bindings already
+propagate a read error (D-256).</p>
+<h2 id="d-263-t-316---strumoks-tables-derived-by-unit-tests-2026-10-23"><a class="header" href="#d-263-t-316---strumoks-tables-derived-by-unit-tests-2026-10-23">D-263: T-316 - Strumok’s tables derived by unit tests (2026-10-23)</a></h2>
+<p>D-256’s throwaway table derivation is now three permanent unit tests in <code>hazmat/strumok.rs</code>:</p>
+<ul>
+<li><code>t_tables_are_the_mds_columns_of_the_shared_sboxes</code> (default profile, where <code>T0..T7</code> exist):
+<code>Ti[b]</code> byte <code>j</code> = <code>gf_mul(SBOXES[i % 4][b], MDS_MATRIX[j][i])</code>, the formula <code>small-tables</code>’
+<code>t_function</code> evaluates at run time.</li>
+<li><code>mul_alpha_table_is_g_z_coefficients_times_the_byte</code>: <code>MUL_ALPHA[b]</code> byte <code>j</code> = <code>b * g_j</code>,
+<code>(g_0..g_7) = (γ^2, 0, 0, γ^70, γ^224, γ^2, γ^166, γ^170)</code>, γ = <code>0x02</code> (the root of Kalyna’s
+field polynomial <code>0x11D</code>, primitive, so <code>2</code> generates the field).</li>
+<li><code>mul_alpha_inv_inverts_mul_alpha_on_every_word</code>: both tables XOR-linear in the index (all 65 536
+pairs), so <code>mul_alpha</code>/<code>mul_alpha_inv</code> are GF(2)-linear; inverse on the 64 unit words then
+holds for every word. This replaces D-256’s 100k random words with a proof.</li>
+</ul>
+<p>Negative control: one corrupted entry each in <code>T0</code>, <code>MUL_ALPHA</code> and <code>MUL_ALPHA_INV</code> (one run)
+failed all three tests and none of the other Strumok unit tests (the keystream tests share
+<code>t_function</code>, so they cannot see a table error); a second run with only the <code>MUL_ALPHA_INV</code> entry
+corrupted failed the inverse test alone. The <code>hash_password</code> lib test of D-261 runs a 64 MiB
+Argon2, so it is <code>cfg_attr(miri, ignore)</code>: a local <code>xtask miri</code> builds the workspace, where capi
+turns <code>pwhash</code> on.</p>
+<p>What this closes: “not independently transcription-verified in full” (D-15/D-198) is retired
+everywhere it was stated. What it rests on: the S-box/MDS (four sources, D-256), and <code>g(z)</code> as
+printed in the designers’ paper (<code>docs/papers/Strumok.pdf</code> section 2), not the DSTU scan; the
+official vectors (D-197) tie both to the standard.</p>
 
                     </main>
 

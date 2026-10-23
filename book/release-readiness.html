@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5f90025d.js";
+            window.path_to_searchindex_js = "searchindex-55721ac0.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -218,8 +218,7 @@ independently confirmed against two state-sourced supplementary vectors from Д�
 ДНДІ ТКЗІ — is now also confirmed against the primary DSTU 8845:2019 text itself (Додаток Д, a
 genuine library scan, all 8 official cases byte-for-byte). This specific gap (D-15/D-16) is
 closed, a separate, unrelated question from D-05 above. Its <code>Tᵢ[a]</code>/<code>Mulα</code>/<code>Mulα⁻¹</code> constant
-tables are additionally spot-checked against the same text (D-198), not independently
-transcription-verified in full.</li>
+tables are derived in full by unit tests (T-316, D-263).</li>
 <li><strong><code>crypto_secretbox</code> (T-37) is done, see <code>docs/DECISIONS.md</code> D-51</strong> — a single fixed construction,
 internally-generated nonce, combined <code>version || nonce || ciphertext || tag</code> output (version
 byte and length-bound AAD since T-232, D-200/D-202), no caller-facing AAD parameter. <strong>Migrated 2026-07-25 from Kalyna-CCM to Kalyna-GCM</strong> (roadmap Step 3 item 1,
@@ -268,7 +267,7 @@ independent second-oracle cross-check (Bouncy Castle, Java and .NET):</p>
 <tbody>
 <tr><td>Kalyna</td><td>DSTU 7624:2014</td><td>All 5 block/key-size variants, single-block encrypt/decrypt, <code>ExpandedKey</code> API. Vector-confirmed + dual-oracle. <strong>Mode of operation: all 10/10 DSTU 7624 modes now implemented at <code>hazmat</code></strong>, updated 2026-07-25 (T-99) — ECB/CBC/OFB/CTR/CFB (Stage A), CMAC/KW/GCM/GMAC (Stage B-D, D-54-D-57), XTS (Stage E, T-96/D-58) all landed since this table’s last real update. CCM/GCM/KW are the three combined (confidentiality+integrity) modes and the only ones eligible for a public <code>crypto_secretbox</code>-style entry point (D-47); ECB/CBC/OFB/CTR/CFB/XTS are confidentiality-only, bare CMAC/GMAC are integrity-only — none of those six may become a public <code>encrypt</code>/<code>decrypt</code> entry point on their own. All ten still share CCM’s original caveat: dual-oracle-verified (UAPKI + Bouncy Castle where available), not primary-DSTU-7624:2014-text-confirmed.</td></tr>
 <tr><td>Kupyna</td><td>DSTU 7564:2014</td><td>Both 256/512 variants, one-shot <code>digest()</code> and streaming <code>Hasher</code>. Vector-confirmed + dual-oracle. KMAC (<code>crypto_auth</code> equivalent) now implemented too — <code>hazmat::kupyna_kmac</code>, dual-oracle with both constructions read (<code>docs/TASKS.md</code> T-38, <code>docs/DECISIONS.md</code> D-44), same provisional-pending-primary-text caveat. KDF (<code>crypto_kdf</code> equivalent) built on top of that KMAC — <code>hazmat::kupyna_kdf</code> (T-39, D-45); no DSTU standard or reference implementation exists for this construction at all, so unlike the KMAC row there is no oracle vector, ever — verified by determinism/distinctness property tests only.</td></tr>
-<tr><td>Strumok</td><td>DSTU 8845:2019</td><td>Both 256/512-bit key variants, keystream <code>apply_keystream</code>. UAPKI-attributed vectors, plus (D-104) two independently-sourced supplementary vectors from Держспецзв’язку/ДНДІ ТКЗІ, <strong>and now (2026-09-16, D-197) confirmed against the primary standard text itself</strong> (Додаток Д, all 8 official cases byte-for-byte) — the former provenance ceiling (D-15/D-16) is closed. Constant tables spot-checked, not fully transcription-verified (D-198).</td></tr>
+<tr><td>Strumok</td><td>DSTU 8845:2019</td><td>Both 256/512-bit key variants, keystream <code>apply_keystream</code>. UAPKI-attributed vectors, plus (D-104) two independently-sourced supplementary vectors from Держспецзв’язку/ДНДІ ТКЗІ, <strong>and now (2026-09-16, D-197) confirmed against the primary standard text itself</strong> (Додаток Д, all 8 official cases byte-for-byte) — the former provenance ceiling (D-15/D-16) is closed. Constant tables derived in full by unit tests (T-316, D-263).</td></tr>
 </tbody>
 </table>
 </div>
@@ -669,8 +668,7 @@ Library of Ukraine’s EDD service), and all 8 official worked examples (Дод�
 byte-for-byte against <code>hazmat::strumok</code>’s own output - a new permanent test module, not a
 one-off script. This retroactively validates the earlier UAPKI attribution and the D-104
 state-sourced supplementary vectors, rather than replacing them. Constant tables (<code>Tᵢ[a]</code>/
-<code>Mulα</code>/<code>Mulα⁻¹</code>) are additionally spot-checked (D-198), not independently transcription-verified
-in full - the one remaining, much narrower caveat.</li>
+<code>Mulα</code>/<code>Mulα⁻¹</code>) are derived in full by unit tests (T-316, D-263), closing the last caveat.</li>
 <li><strong>Build the missing constructions</strong>: <code>crypto_auth</code> (T-38, D-44), <code>crypto_kdf</code> (T-39, D-45), and
 <code>crypto_secretbox</code> (T-37, D-51) all done, none blocked on external material — the Kalyna-alone
 working hypothesis (only CCM/GCM/KW eligible, per D-47, see the headline finding) is what

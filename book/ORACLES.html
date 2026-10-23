@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5f90025d.js";
+            window.path_to_searchindex_js = "searchindex-55721ac0.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -540,15 +540,19 @@ directly against <code>hazmat::strumok</code>’s own output (<code>crates/dstu-
 <code>official_annex_d_vectors</code> module, a new, permanent regression test - not a one-off script).
 <strong>This is the point D-15’s own closing paragraph named as the condition for a status change</strong> -
 unlike D-104’s “upgrade, not closure,” this one genuinely is a closure for the vector-confirmation
-claim specifically. Untouched by this: the Додаток Б/В/Г constant tables (S-box, Tᵢ[a], Mulα)
-are corroborated only at the entries these 8 vectors happen to reach, not independently
-transcription-verified in full - a real, stated open item, not an oversight.</li>
+claim specifically. Untouched by this: the Додаток Б/В/Г constant tables (S-box, Tᵢ[a], Mulα),
+closed separately below (T-316).</li>
 <li><strong>Spot-checked 2026-09-17</strong> (<code>docs/DECISIONS.md</code> D-198): ~100 of the 2560 <code>Tᵢ[a]</code>/<code>Mulα</code>/
 <code>Mulα⁻¹</code> entries (first/last few of all 10 tables, spread across every table rather than
 clustered) read directly off the same genuine scan and compared to the compiled constants -
 zero mismatches. Deliberately not a full transcription (2560 hex words by hand is exactly
-D-163’s failure mode for a mechanical derivation of already-oracle-confirmed inputs) - raises
-confidence, does not upgrade the “not independently transcription-verified in full” status above.</li>
+D-163’s failure mode for a mechanical derivation of already-oracle-confirmed inputs).</li>
+<li><strong>Derived in full 2026-10-23</strong> (T-316, <code>docs/DECISIONS.md</code> D-256/D-263): unit tests in
+<code>hazmat/strumok.rs</code> rebuild every <code>Tᵢ[a]</code> as the MDS column of the shared Kalyna/Kupyna S-box
+(themselves matched to four independent sources, D-256) and every <code>Mulα[b]</code> from the
+coefficients of <code>g(z)</code> in <code>docs/papers/Strumok.pdf</code> section 2 (the designers’ paper, not the DSTU
+scan), and prove <code>Mulα⁻¹</code> the inverse of <code>Mulα</code> on all 2^64 words (both tables XOR-linear, inverse
+on the 64 unit words). No table rests on a transcription any more.</li>
 </ul>
 <h3 id="dstu-4145-signature"><a class="header" href="#dstu-4145-signature">DSTU 4145 (signature)</a></h3>
 <ul>
