@@ -4380,18 +4380,15 @@ pub(crate) const MDS_INV_TABLE: [[u64; 256]; ROWS] = [
 /// `MultiplyGF`, identical). Under the default (fused-table) profile this is dead in production,
 /// kept only for the exhaustive test below; under `small-tables` (`docs/DECISIONS.md` D-35/D-38) it's a
 /// live production function, called from `apply_matrix_via_gf_mul`/`mds_column_via_gf_mul` below.
+///
+/// `x` is a secret state byte there, so the reference's two `if`s became masks (T-312): the
+/// shipped asm was already branchless, but only because LLVM chose so (D-256).
 #[allow(dead_code)]
 pub(crate) fn gf_mul(mut x: u8, mut y: u8) -> u8 {
     let mut result = 0u8;
     for _ in 0..8 {
-        if y & 1 == 1 {
-            result ^= x;
-        }
-        let high_bit = x & 0x80;
-        x <<= 1;
-        if high_bit == 0x80 {
-            x ^= 0x1D;
-        }
+        result ^= x & 0u8.wrapping_sub(y & 1);
+        x = (x << 1) ^ (0x1D & 0u8.wrapping_sub(x >> 7));
         y >>= 1;
     }
     result
@@ -4575,6 +4572,41 @@ mod tests {
             word |= u64::from(gf_mul(byte, row[in_row])) << (8 * out_row);
         }
         word
+    }
+
+    /// `MultiplyGF` as `oracles/kalyna-reference/kalyna.c` writes it, branches and all - the
+    /// reference the branchless `gf_mul` (T-312) is checked against.
+    fn reference_multiply_gf(mut x: u8, mut y: u8) -> u8 {
+        let mut r = 0u8;
+        for _ in 0..8 {
+            if y & 1 == 1 {
+                r ^= x;
+            }
+            let hbit = x & 0x80;
+            x <<= 1;
+            if hbit == 0x80 {
+                x ^= 0x1D;
+            }
+            y >>= 1;
+        }
+        r
+    }
+
+    #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "65536 products take minutes; the tests below run gf_mul under Miri too"
+    )]
+    fn gf_mul_matches_reference_multiply_gf_exhaustively() {
+        for x in 0..=u8::MAX {
+            for y in 0..=u8::MAX {
+                assert_eq!(
+                    gf_mul(x, y),
+                    reference_multiply_gf(x, y),
+                    "gf_mul({x}, {y})"
+                );
+            }
+        }
     }
 
     #[test]

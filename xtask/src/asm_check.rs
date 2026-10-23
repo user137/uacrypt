@@ -7,8 +7,11 @@
 //! Then every symbol in [`ZERO_JUMPS`] must have no conditional or indirect jump in that target
 //! and `opt-level`. Symbols that keep public jumps (loop counters, `Option` tags) are not counted
 //! (owner, 2026-09-26): a count would only say "something changed" and would need a re-read after
-//! every rustc release. The one exception is [`EXACT_JUMPS`], `gf2m` `multiply` (D-230). A failure after a rustc bump names the version change ([`AUDITED_RUSTC`]):
-//! read the asm; a row may only be dropped once its new jump has been read and is public.
+//! every rustc release. The exceptions are [`EXACT_JUMPS`], `gf2m` `multiply` (D-230), and
+//! [`SMALL_TABLES_EXACT_JUMPS`], the `small-tables` build where `gf_mul` is production code (T-312,
+//! D-259); every cell is built in both profiles. A failure after a rustc bump names the version
+//! change ([`AUDITED_RUSTC`]): read the asm; a row may only be dropped once its new jump has been
+//! read and is public.
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -220,6 +223,80 @@ const EXACT_JUMPS: &[(&str, &str, &str, u32)] = &[
     (RISCV32, "z", "gf2m257::FieldElement::multiply", 5),
 ];
 
+/// `(target, opt-level, spec, jumps)` for the `small-tables` build (T-312), where `gf_mul` is
+/// production code on secret state bytes. Its loops keep public jumps, so these are exact counts
+/// as in [`EXACT_JUMPS`] (D-230's exception, D-259): the symbols where a branchy reduction showed
+/// up in every cell when tried (`black_box(0x1D)` behind an `if`, D-259's negative control).
+/// The default profile's rows are not checked in this build.
+const SMALL_TABLES_EXACT_JUMPS: &[(&str, &str, &str, u32)] = &[
+    (X86_64, "3", "kalyna::encipher_round", 3),
+    (X86_64, "3", "kalyna::encipher_round_n<Kj2_>", 2),
+    (X86_64, "3", "kalyna::encipher_round_n<Kj4_>", 2),
+    (X86_64, "3", "kalyna::encipher_round_n<Kj8_>", 2),
+    (X86_64, "3", "kalyna::fused_inv_round_n<Kj2_>", 2),
+    (X86_64, "3", "kalyna::fused_inv_round_n<Kj4_>", 2),
+    (X86_64, "3", "kalyna::decrypt_with_schedule<Kj8_Kj12_>", 3),
+    (X86_64, "3", "kupyna::sub_shift_mix_n<Kj8_>", 2),
+    (X86_64, "3", "kupyna::sub_shift_mix_n<Kj10_>", 2),
+    (X86_64, "3", "tables::apply_matrix_via_gf_mul", 2),
+    (AARCH64, "3", "kalyna::encipher_round", 2),
+    (AARCH64, "3", "kalyna::encipher_round_n<Kj2_>", 1),
+    (AARCH64, "3", "kalyna::encipher_round_n<Kj4_>", 1),
+    (AARCH64, "3", "kalyna::encipher_round_n<Kj8_>", 2),
+    (AARCH64, "3", "kalyna::fused_inv_round_n<Kj2_>", 1),
+    (AARCH64, "3", "kalyna::fused_inv_round_n<Kj4_>", 1),
+    (AARCH64, "3", "kalyna::decrypt_with_schedule<Kj8_Kj12_>", 3),
+    (AARCH64, "3", "kupyna::sub_shift_mix_n<Kj8_>", 1),
+    (AARCH64, "3", "kupyna::sub_shift_mix_n<Kj10_>", 1),
+    (AARCH64, "3", "tables::apply_matrix_via_gf_mul", 2),
+    (THUMB, "3", "kalyna::encipher_round", 3),
+    (THUMB, "3", "kalyna::encipher_round_n<Kj2_>", 2),
+    (THUMB, "3", "kalyna::encipher_round_n<Kj4_>", 2),
+    (THUMB, "3", "kalyna::encipher_round_n<Kj8_>", 2),
+    (THUMB, "3", "kalyna::fused_inv_round_n<Kj2_>", 2),
+    (THUMB, "3", "kalyna::fused_inv_round_n<Kj4_>", 2),
+    (THUMB, "3", "kalyna::decrypt_with_schedule<Kj8_Kj12_>", 3),
+    (THUMB, "3", "kupyna::sub_shift_mix_n<Kj8_>", 2),
+    (THUMB, "3", "kupyna::sub_shift_mix_n<Kj10_>", 2),
+    (THUMB, "3", "tables::apply_matrix_via_gf_mul", 3),
+    (THUMB, "s", "tables::mds_column_via_gf_mul", 2),
+    (THUMB, "s", "tables::apply_matrix_via_gf_mul", 5),
+    (THUMB, "z", "tables::gf_mul", 1),
+    (RISCV32, "3", "kalyna::encipher_round", 108),
+    (RISCV32, "3", "kalyna::encipher_round_n<Kj2_>", 109),
+    (RISCV32, "3", "kalyna::encipher_round_n<Kj4_>", 109),
+    (RISCV32, "3", "kalyna::encipher_round_n<Kj8_>", 2),
+    (RISCV32, "3", "kalyna::fused_inv_round_n<Kj2_>", 115),
+    (RISCV32, "3", "kalyna::fused_inv_round_n<Kj4_>", 115),
+    (
+        RISCV32,
+        "3",
+        "kalyna::decrypt_with_schedule<Kj8_Kj12_>",
+        117,
+    ),
+    (RISCV32, "3", "kupyna::sub_shift_mix_n<Kj8_>", 3),
+    (RISCV32, "3", "kupyna::sub_shift_mix_n<Kj10_>", 3),
+    (RISCV32, "3", "tables::apply_matrix_via_gf_mul", 3),
+    (RISCV32, "s", "tables::mds_column_via_gf_mul", 2),
+    (RISCV32, "s", "tables::apply_matrix_via_gf_mul", 5),
+    (RISCV32, "z", "tables::gf_mul", 2),
+];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Profile {
+    Default,
+    SmallTables,
+}
+
+impl Profile {
+    fn name(self) -> &'static str {
+        match self {
+            Profile::Default => "default",
+            Profile::SmallTables => "small-tables",
+        }
+    }
+}
+
 const OUTLINED: &str = "OUTLINED_FUNCTION_*";
 
 fn exact_jumps_failure(
@@ -273,24 +350,28 @@ pub(crate) fn run() -> bool {
     };
 
     let mut failures = Vec::new();
-    for (target, arch, opt) in CELLS {
-        let result = build(target, opt).and_then(|path| {
-            std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))
-        });
-        match result {
-            Ok(asm) => failures.extend(
-                check_cell(&asm, target, arch, opt)
-                    .into_iter()
-                    .map(|f| format!("{target} {opt}: {f}")),
-            ),
-            Err(e) => failures.push(format!("{target} {opt}: {e}")),
+    for profile in [Profile::Default, Profile::SmallTables] {
+        for (target, arch, opt) in CELLS {
+            let result = build(target, opt, profile).and_then(|path| {
+                std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))
+            });
+            let cell = format!("{target} {opt} {}", profile.name());
+            match result {
+                Ok(asm) => failures.extend(
+                    check_cell(&asm, target, arch, opt, profile)
+                        .into_iter()
+                        .map(|f| format!("{cell}: {f}")),
+                ),
+                Err(e) => failures.push(format!("{cell}: {e}")),
+            }
         }
     }
     if failures.is_empty() {
         println!(
-            "asm-check: {} zero-jump rows, {} exact-count rows and the hard rules hold (rustc {rustc})",
+            "asm-check: {} zero-jump rows, {} + {} small-tables exact-count rows and the hard rules hold (rustc {rustc})",
             ZERO_JUMPS.len(),
-            EXACT_JUMPS.len()
+            EXACT_JUMPS.len(),
+            SMALL_TABLES_EXACT_JUMPS.len()
         );
         return true;
     }
@@ -317,16 +398,25 @@ fn output(base: &str, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// D-225's recipe. Each `opt-level` has its own target dir so the eight builds stay cached. A
-/// fresh build does not rewrite the `.s`, so deleting it would lose it; instead the `.s` is the one
-/// with the newest `libdstu_core-<hash>.rlib`'s hash (same rustc invocation, and this target dir
-/// only ever sees these `RUSTFLAGS`), so a leftover from an older rustc is never read.
-fn build(target: &str, opt: &str) -> Result<PathBuf, String> {
-    let dir = PathBuf::from("target")
-        .join("asm-check")
-        .join(format!("opt-{opt}"));
+/// D-225's recipe. Each `opt-level` and profile has its own target dir so the sixteen builds stay
+/// cached. A fresh build does not rewrite the `.s`, so deleting it would lose it; instead the `.s`
+/// is the one with the newest `libdstu_core-<hash>.rlib`'s hash (same rustc invocation, and this
+/// target dir only ever sees these `RUSTFLAGS` and features), so a leftover from an older rustc
+/// or the other profile is never read.
+fn build(target: &str, opt: &str, profile: Profile) -> Result<PathBuf, String> {
+    let (dir_name, features): (String, &[&str]) = match profile {
+        Profile::Default => (format!("opt-{opt}"), &[]),
+        Profile::SmallTables => (
+            format!("opt-{opt}-small-tables"),
+            &["--features", "small-tables"],
+        ),
+    };
+    let dir = PathBuf::from("target").join("asm-check").join(dir_name);
     let deps = dir.join(target).join("release").join("deps");
-    println!("+ cargo build --release -p dstu-core --lib --no-default-features --target {target} (opt-level {opt}, --emit=asm)");
+    println!(
+        "+ cargo build --release -p dstu-core --lib --no-default-features {} --target {target} (opt-level {opt}, --emit=asm)",
+        features.join(" ")
+    );
     let ok = Command::new(crate::command_for("cargo"))
         .args([
             "build",
@@ -336,6 +426,7 @@ fn build(target: &str, opt: &str) -> Result<PathBuf, String> {
             "--lib",
             "--no-default-features",
         ])
+        .args(features)
         .args(["--target", target])
         .env("CARGO_TARGET_DIR", &dir)
         .env("CARGO_PROFILE_RELEASE_OPT_LEVEL", opt)
@@ -374,7 +465,7 @@ fn newest_rlib_hash(deps: &Path) -> Option<String> {
         .map(|(_, hash)| hash)
 }
 
-fn check_cell(asm: &str, target: &str, arch: Arch, opt: &str) -> Vec<String> {
+fn check_cell(asm: &str, target: &str, arch: Arch, opt: &str, profile: Profile) -> Vec<String> {
     let functions = match parse(asm, arch) {
         Ok(functions) => functions,
         Err(e) => return vec![e],
@@ -386,9 +477,11 @@ fn check_cell(asm: &str, target: &str, arch: Arch, opt: &str) -> Vec<String> {
             failures.push(e);
         }
     }
-    let rows = ZERO_JUMPS
-        .iter()
-        .filter(|(t, o, _)| *t == target && *o == opt);
+    let (zero, exact_rows): (&[(&str, &str, &str)], _) = match profile {
+        Profile::Default => (ZERO_JUMPS, EXACT_JUMPS),
+        Profile::SmallTables => (&[], SMALL_TABLES_EXACT_JUMPS),
+    };
+    let rows = zero.iter().filter(|(t, o, _)| *t == target && *o == opt);
     for (_, _, spec) in rows {
         match row_jumps(arch, &functions, spec) {
             Ok(0) => {}
@@ -396,7 +489,7 @@ fn check_cell(asm: &str, target: &str, arch: Arch, opt: &str) -> Vec<String> {
             Err(e) => failures.push(e),
         }
     }
-    let exact = EXACT_JUMPS
+    let exact = exact_rows
         .iter()
         .filter(|(t, o, _, _)| *t == target && *o == opt);
     for (_, _, spec, expected) in exact {
@@ -665,18 +758,37 @@ fn mul_calls(function: &Function) -> u32 {
 /// A spec is `::`-separated idents, found in order as v0 length-prefixed idents (`5fp256`), the
 /// last one ending the symbol. No demangler (owner, T-292), and no digit-boundary rule either:
 /// `8dstu90415fp256` shows an ident can end in a digit. A false match is caught by
-/// [`find_one`]'s exactly-once rule.
+/// [`find_one`]'s exactly-once rule. The last ident may name one generic instantiation by its
+/// mangled arguments, `sub_shift_mix_n<Kj8_>`: the symbol then ends in `Kj8_E` and the
+/// `B<base-62>_` back-reference v0 closes the argument list with.
 fn symbol_matches(name: &str, spec: &str) -> bool {
     let segments: Vec<&str> = spec.split("::").collect();
     let mut from = 0;
     for (i, segment) in segments.iter().enumerate() {
-        let token = format!("{}{segment}", segment.len());
-        let found = if i + 1 == segments.len() {
+        let (ident, args) = match segment.split_once('<') {
+            Some((ident, rest)) => match rest.strip_suffix('>') {
+                Some(args) if i + 1 == segments.len() => (ident, Some(args)),
+                _ => return false,
+            },
+            None => (*segment, None),
+        };
+        let token = format!("{}{ident}", ident.len());
+        let found = if i + 1 != segments.len() {
+            name[from..].find(&token).map(|at| from + at)
+        } else if let Some(args) = args {
+            let closed = format!("{token}{args}E");
+            name[from..].rfind(&closed).and_then(|at| {
+                let backref = &name[from + at + closed.len()..];
+                let base62 = backref.strip_prefix('B')?.strip_suffix('_')?;
+                base62
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric())
+                    .then_some(from + at)
+            })
+        } else {
             name[from..]
                 .ends_with(&token)
                 .then(|| name.len() - token.len())
-        } else {
-            name[from..].find(&token).map(|at| from + at)
         };
         match found {
             Some(at) => from = at + token.len(),
@@ -700,8 +812,8 @@ fn find_one<'f, 'a>(functions: &'f [Function<'a>], spec: &str) -> Result<&'f Fun
 #[cfg(test)]
 mod tests {
     use super::{
-        carry_shapes, classify, exact_jumps_failure, find_one, in_carry_scope, jumps, mul_calls,
-        parse, symbol_matches, Arch, Function, Insn, Kind,
+        carry_shapes, check_cell, classify, exact_jumps_failure, find_one, in_carry_scope, jumps,
+        mul_calls, parse, symbol_matches, Arch, Function, Insn, Kind, Profile, X86_64,
     };
 
     fn kind(arch: Arch, line: &str) -> Kind {
@@ -947,6 +1059,37 @@ mod tests {
         assert!(symbol_matches(POINT_ADD, "curve163::Point::Add::add"));
         assert!(!symbol_matches(PROJ_ADD, "curve256::Point::add"));
         assert!(symbol_matches(PROJ_ADD, "curve256::ProjectivePoint::add"));
+    }
+
+    const MIX_8: &str = "_RINvNtNtCs8jbLg10kD8W_9dstu_core6hazmat6kupyna15sub_shift_mix_nKj8_EB6_";
+    const MIX_16: &str =
+        "_RINvNtNtCs8jbLg10kD8W_9dstu_core6hazmat6kupyna15sub_shift_mix_nKj10_EB6_";
+
+    #[test]
+    fn symbol_spec_names_one_generic_instantiation() {
+        assert!(symbol_matches(MIX_8, "kupyna::sub_shift_mix_n<Kj8_>"));
+        assert!(!symbol_matches(MIX_16, "kupyna::sub_shift_mix_n<Kj8_>"));
+        assert!(symbol_matches(MIX_16, "kupyna::sub_shift_mix_n<Kj10_>"));
+        assert!(!symbol_matches(MIX_8, "kupyna::sub_shift_mix_n"));
+        assert!(!symbol_matches(MIX_8, "kupyna::sub_shift_mix_n<Kj8>"));
+        assert!(!symbol_matches(FP_ADD, "fp256::FieldElement::add<Kj8_>"));
+        assert!(!symbol_matches(
+            "_RINvNtC9dstu_core6kupyna15sub_shift_mix_nKj8_EB6_x",
+            "kupyna::sub_shift_mix_n<Kj8_>"
+        ));
+    }
+
+    #[test]
+    fn profiles_check_their_own_rows_only() {
+        // A small-tables build has no `fp256` symbols to match, so a default row applied to it
+        // would fail with "no symbol"; neither profile's rows may leak into the other.
+        let asm = "\t.type\tf,@function\nf:\n\tret\n.Lfunc_end0:\n";
+        let small = check_cell(asm, X86_64, Arch::X86_64, "3", Profile::SmallTables);
+        assert!(small.iter().all(|f| !f.contains("fp256")), "{small:?}");
+        assert!(small.iter().any(|f| f.contains("apply_matrix_via_gf_mul")));
+        let default = check_cell(asm, X86_64, Arch::X86_64, "3", Profile::Default);
+        assert!(default.iter().all(|f| !f.contains("gf_mul")), "{default:?}");
+        assert!(default.iter().any(|f| f.contains("fp256")));
     }
 
     #[test]

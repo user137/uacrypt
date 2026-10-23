@@ -10339,7 +10339,8 @@ targets), T-249 (D-256, findings T-312..T-316), T-264 (completions + `uacrypt ma
 (incl. 28 `fuzz-smoke` jobs, macOS bash 3.2 + `zsh -n`, Linux `pwsh` completion tests) and `miri`
 still queued - **first: `gh run list` / `gh run view` both for `3432912`**. D-258 and the CI-shells change were pushed together. Owner delegated the open forks (D-258): no reviewer subagent for
 T-249/T-310; **T-312..T-316 join 0.8.0** - next in order T-312, T-313, T-315, T-314, T-316, then
-step 6 (release 0.8.0). CI's Linux `test` job now installs zsh/fish/mandoc/groff
+step 6 (release 0.8.0). **T-312 done 2026-10-23 (D-259); next T-313.** `3432912`'s `rust`/`miri` were
+cancelled by the next push (`cancel-in-progress`); the T-312 push carries everything since, so read its `rust`/`miri` runs (incl. `asm-check`'s 16 builds and `smoke_completions`). CI's Linux `test` job now installs zsh/fish/mandoc/groff
 and requires them (`UACRYPT_REQUIRE_SHELLS=1`, D-257 addendum) - the fish completer's first real
 run is there: check `smoke_completions` in the `rust` run of the push after `df62897`. `.git/worktrees/old_wt` is an
 empty leftover Windows would not delete (harmless; remove by hand). Local fuzz on Windows: `call
@@ -10372,7 +10373,7 @@ from `crates/dstu-core`. Pi: Kani per harness under `ulimit -v`, never `gf2m512`
    pitfalls read in full in Node.js/PHP/Java/.NET/Go/C++, and actually running Miri/Kani/longer
    fuzz locally. Offer the independent reviewer subagent at the end (owner's yes).
    **T-249 findings (D-256), all Low, none advisory-relevant; in 0.8.0 (D-258), order T-312, T-313, T-315, T-314, T-316:**
-   - [ ] **T-312** (Low, constant-time) `tables::gf_mul` branches on the secret byte's top bit in
+   - [x] **T-312** (done 2026-10-23, D-259: mask-form `gf_mul`, 46 small-tables exact-count rows, negative control failed all 8 cells) (Low, constant-time) `tables::gf_mul` branches on the secret byte's top bit in
      the source; it is production code under `small-tables` (every Kalyna/Kupyna round, Strumok's
      `T`). Shipped asm is branchless in all 8 cells read (masks/IT/cmov, rustc 1.97.1) only
      because LLVM chooses so; `asm-check` builds the default profile only. Fix: mask-form
