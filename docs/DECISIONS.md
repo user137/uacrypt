@@ -16179,7 +16179,10 @@ man page. Ten shared cases (command prefix, subcommand slot, a visible and a hid
 <shell>`, a file name). A missing shell is skipped (a `SKIPPED` line, seen only with `--nocapture`);
 an installed one that fails or hangs fails the test. Actually run so far: bash (Git Bash, the Pi;
 CI Linux/macOS) and PowerShell (Windows; `pwsh` on CI); zsh only parsed (`zsh -n`, macOS CI); the fish
-script has not run anywhere yet (no fish on the dev machine, the Pi or CI). Misuse (`completions`, `completions
+script has not run anywhere yet (no fish on the dev machine, the Pi or CI). Addendum (owner, same day):
+CI's Linux `test` job installs `zsh fish mandoc groff` and sets `UACRYPT_REQUIRE_SHELLS=1`, under
+which a missing tool fails the test instead of skipping; mandoc lints at `-Werror` (it warns about
+the deliberately empty date), groff stays at `-ww`. Misuse (`completions`, `completions
 tcsh`, `completions bash extra`, `man extra`) exits 2 with nothing on stdout; a failing stdout is a
 `CliError::Io`, not a panic.
 

@@ -62,7 +62,13 @@ fn installed(exe: &Path, args: &[&str]) -> bool {
         .is_ok_and(|o| o.status.success())
 }
 
+/// A missing tool is a skip, except where `UACRYPT_REQUIRE_SHELLS` is set (CI's Linux `test`
+/// job installs them all), so a broken install cannot pass as a skip there.
 fn skip(what: &str) {
+    assert!(
+        std::env::var_os("UACRYPT_REQUIRE_SHELLS").is_none(),
+        "{what} not available, but UACRYPT_REQUIRE_SHELLS is set"
+    );
     eprintln!("SKIPPED: {what} not available - not exercised on this machine");
 }
 
@@ -279,7 +285,9 @@ fn man_page_renders_cleanly_where_a_formatter_exists() {
     let page = dir.file("uacrypt.1");
     write_bytes(&page, r.stdout.as_bytes());
     for (tool, args) in [
-        ("mandoc", &["-Tlint", "-Wwarning"][..]),
+        // Errors only: mandoc warns about the empty date, left out on purpose (deterministic
+        // output, D-257); groff below is the strict check.
+        ("mandoc", &["-Tlint", "-Werror"][..]),
         // The device `man` uses in a UTF-8 locale; the default (PostScript) lacks Cyrillic glyphs.
         ("groff", &["-man", "-Tutf8", "-z", "-ww"][..]),
     ] {

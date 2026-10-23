@@ -10337,12 +10337,11 @@ on a moderator). Pushed to `master` as `3432912` (one batch): T-223/T-225 phase 
 targets), T-249 (D-256, findings T-312..T-316), T-264 (completions + `uacrypt man`, D-257). CI on
 `3432912` at save time: docs-book, all 8 bindings, oracle-harness, CodeQL, sonarcloud green; `rust`
 (incl. 28 `fuzz-smoke` jobs, macOS bash 3.2 + `zsh -n`, Linux `pwsh` completion tests) and `miri`
-still queued - **first: `gh run list` / `gh run view` both for `3432912`**. This save (D-258 + this
-note) is a local commit, **not pushed** (a push cancels the running `miri`, `cancel-in-progress`);
-push it with the next code change. Owner delegated the open forks (D-258): no reviewer subagent for
+still queued - **first: `gh run list` / `gh run view` both for `3432912`**. D-258 and the CI-shells change were pushed together. Owner delegated the open forks (D-258): no reviewer subagent for
 T-249/T-310; **T-312..T-316 join 0.8.0** - next in order T-312, T-313, T-315, T-314, T-316, then
-step 6 (release 0.8.0). Fish completions have never run anywhere, zsh only `zsh -n` (D-257) -
-adding `zsh fish` to the Linux CI job is an open option, not decided. `.git/worktrees/old_wt` is an
+step 6 (release 0.8.0). CI's Linux `test` job now installs zsh/fish/mandoc/groff
+and requires them (`UACRYPT_REQUIRE_SHELLS=1`, D-257 addendum) - the fish completer's first real
+run is there: check `smoke_completions` in the `rust` run of the push after `df62897`. `.git/worktrees/old_wt` is an
 empty leftover Windows would not delete (harmless; remove by hand). Local fuzz on Windows: `call
 vcvars64.bat && cargo +nightly-x86_64-pc-windows-msvc fuzz run --target x86_64-pc-windows-msvc <t>`
 from `crates/dstu-core`. Pi: Kani per harness under `ulimit -v`, never `gf2m512` (rebooted it).

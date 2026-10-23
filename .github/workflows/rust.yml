@@ -27,8 +27,13 @@ jobs:
   test:
     name: build, test, fmt, clippy
     runs-on: ubuntu-latest
+    # T-264/D-257: smoke_completions runs every shell's completer and lints the man page; here a
+    # missing tool fails the test instead of being skipped.
+    env:
+      UACRYPT_REQUIRE_SHELLS: "1"
     steps:
       - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y zsh fish mandoc groff
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
