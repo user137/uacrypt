@@ -23,7 +23,9 @@
 //! single-block file operation.
 
 mod cleanup;
+mod completions;
 mod keyfile;
+mod manpage;
 mod passphrase;
 #[cfg(windows)]
 mod private_file;
@@ -1148,11 +1150,7 @@ pub struct BlockArgs {
 /// an unrecognized `--variant` value, [`CliError::InvalidIterations`] for a non-numeric
 /// `--iterations` value, or [`CliError::UnknownFlag`] for any other unrecognized token.
 pub fn parse_block_args(args: &[String]) -> Result<BlockArgs, CliError> {
-    let scanner = ArgScanner::scan(
-        args,
-        &["--variant", "--key", "--in", "--out", "--iterations"],
-        &["--raw-schedule", "--force"],
-    )?;
+    let scanner = ArgScanner::scan(args, BLOCK_FLAGS.values, BLOCK_FLAGS.bools)?;
     Ok(BlockArgs {
         variant: scanner.variant(KalynaVariant::parse)?,
         key_path: scanner.path("--key")?,
@@ -1252,20 +1250,7 @@ pub struct CcmArgs {
 /// Same cases as [`parse_block_args`], plus `--nonce`/`--tag` sharing `--key`'s missing-flag
 /// handling.
 pub fn parse_ccm_args(args: &[String]) -> Result<CcmArgs, CliError> {
-    let scanner = ArgScanner::scan(
-        args,
-        &[
-            "--variant",
-            "--key",
-            "--nonce",
-            "--aad",
-            "--in",
-            "--out",
-            "--tag",
-            "--iterations",
-        ],
-        &["--force"],
-    )?;
+    let scanner = ArgScanner::scan(args, KALYNA_AEAD_FLAGS.values, KALYNA_AEAD_FLAGS.bools)?;
     Ok(CcmArgs {
         variant: scanner.variant(KalynaVariant::parse)?,
         key_path: scanner.path("--key")?,
@@ -1413,20 +1398,7 @@ pub struct GcmArgs {
 ///
 /// Same cases as [`parse_ccm_args`].
 pub fn parse_gcm_args(args: &[String]) -> Result<GcmArgs, CliError> {
-    let scanner = ArgScanner::scan(
-        args,
-        &[
-            "--variant",
-            "--key",
-            "--nonce",
-            "--aad",
-            "--in",
-            "--out",
-            "--tag",
-            "--iterations",
-        ],
-        &["--force"],
-    )?;
+    let scanner = ArgScanner::scan(args, KALYNA_AEAD_FLAGS.values, KALYNA_AEAD_FLAGS.bools)?;
     Ok(GcmArgs {
         variant: scanner.variant(KalynaVariant::parse)?,
         key_path: scanner.path("--key")?,
@@ -1563,18 +1535,7 @@ pub struct GmacArgs {
 /// [`CliError::MissingFlag`]/[`CliError::UnknownVariant`]/[`CliError::InvalidIterations`]/
 /// [`CliError::UnknownFlag`], same cases as [`parse_block_args`].
 pub fn parse_gmac_args(args: &[String]) -> Result<GmacArgs, CliError> {
-    let scanner = ArgScanner::scan(
-        args,
-        &[
-            "--variant",
-            "--key",
-            "--in",
-            "--out",
-            "--tag",
-            "--iterations",
-        ],
-        &["--force"],
-    )?;
+    let scanner = ArgScanner::scan(args, GMAC_FLAGS.values, GMAC_FLAGS.bools)?;
     Ok(GmacArgs {
         variant: scanner.variant(KalynaVariant::parse)?,
         key_path: scanner.path("--key")?,
@@ -1701,11 +1662,7 @@ pub struct KwArgs {
 ///
 /// Same cases as [`parse_block_args`].
 pub fn parse_kw_args(args: &[String]) -> Result<KwArgs, CliError> {
-    let scanner = ArgScanner::scan(
-        args,
-        &["--variant", "--key", "--in", "--out", "--iterations"],
-        &["--force"],
-    )?;
+    let scanner = ArgScanner::scan(args, KW_FLAGS.values, KW_FLAGS.bools)?;
     Ok(KwArgs {
         variant: scanner.variant(KalynaVariant::parse)?,
         key_path: scanner.path("--key")?,
@@ -1830,18 +1787,7 @@ pub struct XtsArgs {
 ///
 /// Same cases as [`parse_block_args`], plus `--tweak` sharing `--key`'s missing-flag handling.
 pub fn parse_xts_args(args: &[String]) -> Result<XtsArgs, CliError> {
-    let scanner = ArgScanner::scan(
-        args,
-        &[
-            "--variant",
-            "--key",
-            "--tweak",
-            "--in",
-            "--out",
-            "--iterations",
-        ],
-        &["--force"],
-    )?;
+    let scanner = ArgScanner::scan(args, XTS_FLAGS.values, XTS_FLAGS.bools)?;
     Ok(XtsArgs {
         variant: scanner.variant(KalynaVariant::parse)?,
         key_path: scanner.path("--key")?,
@@ -1966,11 +1912,7 @@ pub struct SecretstreamArgs {
 /// [`CliError::MissingOneOf`], [`CliError::ExclusiveFlags`], [`CliError::MissingFlag`],
 /// [`CliError::UnknownFlag`] and the other [`ArgScanner`] errors.
 pub fn parse_encrypt_args(args: &[String]) -> Result<SecretstreamArgs, CliError> {
-    let scanner = ArgScanner::scan(
-        args,
-        &["--key", "--passphrase-file", "--in", "--out"],
-        &["--passphrase", "--force"],
-    )?;
+    let scanner = ArgScanner::scan(args, ENCRYPT_FLAGS.values, ENCRYPT_FLAGS.bools)?;
     let credential = match (
         scanner.path_opt("--key")?,
         scanner.bool_flag("--passphrase"),
@@ -1999,11 +1941,7 @@ pub fn parse_encrypt_args(args: &[String]) -> Result<SecretstreamArgs, CliError>
 /// [`CliError::PassphraseFlagOnDecrypt`], [`CliError::ExclusiveFlags`] and the other
 /// [`ArgScanner`] errors.
 pub fn parse_decrypt_args(args: &[String]) -> Result<SecretstreamArgs, CliError> {
-    let scanner = ArgScanner::scan(
-        args,
-        &["--key", "--passphrase-file", "--in", "--out"],
-        &["--passphrase", "--force"],
-    )?;
+    let scanner = ArgScanner::scan(args, DECRYPT_FLAGS.values, DECRYPT_FLAGS.bools)?;
     if scanner.bool_flag("--passphrase") {
         return Err(CliError::PassphraseFlagOnDecrypt);
     }
@@ -2914,11 +2852,7 @@ pub struct DigestArgs {
 /// or [`CliError::UnknownFlag`] - same cases as [`parse_block_args`], minus the key/raw-schedule
 /// flags Kupyna (unkeyed) has no use for.
 pub fn parse_digest_args(args: &[String]) -> Result<DigestArgs, CliError> {
-    let scanner = ArgScanner::scan(
-        args,
-        &["--variant", "--in", "--out", "--iterations"],
-        &["--force"],
-    )?;
+    let scanner = ArgScanner::scan(args, DIGEST_FLAGS.values, DIGEST_FLAGS.bools)?;
     Ok(DigestArgs {
         variant: scanner.variant(HashBits::parse)?,
         in_path: scanner.path("--in")?,
@@ -3063,7 +2997,7 @@ pub enum HashArgs {
 ///
 /// Returns [`CliError::MissingOneOf`], [`CliError::ExclusiveFlags`] or another usage error.
 pub fn parse_hash_args(args: &[String]) -> Result<HashArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--in", "--check"], &[])?;
+    let scanner = ArgScanner::scan(args, HASH_FLAGS.values, HASH_FLAGS.bools)?;
     let input_opt = |flag| {
         if scanner.values.contains_key(flag) {
             scanner.input(flag).map(Some)
@@ -3158,6 +3092,17 @@ fn stdout_error(e: &std::io::Error) -> CliError {
         path: PathBuf::from("<stdout>"),
         message: e.to_string(),
     }
+}
+
+/// Writes all of `text` to stdout (the `completions` scripts and the `man` page, T-264).
+fn write_stdout(text: &str) -> Result<(), CliError> {
+    write_text(&mut std::io::stdout().lock(), text)
+}
+
+fn write_text(out: &mut impl std::io::Write, text: &str) -> Result<(), CliError> {
+    out.write_all(text.as_bytes())
+        .and_then(|()| out.flush())
+        .map_err(|e| stdout_error(&e))
 }
 
 /// Runs `hash`. `--in`: prints `<hex>  <path>` (the path as given) to stdout, like `sha256sum`.
@@ -3310,7 +3255,7 @@ pub struct KeygenArgs {
 ///
 /// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
 pub fn parse_keygen_args(args: &[String]) -> Result<KeygenArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--out"], &[])?;
+    let scanner = ArgScanner::scan(args, OUT_ONLY_FLAGS.values, OUT_ONLY_FLAGS.bools)?;
     Ok(KeygenArgs {
         out_path: scanner.secret_key_path("--out")?,
     })
@@ -3349,7 +3294,7 @@ pub struct KeyImportArgs {
 ///
 /// Returns [`CliError::MissingFlag`], [`CliError::UnknownKeyKind`] or [`CliError::UnknownFlag`].
 pub fn parse_key_import_args(args: &[String]) -> Result<KeyImportArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--kind", "--in", "--out"], &[])?;
+    let scanner = ArgScanner::scan(args, KEY_IMPORT_FLAGS.values, KEY_IMPORT_FLAGS.bools)?;
     let kind = scanner.key_kind()?;
     let in_path = scanner.path("--in")?;
     let out_path = if kind.is_secret() {
@@ -3594,7 +3539,7 @@ pub struct SignKeygenArgs {
 ///
 /// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
 pub fn parse_sign_keygen_args(args: &[String]) -> Result<SignKeygenArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--out"], &[])?;
+    let scanner = ArgScanner::scan(args, OUT_ONLY_FLAGS.values, OUT_ONLY_FLAGS.bools)?;
     Ok(SignKeygenArgs {
         out_path: scanner.secret_key_path("--out")?,
     })
@@ -3650,7 +3595,7 @@ pub struct SignPubkeyArgs {
 ///
 /// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
 pub fn parse_sign_pubkey_args(args: &[String]) -> Result<SignPubkeyArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--key", "--out"], &[])?;
+    let scanner = ArgScanner::scan(args, PUBKEY_FLAGS.values, PUBKEY_FLAGS.bools)?;
     Ok(SignPubkeyArgs {
         key_path: scanner.path("--key")?,
         out_path: scanner.output("--out")?,
@@ -3689,11 +3634,7 @@ pub struct SignArgs {
 ///
 /// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
 pub fn parse_sign_args(args: &[String]) -> Result<SignArgs, CliError> {
-    let scanner = ArgScanner::scan(
-        args,
-        &["--key", "--in", "--out", "--iterations"],
-        &["--force"],
-    )?;
+    let scanner = ArgScanner::scan(args, SIGN_FLAGS.values, SIGN_FLAGS.bools)?;
     let key_path = scanner.path("--key")?;
     let in_path = scanner.input("--in")?;
     let (out_path, force) = scanner.output_and_force()?;
@@ -3769,7 +3710,7 @@ pub struct VerifyArgs {
 ///
 /// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
 pub fn parse_verify_args(args: &[String]) -> Result<VerifyArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--key", "--in", "--sig", "--iterations"], &[])?;
+    let scanner = ArgScanner::scan(args, VERIFY_FLAGS.values, VERIFY_FLAGS.bools)?;
     Ok(VerifyArgs {
         key_path: scanner.path("--key")?,
         in_path: scanner.input("--in")?,
@@ -4143,7 +4084,7 @@ pub struct BoxKeygenArgs {
 ///
 /// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
 pub fn parse_box_keygen_args(args: &[String]) -> Result<BoxKeygenArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--out"], &[])?;
+    let scanner = ArgScanner::scan(args, OUT_ONLY_FLAGS.values, OUT_ONLY_FLAGS.bools)?;
     Ok(BoxKeygenArgs {
         out_path: scanner.secret_key_path("--out")?,
     })
@@ -4181,7 +4122,7 @@ pub struct BoxPubkeyArgs {
 ///
 /// Returns [`CliError::MissingFlag`] or [`CliError::UnknownFlag`].
 pub fn parse_box_pubkey_args(args: &[String]) -> Result<BoxPubkeyArgs, CliError> {
-    let scanner = ArgScanner::scan(args, &["--key", "--out"], &[])?;
+    let scanner = ArgScanner::scan(args, PUBKEY_FLAGS.values, PUBKEY_FLAGS.bools)?;
     Ok(BoxPubkeyArgs {
         key_path: scanner.path("--key")?,
         out_path: scanner.output("--out")?,
@@ -4219,11 +4160,7 @@ pub struct BoxSealArgs {
 ///
 /// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
 pub fn parse_box_seal_args(args: &[String]) -> Result<BoxSealArgs, CliError> {
-    let scanner = ArgScanner::scan(
-        args,
-        &["--key", "--in", "--out", "--iterations"],
-        &["--force"],
-    )?;
+    let scanner = ArgScanner::scan(args, SIGN_FLAGS.values, SIGN_FLAGS.bools)?;
     let key_path = scanner.path("--key")?;
     let in_path = scanner.input("--in")?;
     let (out_path, force) = scanner.output_and_force()?;
@@ -4323,11 +4260,7 @@ pub struct BoxOpenArgs {
 ///
 /// Returns [`CliError::MissingFlag`], [`CliError::InvalidIterations`], or [`CliError::UnknownFlag`].
 pub fn parse_box_open_args(args: &[String]) -> Result<BoxOpenArgs, CliError> {
-    let scanner = ArgScanner::scan(
-        args,
-        &["--key", "--in", "--out", "--iterations"],
-        &["--force"],
-    )?;
+    let scanner = ArgScanner::scan(args, SIGN_FLAGS.values, SIGN_FLAGS.bools)?;
     let key_path = scanner.path("--key")?;
     let in_path = scanner.input("--in")?;
     let (out_path, force) = scanner.output_and_force()?;
@@ -4464,18 +4397,7 @@ pub struct StrumokArgs {
 ///
 /// Same cases as [`parse_block_args`], plus `--iv` sharing `--key`'s missing-flag/IO handling.
 pub fn parse_strumok_args(args: &[String]) -> Result<StrumokArgs, CliError> {
-    let scanner = ArgScanner::scan(
-        args,
-        &[
-            "--variant",
-            "--key",
-            "--iv",
-            "--in",
-            "--out",
-            "--iterations",
-        ],
-        &["--raw-schedule", "--force"],
-    )?;
+    let scanner = ArgScanner::scan(args, STRUMOK_FLAGS.values, STRUMOK_FLAGS.bools)?;
     Ok(StrumokArgs {
         variant: scanner.variant(HashBits::parse)?,
         key_path: scanner.path("--key")?,
@@ -4720,6 +4642,10 @@ LOWER-LEVEL COMMANDS (benchmarking and interop with other DSTU implementations):
     kalyna-xts      Kalyna-XTS disk-sector mode - confidentiality only, no tag, by design.
     kupyna-digest   Kupyna hash with a selectable variant (256/512) and a benchmark --iterations flag.
     strumok-crypt   Strumok keystream cipher - NOT authenticated, tampering is never detected.
+
+SHELL INTEGRATION:
+    completions     Print a tab-completion script for bash, zsh, fish or PowerShell.
+    man             Print the uacrypt(1) manual page.
 
 FILE FORMATS (byte layouts, with field sizes in bytes: see docs/CLI.md 'File formats'):
     encrypt         version (1) || header (32), then records:
@@ -5372,41 +5298,262 @@ EXAMPLE:
     uacrypt strumok-crypt --variant 256 --key key.bin --iv iv.bin --in msg.bin --out msg.enc
 ";
 
-/// Every top-level command with its `--help` text - the one table typo suggestions,
-/// `uacrypt help <command>` and (later) shell completions read, so they cannot drift apart. A unit
-/// test checks it against [`run`]'s own dispatch arms.
-const COMMANDS: &[(&str, &str)] = &[
-    ("keygen", KEYGEN_HELP),
-    ("encrypt", ENCRYPT_HELP),
-    ("decrypt", DECRYPT_HELP),
-    ("hash", HASH_HELP),
-    ("sign-keygen", SIGN_KEYGEN_HELP),
-    ("sign-pubkey", SIGN_PUBKEY_HELP),
-    ("sign", SIGN_HELP),
-    ("verify", VERIFY_HELP),
-    ("sign-keygen257", SIGN_KEYGEN257_HELP),
-    ("box-keygen", BOX_KEYGEN_HELP),
-    ("box-pubkey", BOX_PUBKEY_HELP),
-    ("box-seal", BOX_SEAL_HELP),
-    ("box-open", BOX_OPEN_HELP),
-    ("box-keygen384", BOX_KEYGEN384_HELP),
-    ("box-keygen512", BOX_KEYGEN512_HELP),
-    ("key-import", KEY_IMPORT_HELP),
-    ("kalyna-block", KALYNA_BLOCK_HELP),
-    ("kalyna-ccm", KALYNA_CCM_HELP),
-    ("kalyna-gcm", KALYNA_GCM_HELP),
-    ("kalyna-gmac", KALYNA_GMAC_HELP),
-    ("kalyna-kw", KALYNA_KW_HELP),
-    ("kalyna-xts", KALYNA_XTS_HELP),
-    ("kupyna-digest", KUPYNA_DIGEST_HELP),
-    ("strumok-crypt", STRUMOK_CRYPT_HELP),
+const COMPLETIONS_HELP: &str = "uacrypt completions - print a tab-completion script for your shell.
+
+The script completes command names, subcommands, flags and the fixed values some flags take
+(variants, key kinds); other flag values complete as file names. It is static: completing never
+runs uacrypt. See docs/CLI.md 'Shell completions' for where each shell loads it from.
+
+USAGE:
+    uacrypt completions <bash|zsh|fish|powershell>
+
+EXAMPLE:
+    uacrypt completions bash > ~/.local/share/bash-completion/completions/uacrypt
+";
+
+const MAN_HELP: &str = "uacrypt man - print the uacrypt(1) manual page (roff) to stdout.
+
+The page holds this overview and every command's --help text.
+
+USAGE:
+    uacrypt man
+
+EXAMPLE:
+    uacrypt man > ~/.local/share/man/man1/uacrypt.1
+";
+
+/// One command's flags, exactly the lists its `parse_*_args` hands to [`ArgScanner::scan`] - so
+/// shell completions and the man page cannot offer a flag the parser rejects, or miss one it takes
+/// (T-264, `docs/DECISIONS.md` D-257).
+pub(crate) struct Flags {
+    pub(crate) values: &'static [&'static str],
+    pub(crate) bools: &'static [&'static str],
+    /// Accepted but never offered: the D-34 benchmark `--iterations` on the everyday commands, and
+    /// `decrypt --passphrase`, taken only to refuse it with a hint. A unit test keeps them out of
+    /// the help texts too.
+    pub(crate) hidden: &'static [&'static str],
+    /// Enumerated values, completed instead of file names; every other value flag takes a path.
+    pub(crate) choices: &'static [(&'static str, &'static [&'static str])],
+}
+
+impl Flags {
+    /// The flags completions and the man page show, in the parser's order.
+    pub(crate) fn visible(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.values
+            .iter()
+            .chain(self.bools)
+            .copied()
+            .filter(|f| !self.hidden.contains(f))
+    }
+}
+
+/// [`KalynaVariant::parse`]'s names.
+const KALYNA_VARIANTS: &[&str] = &["128-128", "128-256", "256-256", "256-512", "512-512"];
+/// [`HashBits::parse`]'s names (`kupyna-digest` and `strumok-crypt`).
+const BIT_VARIANTS: &[&str] = &["256", "512"];
+/// `KeyKind`'s `key-import --kind` names; a unit test checks them against `KeyKind::names`.
+const KEY_KINDS: &[&str] = &[
+    "symmetric",
+    "sign163-secret",
+    "sign163-public",
+    "sign257-secret",
+    "sign257-public",
+    "box256-secret",
+    "box256-public",
+    "box384-secret",
+    "box384-public",
+    "box512-secret",
+    "box512-public",
+];
+
+const NO_FLAGS: Flags = Flags {
+    values: &[],
+    bools: &[],
+    hidden: &[],
+    choices: &[],
+};
+const OUT_ONLY_FLAGS: Flags = Flags {
+    values: &["--out"],
+    ..NO_FLAGS
+};
+const PUBKEY_FLAGS: Flags = Flags {
+    values: &["--key", "--out"],
+    ..NO_FLAGS
+};
+const ENCRYPT_FLAGS: Flags = Flags {
+    values: &["--key", "--passphrase-file", "--in", "--out"],
+    bools: &["--passphrase", "--force"],
+    ..NO_FLAGS
+};
+const DECRYPT_FLAGS: Flags = Flags {
+    hidden: &["--passphrase"],
+    ..ENCRYPT_FLAGS
+};
+const HASH_FLAGS: Flags = Flags {
+    values: &["--in", "--check"],
+    ..NO_FLAGS
+};
+const SIGN_FLAGS: Flags = Flags {
+    values: &["--key", "--in", "--out", "--iterations"],
+    bools: &["--force"],
+    hidden: &["--iterations"],
+    choices: &[],
+};
+const VERIFY_FLAGS: Flags = Flags {
+    values: &["--key", "--in", "--sig", "--iterations"],
+    hidden: &["--iterations"],
+    ..NO_FLAGS
+};
+const KEY_IMPORT_FLAGS: Flags = Flags {
+    values: &["--kind", "--in", "--out"],
+    choices: &[("--kind", KEY_KINDS)],
+    ..NO_FLAGS
+};
+const BLOCK_FLAGS: Flags = Flags {
+    values: &["--variant", "--key", "--in", "--out", "--iterations"],
+    bools: &["--raw-schedule", "--force"],
+    hidden: &[],
+    choices: &[("--variant", KALYNA_VARIANTS)],
+};
+const KALYNA_AEAD_FLAGS: Flags = Flags {
+    values: &[
+        "--variant",
+        "--key",
+        "--nonce",
+        "--aad",
+        "--in",
+        "--out",
+        "--tag",
+        "--iterations",
+    ],
+    bools: &["--force"],
+    hidden: &[],
+    choices: &[("--variant", KALYNA_VARIANTS)],
+};
+const GMAC_FLAGS: Flags = Flags {
+    values: &[
+        "--variant",
+        "--key",
+        "--in",
+        "--out",
+        "--tag",
+        "--iterations",
+    ],
+    ..KALYNA_AEAD_FLAGS
+};
+const KW_FLAGS: Flags = Flags {
+    values: &["--variant", "--key", "--in", "--out", "--iterations"],
+    ..KALYNA_AEAD_FLAGS
+};
+const XTS_FLAGS: Flags = Flags {
+    values: &[
+        "--variant",
+        "--key",
+        "--tweak",
+        "--in",
+        "--out",
+        "--iterations",
+    ],
+    ..KALYNA_AEAD_FLAGS
+};
+const DIGEST_FLAGS: Flags = Flags {
+    values: &["--variant", "--in", "--out", "--iterations"],
+    bools: &["--force"],
+    hidden: &[],
+    choices: &[("--variant", BIT_VARIANTS)],
+};
+const STRUMOK_FLAGS: Flags = Flags {
+    values: &[
+        "--variant",
+        "--key",
+        "--iv",
+        "--in",
+        "--out",
+        "--iterations",
+    ],
+    bools: &["--raw-schedule", "--force"],
+    hidden: &[],
+    choices: &[("--variant", BIT_VARIANTS)],
+};
+
+/// The shells `uacrypt completions` writes a script for.
+pub(crate) const SHELLS: &[&str] = &["bash", "zsh", "fish", "powershell"];
+
+/// One top-level command: its `--help` text, the words that must come right after it
+/// (`kalyna-block encrypt`, `completions bash`), and its flags.
+pub(crate) struct Command {
+    pub(crate) name: &'static str,
+    pub(crate) help: &'static str,
+    pub(crate) subcommands: &'static [&'static str],
+    pub(crate) flags: &'static Flags,
+}
+
+const fn command(name: &'static str, help: &'static str, flags: &'static Flags) -> Command {
+    Command {
+        name,
+        help,
+        subcommands: &[],
+        flags,
+    }
+}
+
+const ENCRYPT_DECRYPT: &[&str] = &["encrypt", "decrypt"];
+
+/// Every top-level command - the one table typo suggestions, `uacrypt help <command>`, shell
+/// completions and the man page read, so they cannot drift apart. A unit test checks it against
+/// [`run`]'s own dispatch arms, another each entry's flags against its parser.
+pub(crate) const COMMANDS: &[Command] = &[
+    command("keygen", KEYGEN_HELP, &OUT_ONLY_FLAGS),
+    command("encrypt", ENCRYPT_HELP, &ENCRYPT_FLAGS),
+    command("decrypt", DECRYPT_HELP, &DECRYPT_FLAGS),
+    command("hash", HASH_HELP, &HASH_FLAGS),
+    command("sign-keygen", SIGN_KEYGEN_HELP, &OUT_ONLY_FLAGS),
+    command("sign-pubkey", SIGN_PUBKEY_HELP, &PUBKEY_FLAGS),
+    command("sign", SIGN_HELP, &SIGN_FLAGS),
+    command("verify", VERIFY_HELP, &VERIFY_FLAGS),
+    command("sign-keygen257", SIGN_KEYGEN257_HELP, &OUT_ONLY_FLAGS),
+    command("box-keygen", BOX_KEYGEN_HELP, &OUT_ONLY_FLAGS),
+    command("box-pubkey", BOX_PUBKEY_HELP, &PUBKEY_FLAGS),
+    command("box-seal", BOX_SEAL_HELP, &SIGN_FLAGS),
+    command("box-open", BOX_OPEN_HELP, &SIGN_FLAGS),
+    command("box-keygen384", BOX_KEYGEN384_HELP, &OUT_ONLY_FLAGS),
+    command("box-keygen512", BOX_KEYGEN512_HELP, &OUT_ONLY_FLAGS),
+    command("key-import", KEY_IMPORT_HELP, &KEY_IMPORT_FLAGS),
+    Command {
+        subcommands: ENCRYPT_DECRYPT,
+        ..command("kalyna-block", KALYNA_BLOCK_HELP, &BLOCK_FLAGS)
+    },
+    Command {
+        subcommands: ENCRYPT_DECRYPT,
+        ..command("kalyna-ccm", KALYNA_CCM_HELP, &KALYNA_AEAD_FLAGS)
+    },
+    Command {
+        subcommands: ENCRYPT_DECRYPT,
+        ..command("kalyna-gcm", KALYNA_GCM_HELP, &KALYNA_AEAD_FLAGS)
+    },
+    Command {
+        subcommands: &["compute", "verify"],
+        ..command("kalyna-gmac", KALYNA_GMAC_HELP, &GMAC_FLAGS)
+    },
+    Command {
+        subcommands: &["wrap", "unwrap"],
+        ..command("kalyna-kw", KALYNA_KW_HELP, &KW_FLAGS)
+    },
+    Command {
+        subcommands: ENCRYPT_DECRYPT,
+        ..command("kalyna-xts", KALYNA_XTS_HELP, &XTS_FLAGS)
+    },
+    command("kupyna-digest", KUPYNA_DIGEST_HELP, &DIGEST_FLAGS),
+    command("strumok-crypt", STRUMOK_CRYPT_HELP, &STRUMOK_FLAGS),
+    Command {
+        subcommands: SHELLS,
+        ..command("completions", COMPLETIONS_HELP, &NO_FLAGS)
+    },
+    command("man", MAN_HELP, &NO_FLAGS),
 ];
 
 fn command_help(command: &str) -> Option<&'static str> {
-    COMMANDS
-        .iter()
-        .find(|(name, _)| *name == command)
-        .map(|(_, help)| *help)
+    COMMANDS.iter().find(|c| c.name == command).map(|c| c.help)
 }
 
 /// The curve twins T-257 removed, each with the command that replaces it (D-213). Kept out of
@@ -5429,7 +5576,7 @@ fn unknown_command(command: &str) -> CliError {
             replacement,
         };
     }
-    let names = COMMANDS.iter().map(|(name, _)| *name).chain(["help"]);
+    let names = COMMANDS.iter().map(|c| c.name).chain(["help"]);
     CliError::UnknownCommand {
         command: command.to_string(),
         suggestion: suggest(command, names),
@@ -5683,6 +5830,8 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
             run_key_import_command,
         ),
         Some("help") => run_help_command(&args[1..]),
+        Some("completions") => completions::run_completions_command(&args[1..]),
+        Some("man") => manpage::run_man_command(&args[1..]),
         Some(other) => Err(unknown_command(other)),
     }
 }
@@ -9790,7 +9939,7 @@ mod tests {
 
     #[test]
     fn every_command_in_the_table_has_its_own_help_and_dispatches() {
-        for (name, help) in COMMANDS {
+        for Command { name, help, .. } in COMMANDS {
             assert_ne!(*help, TOP_LEVEL_HELP, "{name}");
             assert!(help.starts_with(&format!("uacrypt {name} ")), "{name}");
             assert_eq!(
@@ -9826,7 +9975,7 @@ mod tests {
         assert!(found.len() > 20, "{found:?}");
         for name in found.iter().filter(|n| *n != "help") {
             assert!(
-                COMMANDS.iter().any(|(n, _)| n == name),
+                COMMANDS.iter().any(|c| c.name == name),
                 "`{name}` is dispatched by run but missing from COMMANDS"
             );
         }
@@ -9881,5 +10030,218 @@ mod tests {
     fn key_file_exists_message_has_no_run_of_spaces() {
         let msg = CliError::KeyFileExists(PathBuf::from("k.bin")).to_string();
         assert!(!msg.contains("  "), "{msg}");
+    }
+
+    type ParseErr = fn(&[String]) -> Option<CliError>;
+
+    /// The parser each table entry describes (T-264). `completions`/`man` take no flags.
+    fn parser_for(name: &str) -> Option<ParseErr> {
+        Some(match name {
+            "keygen" => |a| parse_keygen_args(a).err(),
+            "encrypt" => |a| parse_encrypt_args(a).err(),
+            "decrypt" => |a| parse_decrypt_args(a).err(),
+            "hash" => |a| parse_hash_args(a).err(),
+            "sign-keygen" | "sign-keygen257" => |a| parse_sign_keygen_args(a).err(),
+            "sign-pubkey" => |a| parse_sign_pubkey_args(a).err(),
+            "sign" => |a| parse_sign_args(a).err(),
+            "verify" => |a| parse_verify_args(a).err(),
+            "box-keygen" | "box-keygen384" | "box-keygen512" => |a| parse_box_keygen_args(a).err(),
+            "box-pubkey" => |a| parse_box_pubkey_args(a).err(),
+            "box-seal" => |a| parse_box_seal_args(a).err(),
+            "box-open" => |a| parse_box_open_args(a).err(),
+            "key-import" => |a| parse_key_import_args(a).err(),
+            "kalyna-block" => |a| parse_block_args(a).err(),
+            "kalyna-ccm" => |a| parse_ccm_args(a).err(),
+            "kalyna-gcm" => |a| parse_gcm_args(a).err(),
+            "kalyna-gmac" => |a| parse_gmac_args(a).err(),
+            "kalyna-kw" => |a| parse_kw_args(a).err(),
+            "kalyna-xts" => |a| parse_xts_args(a).err(),
+            "kupyna-digest" => |a| parse_digest_args(a).err(),
+            "strumok-crypt" => |a| parse_strumok_args(a).err(),
+            _ => return None,
+        })
+    }
+
+    fn rejects_as_unknown(parse: ParseErr, args: &[&str]) -> bool {
+        let args: Vec<String> = args.iter().map(|a| (*a).to_string()).collect();
+        matches!(parse(&args), Some(CliError::UnknownFlag { .. }))
+    }
+
+    /// T-264: each table entry is exactly its parser's flag set - every listed flag is accepted,
+    /// every flag of any other entry that this one does not list is refused, so completions and the
+    /// man page cannot offer a flag the parser rejects or miss one it takes.
+    #[test]
+    fn every_table_entry_matches_its_parser_both_ways() {
+        let all: Vec<&str> = COMMANDS
+            .iter()
+            .flat_map(|c| c.flags.values.iter().chain(c.flags.bools).copied())
+            .collect();
+        for c in COMMANDS {
+            let Some(parse) = parser_for(c.name) else {
+                assert!(
+                    matches!(c.name, "completions" | "man"),
+                    "{}: no parser",
+                    c.name
+                );
+                continue;
+            };
+            for flag in c.flags.values {
+                assert!(
+                    !rejects_as_unknown(parse, &[flag, "x"]),
+                    "{} {flag}",
+                    c.name
+                );
+            }
+            for flag in c.flags.bools {
+                assert!(!rejects_as_unknown(parse, &[flag]), "{} {flag}", c.name);
+            }
+            for flag in all
+                .iter()
+                .filter(|f| !c.flags.values.contains(f) && !c.flags.bools.contains(f))
+            {
+                assert!(
+                    rejects_as_unknown(parse, &[flag, "x"]),
+                    "{} accepts {flag}",
+                    c.name
+                );
+            }
+            assert!(rejects_as_unknown(parse, &["--not-a-flag"]), "{}", c.name);
+        }
+    }
+
+    #[test]
+    fn no_parser_scans_with_an_inline_flag_list() {
+        let src = include_str!("lib.rs");
+        let code = &src[..src.find("#[cfg(test)]\nmod tests {").expect("tests module")];
+        assert!(!code.contains("ArgScanner::scan(args, &["));
+        assert!(!code.contains("ArgScanner::scan(\n"));
+    }
+
+    /// The `--flag` tokens of a help text, whole words only (`--passphrase` is not found inside
+    /// `--passphrase-file`).
+    fn help_flags(help: &str) -> Vec<&str> {
+        help.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '-'))
+            .filter(|w| w.starts_with("--") && w.len() > 2)
+            .collect()
+    }
+
+    #[test]
+    fn visible_flags_are_in_their_help_and_hidden_ones_are_not() {
+        for c in COMMANDS {
+            let shown = help_flags(c.help);
+            for flag in c.flags.visible() {
+                assert!(
+                    shown.contains(&flag),
+                    "{}: {flag} missing from its --help",
+                    c.name
+                );
+            }
+            for flag in c.flags.hidden {
+                assert!(
+                    c.flags.values.contains(flag) || c.flags.bools.contains(flag),
+                    "{}: hidden {flag} is not a flag",
+                    c.name
+                );
+                assert!(
+                    !shown.contains(flag),
+                    "{}: hidden {flag} in its --help",
+                    c.name
+                );
+            }
+        }
+        assert_eq!(help_flags("--passphrase-file x"), ["--passphrase-file"]);
+    }
+
+    #[test]
+    fn every_choice_is_a_value_flag_its_parser_accepts() {
+        assert!(KALYNA_VARIANTS
+            .iter()
+            .all(|v| KalynaVariant::parse(v).is_some()));
+        assert!(BIT_VARIANTS.iter().all(|v| HashBits::parse(v).is_some()));
+        assert_eq!(KEY_KINDS.to_vec(), KeyKind::names().collect::<Vec<_>>());
+        for c in COMMANDS {
+            for (flag, values) in c.flags.choices {
+                assert!(c.flags.values.contains(flag), "{} {flag}", c.name);
+                assert!(!values.is_empty(), "{} {flag}", c.name);
+            }
+        }
+    }
+
+    #[test]
+    fn subcommands_are_the_ones_run_dispatches() {
+        for c in COMMANDS
+            .iter()
+            .filter(|c| !c.subcommands.is_empty() && c.name != "completions")
+        {
+            for sub in c.subcommands {
+                let r = run(&[c.name.to_string(), (*sub).to_string()]);
+                assert!(
+                    !matches!(
+                        r,
+                        Err(CliError::UnknownCommand { .. } | CliError::MissingSubcommand(_))
+                    ),
+                    "{} {sub}: {r:?}",
+                    c.name
+                );
+            }
+            assert!(matches!(
+                run(&[c.name.to_string(), "nope".to_string()]),
+                Err(CliError::UnknownCommand { .. })
+            ));
+        }
+    }
+
+    struct FailingWriter;
+
+    impl std::io::Write for FailingWriter {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::other("disk full"))
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_failing_stdout_is_an_io_error_not_a_panic() {
+        match write_text(&mut FailingWriter, "#!") {
+            Err(CliError::Io { path, message }) => {
+                assert_eq!(path, PathBuf::from("<stdout>"));
+                assert!(message.contains("disk full"), "{message}");
+            }
+            other => panic!("{other:?}"),
+        }
+        let mut sink = Vec::new();
+        assert_eq!(write_text(&mut sink, "ok\n"), Ok(()));
+        assert_eq!(sink, b"ok\n");
+    }
+
+    #[test]
+    fn completions_and_man_refuse_bad_arguments() {
+        let v = |a: &[&str]| a.iter().map(|s| (*s).to_string()).collect::<Vec<_>>();
+        assert!(matches!(
+            run(&v(&["completions"])),
+            Err(CliError::MissingSubcommand(_))
+        ));
+        match run(&v(&["completions", "bsh"])) {
+            Err(CliError::UnknownCommand {
+                command,
+                suggestion,
+            }) => {
+                assert_eq!(command, "completions bsh");
+                assert_eq!(suggestion, Some("bash"));
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(
+            run(&v(&["completions", "bash", "zsh"])),
+            Err(CliError::UnexpectedArgument("zsh".to_string()))
+        );
+        assert_eq!(
+            run(&v(&["man", "1"])),
+            Err(CliError::UnexpectedArgument("1".to_string()))
+        );
+        assert_eq!(run(&v(&["completions", "--help"])), Ok(()));
+        assert_eq!(run(&v(&["man", "-h"])), Ok(()));
     }
 }

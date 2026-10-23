@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+### Added
+
+- **`uacrypt completions bash|zsh|fish|powershell` and `uacrypt man`** (T-264,
+  `docs/DECISIONS.md` D-257): a tab-completion script for each shell and the `uacrypt(1)` manual
+  page, both generated from the table the argument parser uses, so they offer exactly the flags
+  each command accepts. See `docs/CLI.md` "Shell completions and the man page".
+
 ### Removed
 
 - **Breaking - reading the 0.4-0.6 `crypto_box` format** (T-310, `docs/DECISIONS.md` D-239

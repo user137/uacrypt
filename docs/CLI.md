@@ -348,6 +348,35 @@ None of `kalyna-block`/`kupyna-digest`/`strumok-crypt`/`kalyna-ccm`/`kalyna-gcm`
 stay as lower-level, hazmat-scoped tools for anyone who explicitly wants that level of control, or
 is benchmarking a specific primitive directly.
 
+## Shell completions and the man page
+
+`uacrypt completions <shell>` prints a tab-completion script for bash, zsh, fish or PowerShell, and
+`uacrypt man` prints the `uacrypt(1)` manual page (the overview plus every command's `--help`).
+Both are built from the same table the argument parser scans with, so they offer exactly the
+flags each command accepts, its subcommands and the fixed values of `--variant`/`--kind`; other
+flag values complete as file names (T-264, `docs/DECISIONS.md` D-257). A script is static -
+completing never runs `uacrypt` - so regenerate it after upgrading. The benchmark `--iterations`
+of `sign`/`verify`/`box-seal`/`box-open` is not offered (see `docs/PERFORMANCE.md`).
+
+```sh
+# bash (bash-completion 2.x loads this directory on demand)
+uacrypt completions bash > ~/.local/share/bash-completion/completions/uacrypt
+# zsh: any directory on $fpath; e.g. fpath=(~/.zfunc $fpath) in ~/.zshrc before compinit
+uacrypt completions zsh > ~/.zfunc/_uacrypt
+# fish
+uacrypt completions fish > ~/.config/fish/completions/uacrypt.fish
+# man page
+mkdir -p ~/.local/share/man/man1 && uacrypt man > ~/.local/share/man/man1/uacrypt.1
+```
+
+PowerShell (Windows PowerShell 5.1 or PowerShell 7): save the script once, then dot-source it from
+your profile, so no shell start runs `uacrypt`:
+
+```powershell
+uacrypt completions powershell | Set-Content -Encoding ascii "$HOME\uacrypt-completion.ps1"
+Add-Content $PROFILE '. "$HOME\uacrypt-completion.ps1"'
+```
+
 ## Verifying a downloaded release
 
 From 0.4.0 on, every GitHub Release carries `SHA256SUMS`, its Sigstore signature bundle

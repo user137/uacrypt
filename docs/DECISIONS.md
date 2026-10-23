@@ -16140,3 +16140,48 @@ dropped at `finish()` is `Truncated`.
 **Not done.** The independent strongest-model reviewer the 0.8.0 plan offers at the end of T-249
 (owner's call); `gf_mul` timing on real Cortex-M (IT-predicated instructions are assumed
 fixed-cost, not measured - no hardware here, and no side-channel claim follows either way).
+
+## D-257: `uacrypt completions` and `uacrypt man` from the parser's own flag table (T-264, 2026-10-23)
+
+**Problem.** The 0.8.0 plan meant to take each command's flags from its `--help` text and test
+that every parsed flag appears there. That does not hold, both ways: the parsers accept flags the
+help hides on purpose (the D-34 benchmark `--iterations` on `sign`/`verify`/`box-seal`/`box-open`;
+`decrypt --passphrase`, accepted only to refuse it with a hint), and the help texts name other
+commands' flags (`encrypt`'s mentions `--kind`, `hash`'s `--variant`), so help-derived lists would
+offer flags the command refuses.
+
+**Decision** (owner, 2026-10-23, on the three forks):
+- **The parser's lists are the table.** `struct Flags { values, bools, hidden, choices }`, one
+  `const` per parser; every `parse_*_args` scans with `X_FLAGS.values`/`X_FLAGS.bools`
+  (`ArgScanner::scan` unchanged). `COMMANDS` became `&[Command { name, help, subcommands, flags }]`.
+  Checked: the pre-change and post-change binaries answer "unknown flag" identically for every
+  command x every flag of any command (408 runs), and unit tests keep the table and the parsers
+  equal both ways (each listed flag accepted, each other command's flag refused), no inline scan
+  list left, every visible flag a whole `--flag` token of its help, no hidden one there.
+- **Hidden flags stay hidden**: accepted, never completed, never in `--help` or the man page.
+  "Did you mean" still draws from every accepted flag, hidden ones included (unchanged behaviour:
+  a typo of `--iterations` is still corrected).
+- **Static scripts** for bash, zsh, fish and PowerShell, generated from `COMMANDS`; completing never
+  runs `uacrypt`, so the script must be regenerated after an upgrade (its header says so). Names
+  only, no descriptions: every word is `[A-Za-z0-9-]` (a unit test), so no shell needs escaping
+  rules. `--iterations` completes to nothing, `--variant`/`--kind` to their values, every other
+  value flag to file names.
+- **`uacrypt man` prints roff to stdout** (no generated file in the repo to go stale); `.TH` carries
+  only the crate version, no date, so the output is deterministic. Text is escaped for no-fill
+  mode (`\e`, `\-`, `\&` before a leading `.`/`'`, `\[uXXXX]` for non-ASCII).
+- **Not in the release archives yet** (`release.yml` unchanged).
+
+**Tests.** Real shells, running the completer: Git Bash on Windows (located through `git
+--exec-path`, since a bare `bash` may be WSL's) and bash elsewhere (`COMP_WORDS`/`COMPREPLY`),
+PowerShell (`TabExpansion2`), fish (`complete -C`), `zsh -n`; `mandoc -Tlint`/`groff -z -ww` on the
+man page. Ten shared cases (command prefix, subcommand slot, a visible and a hidden `--iterations`,
+`--passphrase` vs `--passphrase-file`, `--kind`/`--variant` values, `help <command>`, `completions
+<shell>`, a file name). A missing shell prints `SKIPPED` on stderr. Misuse (`completions`, `completions
+tcsh`, `completions bash extra`, `man extra`) exits 2 with nothing on stdout; a failing stdout is a
+`CliError::Io`, not a panic.
+
+**Rejected.** Help-text tokens as the source (wrong both ways, above). A test-only hook recording
+`ArgScanner::scan`'s arguments (proves the lists match only for the calls a test makes, and
+completions would still need a table). Dynamic completion calling back into `uacrypt` (runs a
+binary on every Tab; a static script is enough for a fixed command set). A checked-in
+`docs/uacrypt.1` (one more generated file to regenerate and diff).

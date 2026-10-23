@@ -9314,7 +9314,7 @@ plan):
   clippy, all four CI invocations, clean; Pi (1.98.1) `cargo xtask clippy` + getrandom/small-tables
   clippy clean, `cargo test -p dstu-core --all-features` 760/760. The `master` cherry-pick is not
   done (its reason was wrong; owner decides).
-- [ ] **T-264** Shell completions (`uacrypt completions bash|zsh|fish|powershell`) and a man page,
+- [x] **T-264** (**done 2026-10-23, D-257**: per-command `Flags` table the parsers scan with; static scripts; `uacrypt man` to stdout; hidden flags never offered) Shell completions (`uacrypt completions bash|zsh|fish|powershell`) and a man page,
   generated from the same command table the parser uses.
 - [x] **T-265** (**done 2026-10-19**: pushed on `1fa8634`, every workflow green incl.
   `bindings-php` and `miri.yml` (~60 min); the binding gate and the C++/.NET/Go "too short" fix
@@ -10336,7 +10336,7 @@ per phase (`rust.yml`/`miri.yml` are `cancel-in-progress`; a docs push mid-run c
 moderator). Done today, all local commits **not pushed yet** (owner: one batched push at the end):
 **T-311** (`779acc7`) and **T-310** (`daeb58f`+`5d32cc2`) are on `master` (CI green, `miri` too);
 **T-223/T-225** phase A (`2563770`) and B (`b795494`), **T-249** (D-256, findings T-312..T-316).
-Next: **T-264** (completions + man page, plan approved, D-257), then Pi clippy/test, closing
+**T-264** done (D-257). Next: Pi clippy/test, closing
 `advisor`, push `HEAD:master`, `gh run view` every workflow (28 `fuzz-smoke` jobs). Open with the
 owner: the independent reviewer for T-249 and for T-310; whether T-312..T-316 join 0.8.0.
 Local fuzz on Windows: `call vcvars64.bat && cargo +nightly-x86_64-pc-windows-msvc fuzz run
@@ -10397,7 +10397,10 @@ Local fuzz on Windows: `call vcvars64.bat && cargo +nightly-x86_64-pc-windows-ms
      via `gf_mul`; `mul_alpha_inv(mul_alpha(w)) == w`), then retire "not transcription-verified in
      full" for Strumok's tables (CLAUDE.md x2, `docs/ORACLES.md`, `strumok.rs`/`crypto_stream.rs`
      module docs, `docs/pseudocode/strumok.md`), citing D-256.
-5. **T-264** completions (bash/zsh/fish/PowerShell) and a man page, hand-written generators, no
+5. [x] **T-264** (done 2026-10-23, D-257; the precondition below failed - hidden `--iterations`/
+   `decrypt --passphrase`, help texts naming other commands' flags - so the flag table came first,
+   plan mode + advisor; owner: hidden stay hidden, `man` to stdout, release archives unchanged)
+   completions (bash/zsh/fish/PowerShell) and a man page, hand-written generators, no
    new dependency. Source: the existing `COMMANDS` table (`lib.rs`, help text per command, already
    test-checked against `run`'s dispatch) - flags taken from each help text's `--flag` tokens, with
    a test that every flag the parser accepts appears there. If that does not hold, a per-command
