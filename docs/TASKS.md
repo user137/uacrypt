@@ -10293,6 +10293,11 @@ writer onto it. Superseded in detail by the plan below.
   day.
 - Step 4 (after 0.7.0): T-264 (the parser is hand-written, no `clap`; no new dependency without the owner).
 - Step 5 (after 0.7.0): T-249 + the T-223/T-225 fuzz additions.
+- Step 7 (after 0.7.0): T-311 - T-231's awaited failure line came (2026-10-23, `895f82a`, docs-only,
+  run `39915029014`): VmRSS +27.68 MB, managed committed +26.80 MB, at n/2 +26.85 / +26.67 MB -
+  levels off and is all managed, native remainder 0.88 MB. Retention, not a leak. Fix: assert on
+  the native remainder (VmRSS minus managed committed), threshold ~2 MiB, keep the n/2 log. Rerun
+  of the job was the release-day workaround.
 - Step 6 (after 0.7.0, owner 2026-10-23): T-310 - remove `crypto_box{,512}::open_v2_legacy` and
   `box-open`'s v2 path (compat is no reason to keep it, D-253 revision). A v2 blob becomes an
   unsupported version everywhere, as capi and the bindings already treat it (`legacy_v2.json`
