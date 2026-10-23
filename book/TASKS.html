@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-cd6279fe.js";
+            window.path_to_searchindex_js = "searchindex-56c8c1be.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -10805,15 +10805,18 @@ registries (Packagist, NuGet, Maven Central, pkg.go.dev, vcpkg) - each publish o
 runs in order (T-164 deferred, below). Pushes batched
 per phase (<code>rust.yml</code>/<code>miri.yml</code> are <code>cancel-in-progress</code>; a docs push mid-run cost a full run on
 0.7.0 release day).</p>
-<p><strong>RESUME HERE (2026-10-23, third save):</strong> 0.7.0 closed (winget PR #460150 waits on a
-moderator). Done today, all local commits <strong>not pushed yet</strong> (owner: one batched push at the end):
-<strong>T-311</strong> (<code>779acc7</code>) and <strong>T-310</strong> (<code>daeb58f</code>+<code>5d32cc2</code>) are on <code>master</code> (CI green, <code>miri</code> too);
-<strong>T-223/T-225</strong> phase A (<code>2563770</code>) and B (<code>b795494</code>), <strong>T-249</strong> (D-256, findings T-312..T-316).
-<strong>T-264</strong> done (D-257). Next: Pi clippy/test, closing
-<code>advisor</code>, push <code>HEAD:master</code>, <code>gh run view</code> every workflow (28 <code>fuzz-smoke</code> jobs). Open with the
-owner: the independent reviewer for T-249 and for T-310; whether T-312..T-316 join 0.8.0.
-Local fuzz on Windows: <code>call vcvars64.bat &amp;&amp; cargo +nightly-x86_64-pc-windows-msvc fuzz run --target x86_64-pc-windows-msvc &lt;t&gt;</code> from <code>crates/dstu-core</code>. Pi: Kani per harness under
-<code>ulimit -v</code>, never <code>gf2m512</code> (rebooted it, 2026-10-23).</p>
+<p><strong>RESUME HERE (2026-10-23, fourth save, before /clear):</strong> 0.7.0 closed (winget PR #460150 waits
+on a moderator). Pushed to <code>master</code> as <code>3432912</code> (one batch): T-223/T-225 phase A+B (28 fuzz
+targets), T-249 (D-256, findings T-312..T-316), T-264 (completions + <code>uacrypt man</code>, D-257). CI on
+<code>3432912</code> at save time: docs-book, all 8 bindings, oracle-harness, CodeQL, sonarcloud green; <code>rust</code>
+(incl. 28 <code>fuzz-smoke</code> jobs, macOS bash 3.2 + <code>zsh -n</code>, Linux <code>pwsh</code> completion tests) and <code>miri</code>
+still queued - <strong>first: <code>gh run list</code> / <code>gh run view</code> both for <code>3432912</code></strong>. D-258 and the CI-shells change were pushed together. Owner delegated the open forks (D-258): no reviewer subagent for
+T-249/T-310; <strong>T-312..T-316 join 0.8.0</strong> - next in order T-312, T-313, T-315, T-314, T-316, then
+step 6 (release 0.8.0). CI’s Linux <code>test</code> job now installs zsh/fish/mandoc/groff
+and requires them (<code>UACRYPT_REQUIRE_SHELLS=1</code>, D-257 addendum) - the fish completer’s first real
+run is there: check <code>smoke_completions</code> in the <code>rust</code> run of the push after <code>df62897</code>. <code>.git/worktrees/old_wt</code> is an
+empty leftover Windows would not delete (harmless; remove by hand). Local fuzz on Windows: <code>call vcvars64.bat &amp;&amp; cargo +nightly-x86_64-pc-windows-msvc fuzz run --target x86_64-pc-windows-msvc &lt;t&gt;</code>
+from <code>crates/dstu-core</code>. Pi: Kani per harness under <code>ulimit -v</code>, never <code>gf2m512</code> (rebooted it).</p>
 <p><strong>Code chain:</strong></p>
 <ol>
 <li><input disabled="" type="checkbox" checked=""> <strong>T-311</strong> (done 2026-10-23, D-255: native remainder after an aggressive GC, 2 MiB; Pi:
@@ -10840,7 +10843,7 @@ the <code>crypto_auth/kdf/generichash/pwhash/stream</code> wrappers, <code>hazma
 schedule, <code>tables.rs</code>, <code>dstu9041</code> l=512 (and l=384) line by line against l=256, D-118’s two
 pitfalls read in full in Node.js/PHP/Java/.NET/Go/C++, and actually running Miri/Kani/longer
 fuzz locally. Offer the independent reviewer subagent at the end (owner’s yes).
-<strong>T-249 findings (D-256), all Low, none advisory-relevant; owner: in 0.8.0 or later:</strong>
+<strong>T-249 findings (D-256), all Low, none advisory-relevant; in 0.8.0 (D-258), order T-312, T-313, T-315, T-314, T-316:</strong>
 <ul>
 <li><input disabled="" type="checkbox"> <strong>T-312</strong> (Low, constant-time) <code>tables::gf_mul</code> branches on the secret byte’s top bit in
 the source; it is production code under <code>small-tables</code> (every Kalyna/Kupyna round, Strumok’s

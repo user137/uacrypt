@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-cd6279fe.js";
+            window.path_to_searchindex_js = "searchindex-56c8c1be.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -14902,13 +14902,28 @@ man page. Ten shared cases (command prefix, subcommand slot, a visible and a hid
 <code>--passphrase</code> vs <code>--passphrase-file</code>, <code>--kind</code>/<code>--variant</code> values, <code>help &lt;command&gt;</code>, <code>completions &lt;shell&gt;</code>, a file name). A missing shell is skipped (a <code>SKIPPED</code> line, seen only with <code>--nocapture</code>);
 an installed one that fails or hangs fails the test. Actually run so far: bash (Git Bash, the Pi;
 CI Linux/macOS) and PowerShell (Windows; <code>pwsh</code> on CI); zsh only parsed (<code>zsh -n</code>, macOS CI); the fish
-script has not run anywhere yet (no fish on the dev machine, the Pi or CI). Misuse (<code>completions</code>, <code>completions tcsh</code>, <code>completions bash extra</code>, <code>man extra</code>) exits 2 with nothing on stdout; a failing stdout is a
+script has not run anywhere yet (no fish on the dev machine, the Pi or CI). Addendum (owner, same day):
+CI’s Linux <code>test</code> job installs <code>zsh fish mandoc groff</code> and sets <code>UACRYPT_REQUIRE_SHELLS=1</code>, under
+which a missing tool fails the test instead of skipping; mandoc lints at <code>-Werror</code> (it warns about
+the deliberately empty date), groff stays at <code>-ww</code>. Misuse (<code>completions</code>, <code>completions tcsh</code>, <code>completions bash extra</code>, <code>man extra</code>) exits 2 with nothing on stdout; a failing stdout is a
 <code>CliError::Io</code>, not a panic.</p>
 <p><strong>Rejected.</strong> Help-text tokens as the source (wrong both ways, above). A test-only hook recording
 <code>ArgScanner::scan</code>’s arguments (proves the lists match only for the calls a test makes, and
 completions would still need a table). Dynamic completion calling back into <code>uacrypt</code> (runs a
 binary on every Tab; a static script is enough for a fixed command set). A checked-in
 <code>docs/uacrypt.1</code> (one more generated file to regenerate and diff).</p>
+<h2 id="d-258-delegated-forks-after-t-249t-264-2026-10-23-owner-your-choice"><a class="header" href="#d-258-delegated-forks-after-t-249t-264-2026-10-23-owner-your-choice">D-258: delegated forks after T-249/T-264 (2026-10-23, owner: “your choice”)</a></h2>
+<p>Decided by the delegated-fork rule (app rules &gt; safety &gt; compatibility):</p>
+<ul>
+<li><strong>No independent reviewer subagent for T-249 or T-310.</strong> T-249 is itself the review (read-only,
+findings filed as T-312..T-316, every claim backed by a script, asm read or run, D-256); T-310 is
+a removal whose new behaviour (format 2 refused as an unsupported version) is pinned by tests.
+The offer stands for any later change in a silent-costly-failure class.</li>
+<li><strong>T-312..T-316 join 0.8.0, before the release step.</strong> 0.8.0 is already a breaking minor
+(compatibility weighs little, owner 2026-10-23); T-312 (secret branch in <code>gf_mul</code>) and T-313
+(D-249 leftovers) close gaps against the hard constraints in <code>CLAUDE.md</code>, and the other three are
+small. Order: T-312, T-313, T-315, T-314, T-316, then the release.</li>
+</ul>
 
                     </main>
 
