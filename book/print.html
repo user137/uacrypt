@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-56c8c1be.js";
+            window.path_to_searchindex_js = "searchindex-e5115dda.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -11445,7 +11445,8 @@ targets), T-249 (D-256, findings T-312..T-316), T-264 (completions + <code>uacry
 (incl. 28 <code>fuzz-smoke</code> jobs, macOS bash 3.2 + <code>zsh -n</code>, Linux <code>pwsh</code> completion tests) and <code>miri</code>
 still queued - <strong>first: <code>gh run list</code> / <code>gh run view</code> both for <code>3432912</code></strong>. D-258 and the CI-shells change were pushed together. Owner delegated the open forks (D-258): no reviewer subagent for
 T-249/T-310; <strong>T-312..T-316 join 0.8.0</strong> - next in order T-312, T-313, T-315, T-314, T-316, then
-step 6 (release 0.8.0). CI’s Linux <code>test</code> job now installs zsh/fish/mandoc/groff
+step 6 (release 0.8.0). <strong>T-312 done 2026-10-23 (D-259); next T-313.</strong> <code>3432912</code>’s <code>rust</code>/<code>miri</code> were
+cancelled by the next push (<code>cancel-in-progress</code>); the T-312 push carries everything since, so read its <code>rust</code>/<code>miri</code> runs (incl. <code>asm-check</code>’s 16 builds and <code>smoke_completions</code>). CI’s Linux <code>test</code> job now installs zsh/fish/mandoc/groff
 and requires them (<code>UACRYPT_REQUIRE_SHELLS=1</code>, D-257 addendum) - the fish completer’s first real
 run is there: check <code>smoke_completions</code> in the <code>rust</code> run of the push after <code>df62897</code>. <code>.git/worktrees/old_wt</code> is an
 empty leftover Windows would not delete (harmless; remove by hand). Local fuzz on Windows: <code>call vcvars64.bat &amp;&amp; cargo +nightly-x86_64-pc-windows-msvc fuzz run --target x86_64-pc-windows-msvc &lt;t&gt;</code>
@@ -11478,7 +11479,7 @@ pitfalls read in full in Node.js/PHP/Java/.NET/Go/C++, and actually running Miri
 fuzz locally. Offer the independent reviewer subagent at the end (owner’s yes).
 <strong>T-249 findings (D-256), all Low, none advisory-relevant; in 0.8.0 (D-258), order T-312, T-313, T-315, T-314, T-316:</strong>
 <ul>
-<li><input disabled="" type="checkbox"> <strong>T-312</strong> (Low, constant-time) <code>tables::gf_mul</code> branches on the secret byte’s top bit in
+<li><input disabled="" type="checkbox" checked=""> <strong>T-312</strong> (done 2026-10-23, D-259: mask-form <code>gf_mul</code>, 46 small-tables exact-count rows, negative control failed all 8 cells) (Low, constant-time) <code>tables::gf_mul</code> branches on the secret byte’s top bit in
 the source; it is production code under <code>small-tables</code> (every Kalyna/Kupyna round, Strumok’s
 <code>T</code>). Shipped asm is branchless in all 8 cells read (masks/IT/cmov, rustc 1.97.1) only
 because LLVM chooses so; <code>asm-check</code> builds the default profile only. Fix: mask-form
@@ -34097,6 +34098,56 @@ The offer stands for any later change in a silent-costly-failure class.</li>
 (D-249 leftovers) close gaps against the hard constraints in <code>CLAUDE.md</code>, and the other three are
 small. Order: T-312, T-313, T-315, T-314, T-316, then the release.</li>
 </ul>
+<h2 id="d-259-t-312---branchless-gf_mul-and-a-small-tables-profile-in-asm-check-2026-10-23"><a class="header" href="#d-259-t-312---branchless-gf_mul-and-a-small-tables-profile-in-asm-check-2026-10-23">D-259: T-312 - branchless <code>gf_mul</code> and a <code>small-tables</code> profile in <code>asm-check</code> (2026-10-23)</a></h2>
+<p><strong>Fix.</strong> <code>hazmat::tables::gf_mul</code> (DSTU 7624/7564 <code>GF(2^8)</code> multiply, reduction <code>0x11D</code>; the
+reference is <code>oracles/kalyna-reference/kalyna.c</code> <code>MultiplyGF</code>) now computes both of the
+reference’s <code>if</code>s as masks: <code>result ^= x &amp; 0u8.wrapping_sub(y &amp; 1)</code> and
+<code>x = (x &lt;&lt; 1) ^ (0x1D &amp; 0u8.wrapping_sub(x &gt;&gt; 7))</code>. Under <code>small-tables</code> (D-35/D-38) <code>x</code> is a
+secret state byte in every Kalyna/Kupyna round. A new unit test checks all 65536 products against a
+literal port of <code>MultiplyGF</code>. It is ignored under Miri, where it takes about 195 s; the four existing
+exhaustive table tests still run <code>gf_mul</code> under Miri.</p>
+<p><strong>What the asm shows (rustc 1.99.0, <code>--no-default-features --features small-tables</code>).</strong> The
+reduction on <code>x</code> is a sign mask in every cell (riscv <code>srli 7</code>/<code>srai</code>+<code>andi 29</code>, thumb
+<code>sxtb</code>+<code>and lsr #7</code>). LLVM still turns the multiplier side into control flow:</p>
+<ul>
+<li>thumb predicates the <code>result ^= x</code> step with <code>it mi</code> on bits of <code>y</code> (<code>lsls rN, r6, #28</code>);</li>
+<li>riscv32 O3’s out-of-line <code>encipher_round</code>/<code>fused_inv_round</code> branch on bits of <code>y</code>, 108-117
+conditional jumps each.</li>
+</ul>
+<p>In production <code>y</code> is always an entry of <code>MDS_MATRIX</code>/<code>MDS_INV_MATRIX</code>, which is public, so that
+control flow depends on public data only. Masks in the source don’t stop LLVM from choosing
+branches. The source form is therefore not the guard; the asm check below is.</p>
+<p><strong>Guard (<code>cargo xtask asm-check</code>).</strong> Every one of the 8 cells is now built in both profiles, each
+in its own target dir (<code>target/asm-check/opt-&lt;o&gt;-small-tables</code>). A shared dir would let the
+newest-rlib rule read the other profile’s <code>.s</code>. The hard rules (fail-closed branch classification,
+riscv carry shape, <code>__multi3</code>) run in both profiles. The small-tables rows are exact jump counts,
+<code>SMALL_TABLES_EXACT_JUMPS</code>, the same kind of exception as D-230: loops keep public jumps around a
+secret operation, so a zero-jump row is impossible. No <code>tables</code> symbol has zero jumps in any cell,
+and at O3 <code>gf_mul</code> is inlined into the round functions.</p>
+<p>The rows are where a branchy reduction actually lands. Negative control: with
+<code>if x &gt;&gt; 7 == 1 { x ^= black_box(0x1D) }</code>, all 46 rows failed in all 8 cells, and no default-profile
+row moved:</p>
+<ul>
+<li>O3, 10 per target: <code>kalyna::encipher_round</code>, <code>encipher_round_n&lt;Kj2_|Kj4_|Kj8_&gt;</code>,
+<code>fused_inv_round_n&lt;Kj2_|Kj4_&gt;</code>, <code>decrypt_with_schedule&lt;Kj8_Kj12_&gt;</code>,
+<code>kupyna::sub_shift_mix_n&lt;Kj8_|Kj10_&gt;</code>, <code>tables::apply_matrix_via_gf_mul</code>;</li>
+<li><code>s</code>: <code>mds_column_via_gf_mul</code> and <code>apply_matrix_via_gf_mul</code>;</li>
+<li><code>z</code>: <code>gf_mul</code> itself.</li>
+</ul>
+<p>To name one generic instantiation, a spec’s last ident takes its mangled v0 arguments
+(<code>sub_shift_mix_n&lt;Kj8_&gt;</code>).</p>
+<p><strong>Departures from the T-312 plan in TASKS</strong> (decided under D-258’s delegation):</p>
+<ul>
+<li>The planned zero-jump rows became exact counts, because no symbol has zero jumps.</li>
+<li>The planned “conditional branch in front of a <code>0x1D</code> reduction” scan was dropped. D-256 had to
+dismiss two false hits by hand (<code>movs r1, #29</code>, <code>lsl #29</code>), so it cannot fail closed, and the
+exact counts already catch any new branch in those symbols.</li>
+<li>No <code>#[inline(never)]</code> was added to make a zero-jump symbol, since that would change production.</li>
+</ul>
+<p><strong>Not covered.</strong> Copies inlined into other symbols (the negative control moved, for example,
+<code>kalyna_ccm</code> <code>seal_in_place</code>’s count, in the other direction, through an inlining change) rely on
+LLVM making the same choice for the same body. Real-silicon timing of IT-predicated instructions
+is still unclaimed (D-256).</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows
@@ -34116,6 +34167,14 @@ addendum): <code>dstu-core</code>’s <code>crypto_box::open_v2_legacy</code>, <
 both <code>LEGACY_FORMAT_VERSION</code> constants are gone, and <code>uacrypt box-open</code> refuses a format-2 file
 as an unsupported version, like every other <code>open</code> already did. To keep such data, open it
 with uacrypt 0.7.x (<code>box-open</code>) or dstu-core 0.7.x (<code>open_v2_legacy</code>) and seal it again.</li>
+</ul>
+<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<ul>
+<li><strong><code>dstu-core</code> <code>small-tables</code>: no secret-dependent branch in the <code>GF(2^8)</code> multiply</strong> (T-312,
+<code>docs/DECISIONS.md</code> D-259): <code>gf_mul</code>, which every Kalyna/Kupyna round calls in that profile,
+now reduces with masks instead of an <code>if</code> on the state byte’s top bit. Shipped builds were
+already branchless there by the compiler’s choice; <code>cargo xtask asm-check</code> now checks the
+<code>small-tables</code> build too, so a compiler change that brings the branch back fails CI.</li>
 </ul>
 <h2 id="070---2026-10-23"><a class="header" href="#070---2026-10-23">[0.7.0] - 2026-10-23</a></h2>
 <h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
@@ -34205,7 +34264,7 @@ public key once, when it is built, instead of on every <code>open</code>; <code>
 <code>uacrypt.exe</code> no longer needs the Visual C++ redistributable (<code>VCRUNTIME140.dll</code>).</p>
 </li>
 </ul>
-<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
 <p>Security advisory GHSA-6x5f-x3rf-6r48 covers T-298, T-299, T-300, T-301 and T-303 below.</p>
 <ul>
 <li><strong><code>dstu-core</code>: DSTU 4145 verifying keys with a coordinate &gt;= 2^m are refused</strong> (T-299,
@@ -34256,7 +34315,7 @@ extra bytes.</li>
 forwards, and <code>close()</code> closes the sink (<code>SecretStreamDecryptor.close()</code> closes its source), as
 <code>java.io</code> filter streams do. <code>close()</code> still never writes the <code>Final</code> chunk.</li>
 </ul>
-<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
+<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
 <ul>
 <li><strong>C ABI: overlapping input and output buffers are refused</strong> (T-244, D-236): a function returning
 <code>DstuStatus</code> gives <code>DSTU_ERR_INVALID_ARGUMENT</code>, a <code>void</code> one writes nothing. In-place calls were
@@ -34532,7 +34591,7 @@ before a human notices. Escalates to a GitHub Issue only after 3 consecutive sch
 (self-closes once green again). See <code>docs/DECISIONS.md</code> D-196.</p>
 </li>
 </ul>
-<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
+<h3 id="fixed-3"><a class="header" href="#fixed-3">Fixed</a></h3>
 <ul>
 <li>
 <p>v0.3.8’s RubyGems publish (Ruby bindings, <code>dstu_core</code>) actually completed - blocked by a pending
@@ -34619,7 +34678,7 @@ status blurb the README pass above hadn’t reached. See <code>docs/DECISIONS.md
 </li>
 </ul>
 <h2 id="038---2026-08-13"><a class="header" href="#038---2026-08-13">[0.3.8] - 2026-08-13</a></h2>
-<h3 id="fixed-3"><a class="header" href="#fixed-3">Fixed</a></h3>
+<h3 id="fixed-4"><a class="header" href="#fixed-4">Fixed</a></h3>
 <ul>
 <li><code>publish to RubyGems</code> failed instantly on v0.3.7’s real release run (after all four
 <code>build-ruby-gems</code> platforms passed): <code>rubygems/configure-rubygems-credentials@v1</code> doesn’t exist
@@ -34631,7 +34690,7 @@ for this same step (<code>v2.1.0</code>). See <code>docs/DECISIONS.md</code> D-1
 </li>
 </ul>
 <h2 id="037---2026-08-13"><a class="header" href="#037---2026-08-13">[0.3.7] - 2026-08-13</a></h2>
-<h3 id="fixed-4"><a class="header" href="#fixed-4">Fixed</a></h3>
+<h3 id="fixed-5"><a class="header" href="#fixed-5">Fixed</a></h3>
 <ul>
 <li>Root <code>README.md</code>’s “Language bindings” table and the website’s “Bindings” section both still
 said “not published to any package registry” and linked only this repo’s own README, even though
@@ -34658,7 +34717,7 @@ native gem publishing for <code>dstu_core</code> (<code>x86_64-linux</code>, <co
 pre-registered pending publisher. Dormant behind the <code>rubygems</code> GitHub Environment approval
 gate until the next tag. See <code>docs/DECISIONS.md</code> D-190.</li>
 </ul>
-<h3 id="fixed-5"><a class="header" href="#fixed-5">Fixed</a></h3>
+<h3 id="fixed-6"><a class="header" href="#fixed-6">Fixed</a></h3>
 <ul>
 <li>The already-live PyPI and npm package pages (<code>dstu-core</code>) still had README/description text
 written pre-publish, claiming “provisional, not yet published” and offering only from-source
@@ -34678,7 +34737,7 @@ publish - fixed ahead of that first publish. See <code>docs/DECISIONS.md</code> 
 (<code>aarch64-unknown-linux-gnu</code>), built natively on GitHub’s <code>ubuntu-24.04-arm</code> hosted runner (GA for
 public repos since 2025-08-07), no cross-compile toolchain needed.</li>
 </ul>
-<h3 id="fixed-6"><a class="header" href="#fixed-6">Fixed</a></h3>
+<h3 id="fixed-7"><a class="header" href="#fixed-7">Fixed</a></h3>
 <ul>
 <li>v0.3.4’s npm publish (with the idempotency fix from that release) correctly skipped the two
 already-published platform packages and reached <code>dstu-core-win32-x64-msvc</code>, but that package hit
@@ -34691,7 +34750,7 @@ this class of npm block (contacting npm support - renaming doesn’t, per a real
 what un-defers it once support clears the name.</li>
 </ul>
 <h2 id="034---2026-08-13"><a class="header" href="#034---2026-08-13">[0.3.4] - 2026-08-13</a></h2>
-<h3 id="fixed-7"><a class="header" href="#fixed-7">Fixed</a></h3>
+<h3 id="fixed-8"><a class="header" href="#fixed-8">Fixed</a></h3>
 <ul>
 <li>v0.3.3’s npm publish got past the provenance/access fix but hit npm’s own spam-detection
 heuristic on the 3rd platform subpackage (<code>dstu-core-win32-x64-msvc</code>) after two succeeded
@@ -34709,7 +34768,7 @@ npm’s external spam heuristic and rate limits are outside this workflow’s co
 wherever the previous attempt stopped.</li>
 </ul>
 <h2 id="033---2026-08-12"><a class="header" href="#033---2026-08-12">[0.3.3] - 2026-08-12</a></h2>
-<h3 id="fixed-8"><a class="header" href="#fixed-8">Fixed</a></h3>
+<h3 id="fixed-9"><a class="header" href="#fixed-9">Fixed</a></h3>
 <ul>
 <li><code>publish-npm</code>’s <code>napi prepublish</code> step failed publishing every platform subpackage
 (<code>Can't generate provenance for new or private package, you must set access to public</code>) - <code>npm publish --provenance</code> refuses to guess the intended access level for a package that’s never been
@@ -34729,7 +34788,7 @@ failed attempt before retrying (<code>registry.npmjs.org/dstu-core*</code> still
 0.1.0 - the 0.3.1 tag’s <code>publish-pypi</code> run actually went through (see Fixed, below), so this is
 the first release to reflect that as real instead of “prepared, not yet live.”</li>
 </ul>
-<h3 id="fixed-9"><a class="header" href="#fixed-9">Fixed</a></h3>
+<h3 id="fixed-10"><a class="header" href="#fixed-10">Fixed</a></h3>
 <ul>
 <li><code>environment: pypi</code>/<code>npm</code> in <code>release.yml</code> were referenced but never actually protected -
 GitHub auto-creates an environment with zero protection rules the first time a workflow
@@ -34775,7 +34834,7 @@ Packagist is deliberately not part of this pass -
 <code>bindings/php</code> is a compiled <code>ext-php-rs</code> extension, and Packagist only distributes Composer
 (PHP-source) packages (<code>docs/DECISIONS.md</code> D-144).</li>
 </ul>
-<h3 id="fixed-10"><a class="header" href="#fixed-10">Fixed</a></h3>
+<h3 id="fixed-11"><a class="header" href="#fixed-11">Fixed</a></h3>
 <ul>
 <li><code>docs/TASKS.md</code> T-17 and <code>CLAUDE.md</code>’s “MVP scope” both still read “not started” for the
 crates.io publish that actually happened at 0.3.0 above - corrected to reflect reality
@@ -34841,7 +34900,7 @@ measurement can actually detect unbounded growth. <code>#[ignore]</code>d by def
 5 minutes and was killed before finishing); wired into <code>cargo xtask ci</code>’s optional layers and a
 new CI job matrixed across all three OSes (<code>docs/TASKS.md</code> T-200).</li>
 </ul>
-<h3 id="fixed-11"><a class="header" href="#fixed-11">Fixed</a></h3>
+<h3 id="fixed-12"><a class="header" href="#fixed-12">Fixed</a></h3>
 <ul>
 <li><code>crypto_sign</code>/<code>hazmat::dstu4145</code> (<code>m=163</code>): <code>VerifyingKey::from_uncompressed_bytes</code> accepted a
 caller-supplied public key with no on-curve check, and <code>verify</code> never validated its own <code>q</code>
@@ -34883,7 +34942,7 @@ checked exhaustively over all 2^384 possible inputs (T-145).</li>
 <li>CodeQL advanced-setup CI migration, explicit least-privilege CI permissions (T-143); SonarCloud
 static analysis wired into CI (T-140).</li>
 </ul>
-<h3 id="fixed-12"><a class="header" href="#fixed-12">Fixed</a></h3>
+<h3 id="fixed-13"><a class="header" href="#fixed-13">Fixed</a></h3>
 <ul>
 <li>DSTU 4145 <code>scalar_multiply</code> returned a wrong result for scalars at/near the curve’s own group
 order - reachable in-contract at exactly one boundary value (<code>k == n-1</code>). No forgery risk

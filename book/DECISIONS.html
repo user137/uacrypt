@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-56c8c1be.js";
+            window.path_to_searchindex_js = "searchindex-e5115dda.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -14924,6 +14924,56 @@ The offer stands for any later change in a silent-costly-failure class.</li>
 (D-249 leftovers) close gaps against the hard constraints in <code>CLAUDE.md</code>, and the other three are
 small. Order: T-312, T-313, T-315, T-314, T-316, then the release.</li>
 </ul>
+<h2 id="d-259-t-312---branchless-gf_mul-and-a-small-tables-profile-in-asm-check-2026-10-23"><a class="header" href="#d-259-t-312---branchless-gf_mul-and-a-small-tables-profile-in-asm-check-2026-10-23">D-259: T-312 - branchless <code>gf_mul</code> and a <code>small-tables</code> profile in <code>asm-check</code> (2026-10-23)</a></h2>
+<p><strong>Fix.</strong> <code>hazmat::tables::gf_mul</code> (DSTU 7624/7564 <code>GF(2^8)</code> multiply, reduction <code>0x11D</code>; the
+reference is <code>oracles/kalyna-reference/kalyna.c</code> <code>MultiplyGF</code>) now computes both of the
+reference’s <code>if</code>s as masks: <code>result ^= x &amp; 0u8.wrapping_sub(y &amp; 1)</code> and
+<code>x = (x &lt;&lt; 1) ^ (0x1D &amp; 0u8.wrapping_sub(x &gt;&gt; 7))</code>. Under <code>small-tables</code> (D-35/D-38) <code>x</code> is a
+secret state byte in every Kalyna/Kupyna round. A new unit test checks all 65536 products against a
+literal port of <code>MultiplyGF</code>. It is ignored under Miri, where it takes about 195 s; the four existing
+exhaustive table tests still run <code>gf_mul</code> under Miri.</p>
+<p><strong>What the asm shows (rustc 1.99.0, <code>--no-default-features --features small-tables</code>).</strong> The
+reduction on <code>x</code> is a sign mask in every cell (riscv <code>srli 7</code>/<code>srai</code>+<code>andi 29</code>, thumb
+<code>sxtb</code>+<code>and lsr #7</code>). LLVM still turns the multiplier side into control flow:</p>
+<ul>
+<li>thumb predicates the <code>result ^= x</code> step with <code>it mi</code> on bits of <code>y</code> (<code>lsls rN, r6, #28</code>);</li>
+<li>riscv32 O3’s out-of-line <code>encipher_round</code>/<code>fused_inv_round</code> branch on bits of <code>y</code>, 108-117
+conditional jumps each.</li>
+</ul>
+<p>In production <code>y</code> is always an entry of <code>MDS_MATRIX</code>/<code>MDS_INV_MATRIX</code>, which is public, so that
+control flow depends on public data only. Masks in the source don’t stop LLVM from choosing
+branches. The source form is therefore not the guard; the asm check below is.</p>
+<p><strong>Guard (<code>cargo xtask asm-check</code>).</strong> Every one of the 8 cells is now built in both profiles, each
+in its own target dir (<code>target/asm-check/opt-&lt;o&gt;-small-tables</code>). A shared dir would let the
+newest-rlib rule read the other profile’s <code>.s</code>. The hard rules (fail-closed branch classification,
+riscv carry shape, <code>__multi3</code>) run in both profiles. The small-tables rows are exact jump counts,
+<code>SMALL_TABLES_EXACT_JUMPS</code>, the same kind of exception as D-230: loops keep public jumps around a
+secret operation, so a zero-jump row is impossible. No <code>tables</code> symbol has zero jumps in any cell,
+and at O3 <code>gf_mul</code> is inlined into the round functions.</p>
+<p>The rows are where a branchy reduction actually lands. Negative control: with
+<code>if x &gt;&gt; 7 == 1 { x ^= black_box(0x1D) }</code>, all 46 rows failed in all 8 cells, and no default-profile
+row moved:</p>
+<ul>
+<li>O3, 10 per target: <code>kalyna::encipher_round</code>, <code>encipher_round_n&lt;Kj2_|Kj4_|Kj8_&gt;</code>,
+<code>fused_inv_round_n&lt;Kj2_|Kj4_&gt;</code>, <code>decrypt_with_schedule&lt;Kj8_Kj12_&gt;</code>,
+<code>kupyna::sub_shift_mix_n&lt;Kj8_|Kj10_&gt;</code>, <code>tables::apply_matrix_via_gf_mul</code>;</li>
+<li><code>s</code>: <code>mds_column_via_gf_mul</code> and <code>apply_matrix_via_gf_mul</code>;</li>
+<li><code>z</code>: <code>gf_mul</code> itself.</li>
+</ul>
+<p>To name one generic instantiation, a spec’s last ident takes its mangled v0 arguments
+(<code>sub_shift_mix_n&lt;Kj8_&gt;</code>).</p>
+<p><strong>Departures from the T-312 plan in TASKS</strong> (decided under D-258’s delegation):</p>
+<ul>
+<li>The planned zero-jump rows became exact counts, because no symbol has zero jumps.</li>
+<li>The planned “conditional branch in front of a <code>0x1D</code> reduction” scan was dropped. D-256 had to
+dismiss two false hits by hand (<code>movs r1, #29</code>, <code>lsl #29</code>), so it cannot fail closed, and the
+exact counts already catch any new branch in those symbols.</li>
+<li>No <code>#[inline(never)]</code> was added to make a zero-jump symbol, since that would change production.</li>
+</ul>
+<p><strong>Not covered.</strong> Copies inlined into other symbols (the negative control moved, for example,
+<code>kalyna_ccm</code> <code>seal_in_place</code>’s count, in the other direction, through an inlining change) rely on
+LLVM making the same choice for the same body. Real-silicon timing of IT-predicated instructions
+is still unclaimed (D-256).</p>
 
                     </main>
 
