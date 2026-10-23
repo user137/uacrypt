@@ -10327,12 +10327,19 @@ runs in order (T-164 deferred, below). Pushes batched
 per phase (`rust.yml`/`miri.yml` are `cancel-in-progress`; a docs push mid-run cost a full run on
 0.7.0 release day).
 
-**RESUME HERE (state at /clear, 2026-10-23):** 0.7.0 fully released and closed (registries live,
-GHSA published, yanks done, CodeQL clean, winget PR #460150 waiting on a moderator). `master` =
-`1b13b68` (PHP `ctutils` RUSTSEC fix): every workflow green, `rust` still running at save time -
-check it first. Unpushed, docs only: `8397cf6`, `2a9c0c0`, `25060fd` (push after `rust` is done).
-Owner confirmed the order below. **T-311 done 2026-10-23 (D-255), T-310 done (D-239 addendum); next: T-223/T-225 fuzz.** Pi: packages up to date (PHP 8.2.35
-by unattended-upgrades, Docker 29.9.2), Docker stays disabled. Nothing uncommitted.
+**RESUME HERE (state at /clear, 2026-10-23, second save):** 0.7.0 closed (winget PR #460150 waits
+on a moderator). Done today: **T-311** (`779acc7`, D-255), **T-310** (`daeb58f`+`5d32cc2`, D-239
+addendum; all CI green after one transient PHP rerun, `miri` on `5d32cc2` was still running -
+check it), **T-223/T-225 phase A** (`2563770`, **not pushed**: hold until `miri` on `5d32cc2` is
+done, `cancel-in-progress`). **Uncommitted: T-225 phase B** - 9 hazmat fuzz targets
+(`kalyna_cbc/ctr/ecb/ofb/xts`, `kupyna_kmac/kdf`, `dstu4145`, `dstu9041`) plus the 28-entry sync
+(`fuzz/Cargo.toml`, `rust.yml`, `FUZZ_TARGETS`); local 20 s runs: the first 8 clean, `dstu9041`
+was still running (log `%TEMP%uzz_dstu9041.log`; rerun it if missing). Next: confirm `dstu9041`,
+update CLAUDE.md's "grown to 19" -> 28 and T-225's entry, commit phase B, push both, read
+`fuzz-smoke` (28 jobs) with `gh run view`, closing `advisor`; then T-249. Local fuzz on Windows:
+`call vcvars64.bat && cargo +nightly-x86_64-pc-windows-msvc fuzz run --target
+x86_64-pc-windows-msvc <t>` from `crates/dstu-core` (as `xtask fuzz`). Open with the owner: the
+one-time offer of a read-only reviewer subagent for T-310 (unanswered). Pi: up to date, Docker off.
 
 **Code chain:**
 1. [x] **T-311** (done 2026-10-23, D-255: native remainder after an aggressive GC, 2 MiB; Pi:
