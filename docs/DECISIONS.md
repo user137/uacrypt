@@ -16002,3 +16002,36 @@ first seen 2026-10-08..19, read against `895f82a` (the `v0.7.0` commit). Same tw
   terminal marker - never a key or a passphrase - and does not reach these lines at all.
 
 Nothing to change. Dismissed as false positives with a pointer to this entry.
+
+## D-255: .NET leak test asserts on the native remainder, after an aggressive GC (T-311, 2026-10-23)
+
+**Finding.** `bindings-dotnet`'s `MemoryLeakTests` failed again on `587c148` (run `39941079817`,
+Xeon Platinum 8573C): VmRSS +27.68 MB, managed committed +26.80 MB, at n/2 +26.85 / +26.67 MB -
+the same numbers as on `895f82a`. GC retention that levels off; native remainder 0.88 MB (T-231).
+
+**Decision.** The assert is on the native remainder (VmRSS growth minus `TotalCommittedBytes`
+growth), threshold 2 MiB over 20000 iterations - a detection floor of ~105 B per iteration. Every
+reading is taken after `GC.Collect(MaxGeneration, Aggressive, blocking, compacting)`: with the
+default collect the Pi showed committed shrinking 2.3-2.6 MB while VmRSS fell less (decommit of
+never-resident pages), inflating the remainder to 1.57-1.72 MB in 4 of 11 runs (1.2x headroom).
+Measured on the Pi (aarch64, .NET 8, N = 20000):
+
+| Collect | Loop | native remainder | managed committed |
+|---|---|---|---|
+| default | normal (11 runs) | 0.15-1.72 MB | -2.6..+1.3 MB |
+| default | leak control (2) | 7.47-7.52 MB | +1.3 MB |
+| default, `DOTNET_GCgen0size=0x4000000` | normal (3) / control (2) | 0.62-0.97 / 7.68-7.72 MB | +10.5 / +8.9 MB |
+| aggressive | normal (5) | 0.62-0.70 MB | -0.03..0 MB |
+| aggressive | leak control (2) | 7.86-7.91 MB | -0.03..0 MB |
+| aggressive, `DOTNET_GCgen0size=0x4000000` | normal (2) / control (1) | 0.74-0.75 / 7.68 MB | -0.02 MB |
+
+The leak control (`LeakControlIsDetected`, runs only with `DSTU_LEAK_CONTROL=1`, never on CI) adds
+one never-freed `dstu_kupyna512_hasher_new` per iteration through a test-local `LibraryImport`
+(~300 B native payload); it grows linearly (half at n/2) and reads ~3.8x the threshold. "Never
+Dispose" is no control: `SafeHandle` finalizers free it (T-231). The gen0 row simulates CI's large
+managed growth: committed growth that is resident is subtracted cleanly, the control stays visible.
+
+**Rejected.** Clamping the committed delta at zero (`VmRSS - max(committed, 0)`): also removes the
+inflation, but lowers the floor to ~235 B per iteration whenever the GC shrinks; the aggressive
+collect fixes the cause instead and keeps the formula. Raising the raw-VmRSS threshold (hides the
+retention and still cannot see a leak, D-234).

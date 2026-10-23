@@ -10324,11 +10324,12 @@ per phase (`rust.yml`/`miri.yml` are `cancel-in-progress`; a docs push mid-run c
 GHSA published, yanks done, CodeQL clean, winget PR #460150 waiting on a moderator). `master` =
 `1b13b68` (PHP `ctutils` RUSTSEC fix): every workflow green, `rust` still running at save time -
 check it first. Unpushed, docs only: `8397cf6`, `2a9c0c0`, `25060fd` (push after `rust` is done).
-Owner confirmed the order below; **next: T-311**, then T-310. Pi: packages up to date (PHP 8.2.35
+Owner confirmed the order below. **T-311 done 2026-10-23 (D-255); next: T-310.** Pi: packages up to date (PHP 8.2.35
 by unattended-upgrades, Docker 29.9.2), Docker stays disabled. Nothing uncommitted.
 
 **Code chain:**
-1. **T-311** .NET leak test on the native remainder (VmRSS minus managed committed), threshold
+1. [x] **T-311** (done 2026-10-23, D-255: native remainder after an aggressive GC, 2 MiB; Pi:
+   normal 0.62-0.70 MB, leak control 7.9 MB) .NET leak test on the native remainder (VmRSS minus managed committed), threshold
    ~2 MiB. Committed GC memory need not be resident, so the new metric needs a deliberate-leak
    control first, as D-234 had for Java: a test-only P/Invoke allocation through capi that is never
    freed, shown to fail the new threshold ("never Dispose" is no control in .NET, T-231).

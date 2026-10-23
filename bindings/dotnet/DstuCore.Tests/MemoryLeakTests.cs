@@ -30,6 +30,9 @@ namespace DstuCore.Tests;
 /// documented precedent for <c>uacrypt_with_peak_rss</c>'s own Linux/macOS paths in the CLI test
 /// suite (reviewed, not run, before their first real CI confirmation) and this same T-213 batch's
 /// Java binding test.
+/// T-311 (D-255): raw VmRSS growth on CI is mostly managed GC retention (+26.80 of +27.68 MB), so
+/// the assert is on VmRSS growth minus managed committed growth, each reading after an aggressive
+/// compacting collect.
 /// </summary>
 public class MemoryLeakTests
 {
@@ -77,6 +80,58 @@ public class MemoryLeakTests
         }
     }
 
+    private const int Warmup = 2000;
+    private const int N = 20000;
+
+    // T-311: the assert is on the native remainder (VmRSS growth minus managed committed growth),
+    // not raw VmRSS - CI saw +27.68 MB VmRSS of which +26.80 MB was managed committed (GC
+    // retention, levels off by n/2). 2 MiB over N iterations is a detection floor of ~105 B per
+    // iteration; normal passes stay at 0.14-0.88 MB. The leak control below shows the metric
+    // fails on a real native leak.
+    private const long MaxNativeRemainderBytes = 2L * 1024 * 1024;
+
+    // T-311: Aggressive decommits what it can at every reading, so committed-but-never-resident
+    // slack does not shrink between readings and inflate the remainder (seen on the Pi: committed
+    // -2.6 MB, VmRSS -0.9 MB, remainder 1.72 MB with a default collect).
+    private static void FullCollect()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+    }
+
+    private readonly record struct Reading(long VmRss, long Committed);
+
+    private static Reading Read() => new(CurrentVmRssBytes(), GC.GetGCMemoryInfo().TotalCommittedBytes);
+
+    private long MeasureNativeRemainder(Action<int> loop)
+    {
+        loop(Warmup);
+        FullCollect();
+        var before = Read();
+
+        // T-231: a midpoint reading tells a leak (grows linearly) from allocator/GC retention
+        // (levels off).
+        loop(N / 2);
+        FullCollect();
+        var mid = Read();
+        loop(N - N / 2);
+        FullCollect();
+        var after = Read();
+
+        long vmRss = after.VmRss - before.VmRss;
+        long committed = after.Committed - before.Committed;
+        long remainder = vmRss - committed;
+        long midRemainder = (mid.VmRss - before.VmRss) - (mid.Committed - before.Committed);
+        // T-231: logged on every run (CI uses the detailed console logger) - data the Pi cannot
+        // reproduce.
+        _output.WriteLine($"MemoryLeakTests: native remainder {remainder} bytes over {N} iterations (threshold {MaxNativeRemainderBytes}); " +
+            $"VmRSS {vmRss}, managed committed {committed}; " +
+            $"at n/2: remainder {midRemainder}, VmRSS {mid.VmRss - before.VmRss}, managed committed {mid.Committed - before.Committed}; " +
+            $"server GC {System.Runtime.GCSettings.IsServerGC}, {Environment.ProcessorCount} CPUs");
+        return remainder;
+    }
+
     [Fact]
     public void SecretstreamAndBoxLoopDoesNotLeak()
     {
@@ -88,46 +143,52 @@ public class MemoryLeakTests
             return;
         }
 
-        const int warmup = 2000;
-        const int n = 20000;
-        // Comfortable margin above normal .NET GC/JIT churn but far below what N leaked handles
-        // would show at this scale - same order of magnitude as the Java binding's own threshold.
-        const long maxAcceptableGrowthBytes = 8L * 1024 * 1024;
+        using var key = SecretstreamKey.Generate();
+        using var boxSecret = BoxSecretKey.Generate();
+        using var boxPublic = boxSecret.PublicKey();
+
+        long remainder = MeasureNativeRemainder(count => RunLoop(key, boxSecret, boxPublic, count));
+        Assert.True(
+            remainder < MaxNativeRemainderBytes,
+            $"native remainder {remainder} bytes over {N} iterations (threshold {MaxNativeRemainderBytes}) - possible native handle leak");
+    }
+
+    /// <summary>
+    /// T-311 leak control, run by hand only (<c>DSTU_LEAK_CONTROL=1</c>): the normal loop plus one
+    /// never-freed <c>dstu_kupyna512_hasher_new</c> per iteration (~300 B of native payload, ~6 MB
+    /// over N, ~3x the threshold). It must fail the threshold, i.e. this test passes when the
+    /// metric sees the leak. "Never Dispose" is no control here: <see cref="SafeHandle"/>
+    /// finalizers free it (T-231).
+    /// </summary>
+    [Fact]
+    public void LeakControlIsDetected()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ||
+            Environment.GetEnvironmentVariable("DSTU_LEAK_CONTROL") != "1")
+        {
+            return;
+        }
 
         using var key = SecretstreamKey.Generate();
         using var boxSecret = BoxSecretKey.Generate();
         using var boxPublic = boxSecret.PublicKey();
 
-        RunLoop(key, boxSecret, boxPublic, warmup);
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-        long before = CurrentVmRssBytes();
-        long committedBefore = GC.GetGCMemoryInfo().TotalCommittedBytes;
-
-        // T-231: a midpoint reading tells a leak (grows linearly) from allocator/GC retention
-        // (levels off) on the next CI failure.
-        RunLoop(key, boxSecret, boxPublic, n / 2);
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-        long mid = CurrentVmRssBytes();
-        long committedMid = GC.GetGCMemoryInfo().TotalCommittedBytes;
-        RunLoop(key, boxSecret, boxPublic, n - n / 2);
-
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-        long after = CurrentVmRssBytes();
-        long growth = after - before;
-        // T-231: logged on every run (CI uses the detailed console logger) so a future failure,
-        // or a pass, carries the real growth on CI's platform - data the Pi cannot reproduce.
-        _output.WriteLine($"MemoryLeakTests: VmRSS grew by {growth} bytes over {n} iterations (threshold {maxAcceptableGrowthBytes}); " +
-            $"managed committed {GC.GetGCMemoryInfo().TotalCommittedBytes - committedBefore} bytes; " +
-            $"at n/2: VmRSS {mid - before}, managed committed {committedMid - committedBefore}; " +
-            $"server GC {System.Runtime.GCSettings.IsServerGC}, {Environment.ProcessorCount} CPUs");
+        long remainder = MeasureNativeRemainder(count =>
+        {
+            RunLoop(key, boxSecret, boxPublic, count);
+            for (int i = 0; i < count; i++)
+            {
+                Assert.NotEqual(IntPtr.Zero, LeakControlNative.dstu_kupyna512_hasher_new());
+            }
+        });
         Assert.True(
-            growth < maxAcceptableGrowthBytes,
-            $"VmRSS grew by {growth} bytes over {n} iterations (threshold {maxAcceptableGrowthBytes}) - possible native handle leak");
+            remainder >= MaxNativeRemainderBytes,
+            $"leak control: native remainder {remainder} bytes is under the threshold {MaxNativeRemainderBytes} - the metric missed a real leak");
     }
+}
+
+internal static partial class LeakControlNative
+{
+    [LibraryImport("dstu_core_capi")]
+    internal static partial IntPtr dstu_kupyna512_hasher_new();
 }
