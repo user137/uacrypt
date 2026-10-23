@@ -15958,7 +15958,7 @@ no access rights to query it, so the docs now say "not read", not "not opened". 
 disk-letter path that is a symlink to a UNC target is followed by `metadata`; creating such a link
 needs the victim's own disk and (by default) admin rights, which a check list does not give.
 
-## D-253: 0.7.0 now, one advisory, no yank (2026-10-23)
+## D-253: 0.7.0 now, one advisory, yank the affected versions (2026-10-23)
 
 **Owner, 2026-10-23:** release 0.7.0 now with what is done (T-264 and T-249 move after it), with
 one combined GitHub advisory. **Delegated to Claude ("питання на тобі"), decided in the order project
@@ -15975,3 +15975,8 @@ rules, then safety, then compatibility:**
   1-3 are CLI-only and part 4 is the standard's own construction, still in `hazmat`; part 5 allows
   no forgery. The advisory reaches Dependabot/OSV, which is the notice that matters here. RustSec:
   not filed (rejected on notability 2026-10-09).
+- **Revised the same day: yank after all.** Owner, 2026-10-23: break compatibility freely, the
+  project is young and has no users to protect. That removes the only argument above, and safety
+  then favours the yank (T-251/D-233 precedent): once 0.7.0/0.5.0 are live on every registry,
+  yank `dstu-core`/`uacrypt` < 0.7.0 on crates.io and the bindings <= 0.4.0 on PyPI/RubyGems,
+  `npm deprecate` on npm, each run with the owner's approval.
