@@ -86,7 +86,7 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
   - Kalyna/Kupyna share S-box/MDS tables (`hazmat::tables`); Strumok's `T` substitution reuses them
     too (D-13).
   - `cargo fuzz` run locally on Windows (MSVC toolchain), zero crashes, for the 3 targets that
-    existed at the time (D-32); the list has since grown to 19 (`xtask/src/main.rs`
+    existed at the time (D-32); the list has since grown to 28 (`xtask/src/main.rs`
     `FUZZ_TARGETS`, T-98 onward; the `open`/`verify` ones check the negative property, T-223), all in `rust.yml`'s `fuzz-smoke` matrix on
     every push - the unconditional per-push check, not just a one-time local Windows run.
 - `crypto_*` (high-level, misuse-resistant, zero-config — D-09's second layer, D-47's "delete the

@@ -383,7 +383,7 @@ fn fuzz() -> bool {
 /// `.github/workflows/rust.yml`'s `fuzz-smoke` matrix (T-98) - no single source of truth cargo
 /// exposes for "every fuzz target name" short of parsing that file. Used on both platforms
 /// (`fuzz_targets` below and `fuzz_windows_msvc` further down).
-const FUZZ_TARGETS: [&str; 19] = [
+const FUZZ_TARGETS: [&str; 28] = [
     "kupyna",
     "kalyna",
     "kalyna_ccm",
@@ -403,6 +403,15 @@ const FUZZ_TARGETS: [&str; 19] = [
     "crypto_box512_open",
     "crypto_sign_verify",
     "crypto_sign257_verify",
+    "kalyna_cbc",
+    "kalyna_ctr",
+    "kalyna_ecb",
+    "kalyna_ofb",
+    "kalyna_xts",
+    "kupyna_kmac",
+    "kupyna_kdf",
+    "dstu4145",
+    "dstu9041",
 ];
 
 #[cfg(not(windows))]

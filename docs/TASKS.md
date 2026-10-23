@@ -8186,7 +8186,7 @@ codes, and memory lifecycle) stays intact and doesn't need its own task.
   as the existing "oversized declared chunk length" secretstream tests). Java int-indexed arrays and
   historically-32-bit `Buffer` lengths in Node.js are the two languages where this class of bug is
   most plausible - do those two first if sequencing this incrementally.
-- [ ] **T-225** Core: fuzz targets for the remaining primitives T-223's original entry listed
+- [x] **T-225** Core: fuzz targets for the remaining primitives T-223's original entry listed
   before it was narrowed (2026-09-02) - tier-2 `crypto_stream`/`crypto_sign`/`crypto_sign257`, then
   the `hazmat` primitives that still have none at all (`dstu4145`, `dstu9041`, `kalyna_cbc`/`ctr`/
   `ecb`/`ofb`, `kupyna_kmac`/`kupyna_kdf`). Same three-spot sync as T-223. Lower priority than
@@ -8198,7 +8198,12 @@ codes, and memory lifecycle) stays intact and doesn't need its own task.
   - **Done 2026-10-23 (0.8.0 wave step 3, phase A):** `crypto_sign_verify`/`crypto_sign257_verify`
     (input `key || sig || msg`, `from_uncompressed_bytes` included; spare key bits checked by hand
     first - they fail `is_on_curve`) and the negative property in `crypto_secretstream` (the pinned
-    `secretstream-file/v2.json` record through `pull`). Zero findings. Phase B (hazmat) next.
+    `secretstream-file/v2.json` record through `pull`). Zero findings.
+  - **Done 2026-10-23 (phase B):** the 9 hazmat targets `kalyna_cbc`/`ctr`/`ecb`/`ofb`/`xts`,
+    `kupyna_kmac`/`kupyna_kdf`, `dstu4145` (`verify` on arbitrary q/r/s/hash, plus sign-then-verify
+    on a fixed key) and `dstu9041` (clause 12 `decrypt` on arbitrary ciphertext+key, all three
+    curves) - 28 targets in all. Local 20 s runs clean (`dstu9041` 33934 runs). `crypto_stream` stays
+    without a target: no wire parsing, `decrypt` cannot fail, `strumok` is fuzzed underneath.
   **2026-09-22 scope addition**: negative-property fuzz check - see "Security audit remediation" ("Attached to existing tasks").
 
 ### RESUME HERE (state as of 2026-08-31, saved for a memory-clear/new-session handoff)
@@ -10331,11 +10336,9 @@ per phase (`rust.yml`/`miri.yml` are `cancel-in-progress`; a docs push mid-run c
 on a moderator). Done today: **T-311** (`779acc7`, D-255), **T-310** (`daeb58f`+`5d32cc2`, D-239
 addendum; all CI green after one transient PHP rerun, `miri` on `5d32cc2` was still running -
 check it), **T-223/T-225 phase A** (`2563770`, **not pushed**: hold until `miri` on `5d32cc2` is
-done, `cancel-in-progress`). **Uncommitted: T-225 phase B** - 9 hazmat fuzz targets
-(`kalyna_cbc/ctr/ecb/ofb/xts`, `kupyna_kmac/kdf`, `dstu4145`, `dstu9041`) plus the 28-entry sync
-(`fuzz/Cargo.toml`, `rust.yml`, `FUZZ_TARGETS`); local 20 s runs: all 9 clean (`dstu9041` 33934
-runs). Next: update CLAUDE.md's "grown to 19" -> 28 and T-225's entry, commit phase B, push both, read
-`fuzz-smoke` (28 jobs) with `gh run view`, closing `advisor`; then T-249. Local fuzz on Windows:
+done, `cancel-in-progress`), **T-225 phase B** (committed, not pushed: 9 hazmat targets, 28 in all;
+local 20 s runs all clean; T-225 closed). Next: push once `miri` is done, read `fuzz-smoke` (28 jobs)
+with `gh run view`, closing `advisor`; then T-249. Local fuzz on Windows:
 `call vcvars64.bat && cargo +nightly-x86_64-pc-windows-msvc fuzz run --target
 x86_64-pc-windows-msvc <t>` from `crates/dstu-core` (as `xtask fuzz`). Open with the owner: the
 one-time offer of a read-only reviewer subagent for T-310 (unanswered). Pi: up to date, Docker off.

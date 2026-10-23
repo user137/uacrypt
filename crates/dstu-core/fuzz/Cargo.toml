@@ -148,4 +148,67 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "kalyna_cbc"
+path = "fuzz_targets/kalyna_cbc.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kalyna_ctr"
+path = "fuzz_targets/kalyna_ctr.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kalyna_ecb"
+path = "fuzz_targets/kalyna_ecb.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kalyna_ofb"
+path = "fuzz_targets/kalyna_ofb.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kalyna_xts"
+path = "fuzz_targets/kalyna_xts.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kupyna_kmac"
+path = "fuzz_targets/kupyna_kmac.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kupyna_kdf"
+path = "fuzz_targets/kupyna_kdf.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dstu4145"
+path = "fuzz_targets/dstu4145.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dstu9041"
+path = "fuzz_targets/dstu9041.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]
