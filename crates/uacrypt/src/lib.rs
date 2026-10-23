@@ -611,8 +611,9 @@ impl fmt::Display for CliError {
             ),
             CliError::BoxOpenUnsupportedVersion => write!(
                 f,
-                "box-open: --in was sealed in a different format version (e.g. by uacrypt 0.3.x, \
-                 or 0.4-0.6 - open those with uacrypt 0.7.x) - open it with a release that reads it"
+                "box-open: --in is in a different format version, not a version-3 box - an \
+                 `encrypt` output (open it with `decrypt`), or a box from uacrypt 0.3.x or 0.4-0.6 \
+                 (uacrypt 0.7.x opens 0.4-0.6 boxes)"
             ),
             CliError::StdioNotAccepted(flag) => write!(
                 f,

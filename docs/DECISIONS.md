@@ -15498,7 +15498,7 @@ returns the existing codec handles (`dstu_box{,512}_seal_stream`/`_open_stream`)
 - **One written format.** `seal`/`open` in the core, the C ABI and all 8 bindings write and read
   v3 only - a 0.4-0.6 blob does not open through them (`UnsupportedVersion`), and 0.6 cannot read
   0.7 blobs (rejected: keeping v2 as a second written format).
-- **`uacrypt box-open` still opens v2 files** via `open_v2_legacy`, a separately named core
+- **`uacrypt box-open` still opens v2 files** (superseded 2026-10-23, T-310 - see the addendum below) via `open_v2_legacy`, a separately named core
   function kept out of the C ABI and every binding (rejected: v2 reading in every binding's
   `open`; and a second copy of the T-248 KDF inside `uacrypt`). The legacy path reads the file
   whole; any input starting with `0x02` takes it.
