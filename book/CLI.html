@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-840787e1.js";
+            window.path_to_searchindex_js = "searchindex-92cf85a7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -195,7 +195,7 @@ with <code>--</code> can be passed as <code>--in=--odd-name</code>. <code>uacryp
 <tbody>
 <tr><td>0</td><td>success</td><td>also <code>--help</code>, <code>help</code>, <code>--version</code></td></tr>
 <tr><td>1</td><td>the input was checked and rejected</td><td>authentication failed, bad signature, truncated or malformed ciphertext, an empty or over-long message for a mode that forbids it, a wrong-length signature or tag, a <code>hash --check</code> file that is malformed or lists a file that does not match or cannot be read</td></tr>
-<tr><td>2</td><td>usage error</td><td>unknown command or flag, missing/repeated flag, missing value, missing subcommand</td></tr>
+<tr><td>2</td><td>usage error</td><td>unknown command or flag, missing/repeated flag, missing value, missing subcommand, an argument that is not valid Unicode (T-305)</td></tr>
 <tr><td>3</td><td>a file or key could not be used</td><td>missing or unreadable file, a key file of the wrong kind, damaged or not typed (see <a href="#key-files">Key files</a>), wrong-size or invalid key/nonce/IV/tweak, an <code>--out</code> that already exists (see below)</td></tr>
 </tbody>
 </table>
@@ -210,9 +210,14 @@ key inputs (<code>--key</code>, <code>--iv</code>, <code>--tweak</code>, or a de
 (exit 2), with or without <code>--force</code>, so <code>decrypt --key k.key --out k.key --force</code> cannot replace
 the key with plaintext. The result is written to a temp file next to the
 output and renamed onto it only when the command succeeds, so a failed command leaves no output file,
-no temp file and, with <code>--force</code>, the old file unchanged. <code>--force</code> replaces a symlink at the
-output path, never the file it points to. On Unix every output file is created with mode <code>0600</code>
-(owner only), also when <code>--force</code> replaces a <code>0644</code> file; <code>chmod</code> it to share it. Key files
+no temp file and, with <code>--force</code>, the old file unchanged. The same holds when the command is
+interrupted (Ctrl-C/Ctrl-Break, SIGINT/SIGTERM/SIGHUP, closing the console window, T-301); only a
+hard kill (<code>kill -9</code>, Task Manager’s End task, power loss) can leave a <code>&lt;out&gt;.uacrypt-tmp-&lt;hex&gt;</code>
+file and an empty <code>&lt;out&gt;</code> behind - delete both by hand, the temp file may hold decrypted data. <code>--force</code> replaces a symlink at the
+output path, never the file it points to. Every output file is created owner-only, also when
+<code>--force</code> replaces a shared file: mode <code>0600</code> on Unix (<code>chmod</code> it to share it), and on Windows a
+protected ACL granting only the current user, with nothing inherited from the folder (T-300;
+<code>icacls</code> to share it). Key files
 (<code>*-keygen</code>, <code>sign-pubkey</code>, <code>box-pubkey</code>, <code>key-import</code>) are never replaced at all and do not
 accept <code>--force</code>: <code>box-pubkey --key box.key --out box.key</code> would otherwise destroy the secret key.
 No other command replaces an existing key file either, with or without <code>--force</code> (T-268,
@@ -238,7 +243,12 @@ terminal - it would garble the screen. To read a decrypted text on screen, pipe 
 <code>key-import</code> is a usage error. <code>--key</code> never reads stdin.</li>
 <li><code>hash --check -</code> reads the checksum list from stdin (like <code>sha256sum -c -</code>, same 16 MiB cap and
 grammar). A line for <code>-</code> inside any list is never read from stdin - an untrusted list must not
-consume or wait on your script’s stdin - so it is reported as <code>-: FAILED (stdin is not read from a check list ...)</code> and counts as a failure; a file really named <code>-</code> is listed as <code>./-</code>.</li>
+consume or wait on your script’s stdin - so it is reported as <code>-: FAILED (stdin is not read from a check list ...)</code> and counts as a failure; a file really named <code>-</code> is listed as <code>./-</code>. For the
+same reason a list entry is opened only if it is a local regular file: a directory, a device
+(<code>CONIN$</code>, <code>/dev/tty</code>, <code>/dev/zero</code>), a FIFO or, on Windows, a UNC or <code>\\?\</code>/<code>\\.\</code>/<code>\??\</code> path
+is reported as <code>FAILED (not a local regular file ...)</code> without being read (T-303, T-309). A UNC
+or <code>\??\</code> path is refused before any file-system call, so no connection is made; on Windows the
+type check itself opens a device with no access rights, which reads nothing.</li>
 <li>Every other path flag (<code>--key</code>, <code>--sig</code>, <code>key-import --in</code>, and all paths of
 the lower-level <code>kalyna-*</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> commands) refuses <code>-</code> as a usage
 error, so <code>-</code> never silently names a file. A file really named <code>-</code> is <code>./-</code>.</li>
@@ -294,8 +304,8 @@ prior <code>crypto_secretbox</code>-backed <code>encrypt</code> produced cannot 
 <li>acceptable pre-1.0. <code>crypto_secretbox</code> itself is unchanged and still available as a library
 primitive for whole-message use, just no longer what this CLI command uses. <code>--key</code> is a typed
 key file (<a href="#key-files">Key files</a>) holding a 32-byte <code>crypto_secretstream::Key</code> — <code>uacrypt keygen --out key.bin</code> generates one from the OS CSPRNG (<code>docs/TASKS.md</code> T-115). Like every <code>*-keygen</code> command, it refuses to overwrite an
-existing <code>--out</code> (with no <code>--force</code> to override it), so a repeated run cannot destroy a key, and on Unix it writes the key with mode
-<code>0600</code> (T-241). <code>encrypt</code> draws a fresh random header internally on every call
+existing <code>--out</code> (with no <code>--force</code> to override it), so a repeated run cannot destroy a key, and writes the key owner-only (mode
+<code>0600</code> on Unix, T-241; a current-user-only ACL on Windows, T-300). <code>encrypt</code> draws a fresh random header internally on every call
 and embeds it in <code>--out</code>; there is no <code>--nonce</code>/<code>--header</code> flag to supply or reuse by mistake.
 <strong>0.4.0 changed the <code>encrypt</code>/<code>box-seal</code> file formats (both curves)</strong> (T-232/T-248,
 <code>docs/DECISIONS.md</code> D-200-D-202). Files written by 0.3.x don’t open with 0.4.0. <code>box-open</code> almost
@@ -392,7 +402,9 @@ curve point’s <code>x</code>-coordinate only) from it, safe to share or publis
 <code>box-seal</code>/<code>box-open</code> stream <code>--in</code> in bounded memory like <code>encrypt</code>/<code>decrypt</code> (0.7.0, T-265,
 <code>docs/DECISIONS.md</code> D-239). <code>box-open</code> still opens files sealed by 0.4-0.6, but reads those whole
 into memory - and any <code>--in</code> starting with byte <code>02</code> (for instance an <code>encrypt</code> output passed by
-mistake) takes that path, so it is read whole before it fails. 0.6 cannot open 0.7 output.</p>
+mistake) takes that path, so it is read whole before it fails. That path reads only a regular
+file, at most its own size: a version-2 input on stdin (<code>--in -</code>) or from a device is refused
+(T-304) - open such a file by its path. 0.6 cannot open 0.7 output.</p>
 <p>For DSTU 9041’s <code>l(p)=384</code> or <code>l(p)=512</code> curve (E384/1, T-297, <code>docs/DECISIONS.md</code> D-245; E512/1,
 T-193, D-182), generate the key with <code>box-keygen384</code> or <code>box-keygen512</code> instead; <code>box-pubkey</code>,
 <code>box-seal</code> and <code>box-open</code> read the curve from the key (T-257, D-213). Keys are 48 or 64 bytes
@@ -446,7 +458,7 @@ optional (an empty AAD is used if omitted); <code>decrypt</code> verifies the ta
 fails without writing anything on a mismatch. The standard requires only the nonce’s first
 <code>block − N_Б − 1</code> bytes to be unique per key (11 bytes for a 128-bit block), so a random nonce is good
 for roughly 2^44 messages per key there (<code>docs/DECISIONS.md</code> D-40/D-205).</p>
-<p>Five more <code>hazmat</code>-scoped, per-mode benchmarking/interop commands exist alongside <code>kalyna-ccm</code>
+<p>Four more <code>hazmat</code>-scoped, per-mode benchmarking/interop commands exist alongside <code>kalyna-ccm</code>
 (<code>docs/DECISIONS.md</code> D-31/D-71), all with the same <code>--variant</code> (one of the five Kalyna block/
 key-size combinations) and <code>--iterations</code> (benchmark timing) flags:</p>
 <ul>
@@ -454,8 +466,6 @@ key-size combinations) and <code>--iterations</code> (benchmark timing) flags:</
 construction <code>crypto_secretbox</code>/<code>crypto_secretstream</code> build on internally (DSTU 7624:2014 §12,
 D-204), exposed here with no message-length cap and no hidden nonce. An empty <code>--in</code> with no
 <code>--aad</code> is rejected (D-207).</li>
-<li><code>kalyna-cmac compute</code>/<code>verify</code> — Kalyna-CMAC, a 16-byte tag, no encryption. An empty <code>--in</code> is
-rejected (DSTU 7624:2014 §9 does not define CMAC for an empty message, D-206).</li>
 <li><code>kalyna-gmac compute</code>/<code>verify</code> — Kalyna-GMAC, a full-block tag, no encryption, no nonce. An empty
 <code>--in</code> is rejected (D-207).</li>
 <li><code>kalyna-kw wrap</code>/<code>unwrap</code> — Kalyna key wrap (1..=20 block-aligned blocks in, one block longer
@@ -466,8 +476,12 @@ correct design for this use case, not a gap; caller supplies the <code>--tweak</
 <p>Run any of them with no arguments (or <code>--help</code>) for the full flag reference and an example -
 covered here at a summary level since their shape mirrors <code>kalyna-ccm</code>/<code>kalyna-block</code> above rather
 than needing separate full walkthroughs.</p>
-<p>None of <code>kalyna-block</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code>/<code>kalyna-ccm</code>/<code>kalyna-gcm</code>/<code>kalyna-cmac</code>/
-<code>kalyna-gmac</code>/<code>kalyna-kw</code>/<code>kalyna-xts</code> is the <code>encrypt</code>/<code>decrypt</code>/<code>hash</code> surface above - all nine
+<p><code>kalyna-cmac</code> was removed in 0.7 (T-298, <code>docs/DECISIONS.md</code> D-247): DSTU 7624:2014 §9’s CMAC is
+not secure against chosen messages (<code>MAC(0-block || Y) = E_K(Y)</code>, so tags can be forged). Running
+it prints that reason; the construction stays in the library as <code>hazmat::kalyna_cmac</code>, for interop
+with the standard’s text only.</p>
+<p>None of <code>kalyna-block</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code>/<code>kalyna-ccm</code>/<code>kalyna-gcm</code>/
+<code>kalyna-gmac</code>/<code>kalyna-kw</code>/<code>kalyna-xts</code> is the <code>encrypt</code>/<code>decrypt</code>/<code>hash</code> surface above - all eight
 stay as lower-level, hazmat-scoped tools for anyone who explicitly wants that level of control, or
 is benchmarking a specific primitive directly.</p>
 <h2 id="verifying-a-downloaded-release"><a class="header" href="#verifying-a-downloaded-release">Verifying a downloaded release</a></h2>

@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-840787e1.js";
+            window.path_to_searchindex_js = "searchindex-92cf85a7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -4896,7 +4896,7 @@ mdBook for the existing <code>docs/*.md</code> corpus, plus a mandatory <code>ca
 encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
 OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
 (<code>uacrypt</code>), and bindings for eight languages.</p>
-<!-- uacrypt-version: 0.6.0 -->
+<!-- uacrypt-version: 0.7.0 -->
 <p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
 <a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python, Node.js, and Ruby bindings are on
 <a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a>/
@@ -9080,7 +9080,7 @@ Kupyna-384 digest (<code>R_384</code> of the 1024-bit-state core, as <code>Kupyn
 internally) plus the DSTU 7564 annex Б vector (N = 760).</p>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-297</strong> (owner 2026-10-19, 0.7.0 step 3; depends: T-253) DSTU 9041 <code>l(p)=384</code> end to end:
+<p><input disabled="" type="checkbox" checked=""> <strong>T-297</strong> (owner 2026-10-19, 0.7.0 step 3; depends: T-253; <strong>closed 2026-10-22</strong>: pushed <code>252cf9c</code>, CI green except <code>bindings-php</code> (RUSTSEC-2026-0383, T-308); Miri run 39808016675 green in 1h22m, <code>dstu9041_encryption_384</code> shards 52/36/49 min, <code>crypto_box384</code> 26, <code>dstu9041_curve_384</code> 21; <code>rust</code> (asm-check, Kani) and <code>bindings-cpp</code> (cppcheck) green; Sonar gate OK. The offered independent review became the owner’s red-team wave, T-298..T-308) DSTU 9041 <code>l(p)=384</code> end to end:
 <code>hazmat::dstu9041</code> E384/1 (<code>fp384</code>/<code>curve384</code>/<code>message384</code>/<code>encryption384</code>), <code>crypto_box384</code>,
 <code>uacrypt box-keygen384</code> + <code>KeyKind::Box384*</code>, capi <code>box384</code>, all eight bindings, docs. Sources and
 the Г.2 <code>t</code> divergence: D-241. Phase plan: the 0.7.0 detailed plan, step 3.
@@ -10748,9 +10748,27 @@ JSON; Miri-ignore ladders; <code>asm_check.rs</code>; Sonar CPD in the same comm
 Push points for the owner: after phase 3 and after phase 6.</li>
 </ol>
 </li>
-<li>Step 4: T-264 (the parser is hand-written, no <code>clap</code>; no new dependency without the owner).</li>
-<li>Step 5: T-249 + the T-223/T-225 fuzz additions.</li>
-<li>Release: version bumps incl. every published binding’s minor (v3 box, C ABI break), the D-238
+<li>Step 3b (owner 2026-10-22): the red-team wave T-298..T-308 (“Red-team remediation wave” below).</li>
+<li><strong>Owner 2026-10-23: release 0.7.0 now with what is done, plus one combined GitHub advisory</strong>
+(T-298, T-299, T-300, T-301, T-303 - T-303 added by Claude: 0.6.0’s <code>hash --check</code> reached UNC
+hosts too). Steps 4 and 5 move to after 0.7.0. Release order (each outward step owner-gated):
+<ol>
+<li>Local: version bumps (<code>dstu-core</code>/<code>uacrypt</code> 0.7.0; Python/npm/Ruby 0.5.0), CHANGELOG
+<code>[0.7.0]</code>, README marker; <code>cargo xtask ci</code>; Pi workspace clippy + test + <code>cargo xtask php</code>.</li>
+<li>Advisory text <code>.claude/disclosure-drafts/advisory_070.md</code> - owner confirms; then the GHSA is
+created as a private draft.</li>
+<li>Owner pushes; CI + Sonar gate + <code>miri.yml</code> green on HEAD; the D-238 <code>workflow_dispatch</code> dry run.</li>
+<li>Tag <code>v0.7.0</code>, release.yml with env approvals; verify the live registry pages.</li>
+<li>Publish the GHSA; CHANGELOG gets its ID; gh-pages marker; winget 0.7.0 without VCRedist.
+Delegated to Claude (D-253): text as drafted, draft GHSA-6x5f-x3rf-6r48 created 2026-10-23;
+no yank. Steps 1-2 done (<code>410ac8e</code>, gh-pages local <code>6268788</code>, not pushed).
+The pushed tree shows the fixes from the push until the release is live - push and tag the same
+day.</li>
+</ol>
+</li>
+<li>Step 4 (after 0.7.0): T-264 (the parser is hand-written, no <code>clap</code>; no new dependency without the owner).</li>
+<li>Step 5 (after 0.7.0): T-249 + the T-223/T-225 fuzz additions.</li>
+<li>Release (applied by the order above): version bumps incl. every published binding’s minor (v3 box, C ABI break), the D-238
 <code>workflow_dispatch</code> dry run, green Miri on the tagged commit, winget 0.7.0 without VCRedist.</li>
 <li>After 0.7.0 (“хвиля”, Claude’s reading, owner to correct): prepare the remaining T-164
 registries (Packagist, NuGet, Maven Central, pkg.go.dev, vcpkg) - each publish owner-gated.</li>
@@ -10979,6 +10997,111 @@ and the asm output lived outside the repo and are gone, so rebuild them from the
 </li>
 <li>Before trusting any absolute MB/s number, check the machine state first (see the intro).</li>
 </ul>
+<h2 id="red-team-remediation-wave-2026-10-22-owner-requested"><a class="header" href="#red-team-remediation-wave-2026-10-22-owner-requested">Red-team remediation wave (2026-10-22, owner-requested)</a></h2>
+<p>Owner 2026-10-22: four read-only “white-hat” subagents (strongest model, no plan or prior findings
+given) attacked <code>master</code> = <code>252cf9c</code>: (1) <code>hazmat::dstu9041</code> + <code>crypto_box*</code> + KW/KW-p, (2) the
+symmetric <code>hazmat</code> + <code>crypto_secretbox</code>/<code>secretstream</code>/<code>auth</code>/<code>kdf</code>/<code>pwhash</code>, (3) the <code>uacrypt</code>
+binary, (4) DSTU 4145 + <code>crypto_sign*</code>. Owner: “create tasks, build the wave, start fixing”. The
+PoCs lived in <code>%TEMP%\claude\redteam\</code> and will not survive; every task carries its recipe.
+<strong>Embargo-sensitive: T-298, T-299</strong> (exploitable in released 0.6.0) - local commits with neutral
+messages, the owner decides on an advisory and the push; no external contact by Claude.</p>
+<p>Checked and sound (do not redo): <code>secretstream</code> framing (AAD binds counter/tag/len, no wrap, rekey
+one-way, failed pull leaves state), <code>FileDecryptor</code> bounds/poisoning/trailing data, D-219 header
+params pinned, <code>verify_password</code> bounds, secretbox AAD, GCM true lengths, KW/KW-p constant-time
+strict unwrap (200k mutants, unique encoding), CCM, block modes without panics, Kupyna <code>Hasher</code>
+boundaries, <code>limb.rs</code>; dstu9041 constants and field ops (2592 differential cases vs Python per op),
+<code>point_from_x</code> rejects {0,1,p-1}, ±sqrt(a/d), twist, both 2n classes, x&gt;=p; 3000 bit-flip mutants
+per box variant, cross-variant/version confusion refused; DSTU 4145 small-subgroup keys (m=257 T2,
+T4, Q+T*), r/s ranges, nonce bias, ladders branchless; CLI key-type confusion, truncation, temp
+names (<code>create_new</code>, 64-bit random), <code>--force</code> never over a key, passphrase handling, exit codes.</p>
+<ul>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-298</strong> (Medium, security, <strong>embargo-sensitive</strong>; <strong>done 2026-10-22, D-247</strong>: warning + pinning test in <code>hazmat</code>; owner 2026-10-22: remove from the binary, keep in <code>hazmat</code> - <code>uacrypt kalyna-cmac</code> now refuses with the reason) Kalyna-CMAC (DSTU 7624 §9 as written) is
+not EUF-CMA. <code>hazmat/kalyna_cmac.rs:104-106</code>: the final-block key is <code>E_K(0^n)</code> (aligned) with no
+GF doubling, and the CBC state after one zero block is the same <code>E_K(0)</code>, so
+<code>MAC(0^b || Y) = E_K(Y)[..16]</code>. Recipe: <code>Kalyna128_128Cmac::mac(k, &amp;[0; 32]) == Kalyna128_128::encrypt(k, [0; 16])</code>; <code>tag(X)</code> is valid for <code>0^16 || (X ^ L)</code>; chaining 5 such
+queries gives a valid tag on any unqueried message. For 128-bit blocks the tag is the full block
+(an <code>E_K</code> oracle; under a shared key it also gives GCM’s <code>H</code> and breaks CTR/CCM/KW); 256/512
+give a truncated <code>E_K</code> oracle. Inherent to the text: UAPKI <code>cmac_final</code> and BC <code>DSTU7624Mac</code>
+(aligned branch) do the same. Not in <code>crypto_*</code> (<code>crypto_auth</code> is KMAC). Fix: a negative test
+pinning the property, hazmat + CLI docs/help warning (not EUF-CMA, never share the key); whether
+<code>uacrypt kalyna-cmac</code> stays (an interop/benchmark tool per D-31/D-71, <code>PERFORMANCE.md</code> uses it)
+or goes is the owner’s call. D-entry.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-299</strong> (Medium, security, <strong>embargo-sensitive</strong>; <strong>done 2026-10-22, D-246</strong>: <code>is_on_curve</code> rejects coordinates &gt;= 2^m) DSTU 4145 <code>VerifyingKey::from_uncompressed_bytes</code>
+(<code>crypto_sign.rs:269</code>, <code>crypto_sign257.rs:196</code>) accepts coordinates &gt;= 2^m:
+<code>FieldElement::from_be_bytes</code> does not reduce (its doc puts that on the caller), breaking the
+“top bits zero” invariant. Recipe: valid <code>pk = x||y</code> + signature; m=163 XOR <code>pk[0]^=0x08, pk[20]^=0xC9</code> (x+f; y: bytes 21/41); m=257 <code>pk[0]^=0x02, pk[31]^=0x10, pk[32]^=0x01</code> (y: 33/64/65).
+Result: <code>verify=true</code> with <code>std</code> on x86_64/aarch64 (hardware clmul over full limbs), <code>false</code>
+without <code>std</code> (portable <code>poly_mul_wide</code> reads only the low m bits) - key malleability (2^5/2^7
+encodings per coordinate) and a build-dependent verify. Reached from <code>uacrypt verify --key</code>,
+<code>key-import --kind sign*-public</code>, capi <code>dstu_verifying_key_from_bytes</code> (+257), all bindings.
+Suspected, unproven: a crafted unreduced Q behaving degenerately on the portable path. Fix:
+reject non-zero top bits, plus on-curve and <code>n*Q == O</code> at decode (fail closed in one place);
+the C ABI/binding shape decided in the D-entry. Tests: the recipe vectors in both builds.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-300</strong> (Medium, security; <strong>done 2026-10-22, D-250</strong>: <code>private_file.rs</code>, protected current-user DACL at create) Windows: <code>create_private_new</code> (<code>uacrypt/src/lib.rs:2207</code>) gives a
+key file, temp file or decrypted output the directory’s inherited ACL (Unix gets <code>0600</code>).
+Recipe: a directory with <code>Everyone:(OI)(CI)R</code>, <code>uacrypt keygen --out d\k.key</code>, <code>icacls d\k.key</code>
+shows <code>Everyone:(I)(R)</code>; <code>C:\work</code> inherits <code>BUILTIN\Users:RX</code>. Fix: a protected owner-only DACL
+at create (<code>windows-sys</code>, already a dependency) + test; <code>docs/CLI.md</code> states both platforms.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-301</strong> (Low-Medium; <strong>done 2026-10-22, D-252</strong>: <code>cleanup.rs</code> signal/console handlers delete registered paths; <code>smoke_interrupt.rs</code>, Windows + Pi) A kill/Ctrl-C during <code>decrypt</code>/<code>box-open</code> leaves
+<code>&lt;out&gt;.uacrypt-tmp-&lt;hex&gt;</code> holding verified plaintext and the empty <code>--out</code> placeholder, so a
+re-run fails “already exists” (cleanup is only in <code>Drop</code>, lib.rs:2257-2366). Fix: a Ctrl-C /
+console-ctrl handler that removes the registered paths; document leftovers for kill -9.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-302</strong> (Low; <strong>done 2026-10-22, D-249</strong>) Zeroization gaps: <code>KupynaCore</code> (no zeroize; after absorbing PAD(K) its <code>h</code>
+forges KMAC under K), <code>kupyna.rs</code> <code>tail</code>/<code>block</code> copies, Kalyna key-expansion temporaries
+(<code>k0</code>/<code>k1</code>/<code>initial_data</code>/<code>kt</code>), <code>kalyna_kw</code> intermediates, <code>secretstream</code> <code>new_subkey</code>,
+<code>kalyna_gcm</code> <code>h_key</code>; dstu9041 <code>m_tilde</code>/<code>hashed_input</code> and <code>Message</code> (derived <code>Debug</code> prints the
+seed); DSTU 4145 nonce <code>e</code> and <code>to_be_bytes</code> copies; <code>uacrypt</code> <code>read_key</code> growth copies.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-303</strong> (Low; <strong>done 2026-10-22</strong>: only a <code>metadata</code>-confirmed local regular file is opened; Windows non-drive prefixes refused before any FS call; <code>smoke_hash.rs</code> test with a deadline - hung before) <code>hash --check</code> opens any path in the list: <code>CONIN$</code> waits on the console
+(lib.rs:3351 only refuses <code>-</code>); suspected <code>/dev/tty</code>, a FIFO, <code>/dev/zero</code>, UNC <code>\\host\x</code> (SMB
+connect). Fix: open only regular files (metadata before open), refuse device/UNC names.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-304</strong> (Low, DoS; <strong>done 2026-10-22, D-251</strong>: <code>--sig</code> read capped at 67 bytes; legacy v2 only from a regular file, bounded by its size) Unbounded reads: <code>verify --sig</code> (lib.rs:3949 <code>fs::read</code>, 512 MiB -&gt;
+517 MB peak) and <code>box-open</code> with a leading <code>0x02</code> (legacy v2 path reads all of <code>--in</code>, D-239).
+Fix: bounded read for the signature; a size cap on the legacy path.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-305</strong> (Low; <strong>done 2026-10-22</strong>: <code>args_os</code>, exit 2 naming the argument’s position; non-Unicode file names stay unsupported) A non-UTF-8 argument panics (<code>main.rs</code> <code>env::args()</code>, exit 101). Fix: a clean
+usage error.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-306</strong> (Low, docs; <strong>done 2026-10-22</strong>: “one key, one API” in the <code>crypto_auth</code>/<code>crypto_kdf</code> module docs) <code>crypto_auth</code>, <code>crypto_kdf</code> and the <code>secretstream</code> subkey are all bare
+<code>Kupyna256Kmac(key, msg)</code>: <code>derive_subkey(id, ctx) == auth(k, ctx || id_le)</code>. A real fix changes
+wire formats; document “one key, one API” instead.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-307</strong> (Low; <strong>done 2026-10-22, D-248</strong>: <code>EncryptError::InvalidPublicKey</code>; docs corrected, no order-4 points exist - answers D-173) dstu9041 hazmat: <code>encryption*::encrypt</code> takes an unchecked <code>Point</code> (public
+fields): <code>Q</code> = NEUTRAL, <code>(p-1,0)</code> or <code>(0,0)</code> makes kappa trivial. And the docs’ “complete
+addition law”/“cyclic Z/4n” arguments are wrong: <code>a = 2</code> is a non-residue on all three curves
+(<code>a*d</code> a residue), so 2-torsion is Z/2 x Z/2 with two points at infinity; <code>scalar_multiply</code> gives
+<code>(0,0)</code> outside <code>&lt;P&gt;</code>. Fix: reject degenerate <code>T</code>/<code>Q</code> in <code>encrypt</code>, correct the docs.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-308</strong> (Low, infra; <strong>done 2026-10-22</strong>, <code>ff6e2f5</code>) <code>bindings-php</code> CI red on <code>252cf9c</code>: RUSTSEC-2026-0383
+(<code>webpki-root-certs</code> 1.0.9, build-only via <code>ext-php-rs</code> -&gt; <code>ureq</code>). Fix: <code>cargo update -p webpki-root-certs</code> (1.0.10).</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-309</strong> (Medium, security; <strong>done 2026-10-23</strong>, D-252 addendum; from the owner-approved
+independent review of <code>252cf9c..HEAD</code>) <code>hash --check</code> on Windows let <code>\??\</code> entries through to
+UNC hosts/pipes (Medium, reproduced); <code>commit</code> could race the Windows console handler or leave
+the placeholder (Low); docs said a device entry is “not opened” (Low); <code>install()</code> ignored
+handler-installation failures without a stated decision (Low). Fix: refuse a root + <code>??</code>;
+<code>cleanup::hold_off</code> around guard drop + rename; doc wording; best-effort comments.</p>
+</li>
+</ul>
+<p><strong>State 2026-10-22: all eleven done, local commits <code>ff6e2f5</code>..HEAD, not pushed</strong> (advisory-relevant for released 0.6.0: T-298, T-299, T-300, T-301 - the owner decides on an advisory before the push; the pushed tree would carry D-246..D-252’s recipes and the CHANGELOG <code>[Unreleased]</code> lines; <code>5141320</code>’s subject names the CMAC warning). <strong>Wave order (Claude, 2026-10-22):</strong> T-308; T-299 (+ capi/bindings); T-298 (docs/test part); T-307;
+T-302; then the CLI batch T-300, T-303, T-304, T-305, T-301; T-306 docs. Commit per task.</p>
 
                     </main>
 

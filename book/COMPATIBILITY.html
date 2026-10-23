@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-840787e1.js";
+            window.path_to_searchindex_js = "searchindex-92cf85a7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -222,6 +222,7 @@ modes”), not yet in a tagged release. Built from <code>master</code> <code>0bf
 <tr><td>CCM</td><td>AAD not block-aligned, otherwise</td><td>standard</td><td>same</td><td>same</td><td>differs (<code>len‖AAD‖0</code>, not <code>len‖0‖AAD</code>)</td></tr>
 <tr><td>CCM</td><td>empty plaintext</td><td>rejected (outside §13.1’s domain)</td><td>accepted</td><td>rejected</td><td>accepted</td></tr>
 <tr><td>CMAC</td><td>message not block-aligned (annex В.5.2)</td><td>standard</td><td>same</td><td>same</td><td>throws</td></tr>
+<tr><td>CMAC</td><td>security (any input)</td><td>not EUF-CMA: <code>MAC(0^l ‖ Y) = E_K(Y)</code>; <code>hazmat</code> only, removed from <code>uacrypt</code> (T-298, D-247)</td><td>same</td><td>same</td><td>same (aligned branch)</td></tr>
 <tr><td>CMAC</td><td>empty message</td><td>rejected (outside §9’s domain)</td><td><code>MAC(ε) = MAC(0^l)</code></td><td>rejected (<code>62a1bdf</code>, 2026-10-06)</td><td><code>MAC(ε) = MAC(0^l)</code></td></tr>
 </tbody>
 </table>

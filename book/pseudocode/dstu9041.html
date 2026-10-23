@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-840787e1.js";
+            window.path_to_searchindex_js = "../searchindex-92cf85a7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-bc9924e8.js"></script>
@@ -552,7 +552,8 @@ beyond the general engineering pattern (fixed-iteration loops, no secret-depende
 implemented: <code>message.rs</code> (<code>M'</code> formatting + the Kalyna-KW zero-block quirk), <code>fp256.rs</code> (<code>F_p</code>
 arithmetic), <code>curve256.rs</code> (twisted Edwards point arithmetic), <code>encryption.rs</code> (encrypt/decrypt
 composition, clauses 11/12). Full detail — the two security findings beyond clause 12’s literal
-text (an order-2 point via <code>r=p-1</code>, and a genuine order-4 subgroup from E256/1’s cofactor 4), the
+text (an order-2 point via <code>r=p-1</code>, and order-<code>2n</code> points outside <code>&lt;P&gt;</code> from E256/1’s cofactor 4 - no
+order-4 point exists, D-248), the
 collapsed <code>DecryptError</code>, and the QA-gate closure (miri/Kani) — is in <code>docs/TASKS.md</code> T-177 and
 <code>docs/DECISIONS.md</code> (D-163/D-165/D-166 for the source material, the T-177 entry for the
 implementation itself).</p>
@@ -560,7 +561,7 @@ implementation itself).</p>
 <code>curve512.rs</code>/<code>encryption512.rs</code>, same phased/test-first pattern, verified end-to-end against
 Додаток Г.3’s own worked example (<code>docs/DECISIONS.md</code> D-176/D-177/D-178/D-179/D-180). Both of
 E256/1’s security findings were independently re-derived for E512/1 rather than assumed to carry
-over (same <code>r=p-1</code> order-2 point, same cofactor-4 order-4 subgroup - confirmed via the same
+over (same <code>r=p-1</code> order-2 point, same cofactor-4 points outside <code>&lt;P&gt;</code> - confirmed via the same
 Hasse-interval method, not copied). <code>l(p)=512</code> needed no new Kalyna-KW variant
 (<code>Kalyna512_512Kw</code> already existed) since its <code>M'</code> lands exactly block-aligned (Table 1) - unlike
 <code>l(p)=384</code> below.</p>

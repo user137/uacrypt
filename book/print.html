@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-840787e1.js";
+            window.path_to_searchindex_js = "searchindex-92cf85a7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -192,7 +192,7 @@
 encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
 OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
 (<code>uacrypt</code>), and bindings for eight languages.</p>
-<!-- uacrypt-version: 0.6.0 -->
+<!-- uacrypt-version: 0.7.0 -->
 <p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
 <a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python, Node.js, and Ruby bindings are on
 <a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a>/
@@ -307,7 +307,7 @@ with <code>--</code> can be passed as <code>--in=--odd-name</code>. <code>uacryp
 <tbody>
 <tr><td>0</td><td>success</td><td>also <code>--help</code>, <code>help</code>, <code>--version</code></td></tr>
 <tr><td>1</td><td>the input was checked and rejected</td><td>authentication failed, bad signature, truncated or malformed ciphertext, an empty or over-long message for a mode that forbids it, a wrong-length signature or tag, a <code>hash --check</code> file that is malformed or lists a file that does not match or cannot be read</td></tr>
-<tr><td>2</td><td>usage error</td><td>unknown command or flag, missing/repeated flag, missing value, missing subcommand</td></tr>
+<tr><td>2</td><td>usage error</td><td>unknown command or flag, missing/repeated flag, missing value, missing subcommand, an argument that is not valid Unicode (T-305)</td></tr>
 <tr><td>3</td><td>a file or key could not be used</td><td>missing or unreadable file, a key file of the wrong kind, damaged or not typed (see <a href="#key-files">Key files</a>), wrong-size or invalid key/nonce/IV/tweak, an <code>--out</code> that already exists (see below)</td></tr>
 </tbody>
 </table>
@@ -322,9 +322,14 @@ key inputs (<code>--key</code>, <code>--iv</code>, <code>--tweak</code>, or a de
 (exit 2), with or without <code>--force</code>, so <code>decrypt --key k.key --out k.key --force</code> cannot replace
 the key with plaintext. The result is written to a temp file next to the
 output and renamed onto it only when the command succeeds, so a failed command leaves no output file,
-no temp file and, with <code>--force</code>, the old file unchanged. <code>--force</code> replaces a symlink at the
-output path, never the file it points to. On Unix every output file is created with mode <code>0600</code>
-(owner only), also when <code>--force</code> replaces a <code>0644</code> file; <code>chmod</code> it to share it. Key files
+no temp file and, with <code>--force</code>, the old file unchanged. The same holds when the command is
+interrupted (Ctrl-C/Ctrl-Break, SIGINT/SIGTERM/SIGHUP, closing the console window, T-301); only a
+hard kill (<code>kill -9</code>, Task Manager’s End task, power loss) can leave a <code>&lt;out&gt;.uacrypt-tmp-&lt;hex&gt;</code>
+file and an empty <code>&lt;out&gt;</code> behind - delete both by hand, the temp file may hold decrypted data. <code>--force</code> replaces a symlink at the
+output path, never the file it points to. Every output file is created owner-only, also when
+<code>--force</code> replaces a shared file: mode <code>0600</code> on Unix (<code>chmod</code> it to share it), and on Windows a
+protected ACL granting only the current user, with nothing inherited from the folder (T-300;
+<code>icacls</code> to share it). Key files
 (<code>*-keygen</code>, <code>sign-pubkey</code>, <code>box-pubkey</code>, <code>key-import</code>) are never replaced at all and do not
 accept <code>--force</code>: <code>box-pubkey --key box.key --out box.key</code> would otherwise destroy the secret key.
 No other command replaces an existing key file either, with or without <code>--force</code> (T-268,
@@ -350,7 +355,12 @@ terminal - it would garble the screen. To read a decrypted text on screen, pipe 
 <code>key-import</code> is a usage error. <code>--key</code> never reads stdin.</li>
 <li><code>hash --check -</code> reads the checksum list from stdin (like <code>sha256sum -c -</code>, same 16 MiB cap and
 grammar). A line for <code>-</code> inside any list is never read from stdin - an untrusted list must not
-consume or wait on your script’s stdin - so it is reported as <code>-: FAILED (stdin is not read from a check list ...)</code> and counts as a failure; a file really named <code>-</code> is listed as <code>./-</code>.</li>
+consume or wait on your script’s stdin - so it is reported as <code>-: FAILED (stdin is not read from a check list ...)</code> and counts as a failure; a file really named <code>-</code> is listed as <code>./-</code>. For the
+same reason a list entry is opened only if it is a local regular file: a directory, a device
+(<code>CONIN$</code>, <code>/dev/tty</code>, <code>/dev/zero</code>), a FIFO or, on Windows, a UNC or <code>\\?\</code>/<code>\\.\</code>/<code>\??\</code> path
+is reported as <code>FAILED (not a local regular file ...)</code> without being read (T-303, T-309). A UNC
+or <code>\??\</code> path is refused before any file-system call, so no connection is made; on Windows the
+type check itself opens a device with no access rights, which reads nothing.</li>
 <li>Every other path flag (<code>--key</code>, <code>--sig</code>, <code>key-import --in</code>, and all paths of
 the lower-level <code>kalyna-*</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> commands) refuses <code>-</code> as a usage
 error, so <code>-</code> never silently names a file. A file really named <code>-</code> is <code>./-</code>.</li>
@@ -406,8 +416,8 @@ prior <code>crypto_secretbox</code>-backed <code>encrypt</code> produced cannot 
 <li>acceptable pre-1.0. <code>crypto_secretbox</code> itself is unchanged and still available as a library
 primitive for whole-message use, just no longer what this CLI command uses. <code>--key</code> is a typed
 key file (<a href="#key-files">Key files</a>) holding a 32-byte <code>crypto_secretstream::Key</code> — <code>uacrypt keygen --out key.bin</code> generates one from the OS CSPRNG (<code>docs/TASKS.md</code> T-115). Like every <code>*-keygen</code> command, it refuses to overwrite an
-existing <code>--out</code> (with no <code>--force</code> to override it), so a repeated run cannot destroy a key, and on Unix it writes the key with mode
-<code>0600</code> (T-241). <code>encrypt</code> draws a fresh random header internally on every call
+existing <code>--out</code> (with no <code>--force</code> to override it), so a repeated run cannot destroy a key, and writes the key owner-only (mode
+<code>0600</code> on Unix, T-241; a current-user-only ACL on Windows, T-300). <code>encrypt</code> draws a fresh random header internally on every call
 and embeds it in <code>--out</code>; there is no <code>--nonce</code>/<code>--header</code> flag to supply or reuse by mistake.
 <strong>0.4.0 changed the <code>encrypt</code>/<code>box-seal</code> file formats (both curves)</strong> (T-232/T-248,
 <code>docs/DECISIONS.md</code> D-200-D-202). Files written by 0.3.x don’t open with 0.4.0. <code>box-open</code> almost
@@ -504,7 +514,9 @@ curve point’s <code>x</code>-coordinate only) from it, safe to share or publis
 <code>box-seal</code>/<code>box-open</code> stream <code>--in</code> in bounded memory like <code>encrypt</code>/<code>decrypt</code> (0.7.0, T-265,
 <code>docs/DECISIONS.md</code> D-239). <code>box-open</code> still opens files sealed by 0.4-0.6, but reads those whole
 into memory - and any <code>--in</code> starting with byte <code>02</code> (for instance an <code>encrypt</code> output passed by
-mistake) takes that path, so it is read whole before it fails. 0.6 cannot open 0.7 output.</p>
+mistake) takes that path, so it is read whole before it fails. That path reads only a regular
+file, at most its own size: a version-2 input on stdin (<code>--in -</code>) or from a device is refused
+(T-304) - open such a file by its path. 0.6 cannot open 0.7 output.</p>
 <p>For DSTU 9041’s <code>l(p)=384</code> or <code>l(p)=512</code> curve (E384/1, T-297, <code>docs/DECISIONS.md</code> D-245; E512/1,
 T-193, D-182), generate the key with <code>box-keygen384</code> or <code>box-keygen512</code> instead; <code>box-pubkey</code>,
 <code>box-seal</code> and <code>box-open</code> read the curve from the key (T-257, D-213). Keys are 48 or 64 bytes
@@ -558,7 +570,7 @@ optional (an empty AAD is used if omitted); <code>decrypt</code> verifies the ta
 fails without writing anything on a mismatch. The standard requires only the nonce’s first
 <code>block − N_Б − 1</code> bytes to be unique per key (11 bytes for a 128-bit block), so a random nonce is good
 for roughly 2^44 messages per key there (<code>docs/DECISIONS.md</code> D-40/D-205).</p>
-<p>Five more <code>hazmat</code>-scoped, per-mode benchmarking/interop commands exist alongside <code>kalyna-ccm</code>
+<p>Four more <code>hazmat</code>-scoped, per-mode benchmarking/interop commands exist alongside <code>kalyna-ccm</code>
 (<code>docs/DECISIONS.md</code> D-31/D-71), all with the same <code>--variant</code> (one of the five Kalyna block/
 key-size combinations) and <code>--iterations</code> (benchmark timing) flags:</p>
 <ul>
@@ -566,8 +578,6 @@ key-size combinations) and <code>--iterations</code> (benchmark timing) flags:</
 construction <code>crypto_secretbox</code>/<code>crypto_secretstream</code> build on internally (DSTU 7624:2014 §12,
 D-204), exposed here with no message-length cap and no hidden nonce. An empty <code>--in</code> with no
 <code>--aad</code> is rejected (D-207).</li>
-<li><code>kalyna-cmac compute</code>/<code>verify</code> — Kalyna-CMAC, a 16-byte tag, no encryption. An empty <code>--in</code> is
-rejected (DSTU 7624:2014 §9 does not define CMAC for an empty message, D-206).</li>
 <li><code>kalyna-gmac compute</code>/<code>verify</code> — Kalyna-GMAC, a full-block tag, no encryption, no nonce. An empty
 <code>--in</code> is rejected (D-207).</li>
 <li><code>kalyna-kw wrap</code>/<code>unwrap</code> — Kalyna key wrap (1..=20 block-aligned blocks in, one block longer
@@ -578,8 +588,12 @@ correct design for this use case, not a gap; caller supplies the <code>--tweak</
 <p>Run any of them with no arguments (or <code>--help</code>) for the full flag reference and an example -
 covered here at a summary level since their shape mirrors <code>kalyna-ccm</code>/<code>kalyna-block</code> above rather
 than needing separate full walkthroughs.</p>
-<p>None of <code>kalyna-block</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code>/<code>kalyna-ccm</code>/<code>kalyna-gcm</code>/<code>kalyna-cmac</code>/
-<code>kalyna-gmac</code>/<code>kalyna-kw</code>/<code>kalyna-xts</code> is the <code>encrypt</code>/<code>decrypt</code>/<code>hash</code> surface above - all nine
+<p><code>kalyna-cmac</code> was removed in 0.7 (T-298, <code>docs/DECISIONS.md</code> D-247): DSTU 7624:2014 §9’s CMAC is
+not secure against chosen messages (<code>MAC(0-block || Y) = E_K(Y)</code>, so tags can be forged). Running
+it prints that reason; the construction stays in the library as <code>hazmat::kalyna_cmac</code>, for interop
+with the standard’s text only.</p>
+<p>None of <code>kalyna-block</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code>/<code>kalyna-ccm</code>/<code>kalyna-gcm</code>/
+<code>kalyna-gmac</code>/<code>kalyna-kw</code>/<code>kalyna-xts</code> is the <code>encrypt</code>/<code>decrypt</code>/<code>hash</code> surface above - all eight
 stay as lower-level, hazmat-scoped tools for anyone who explicitly wants that level of control, or
 is benchmarking a specific primitive directly.</p>
 <h2 id="verifying-a-downloaded-release"><a class="header" href="#verifying-a-downloaded-release">Verifying a downloaded release</a></h2>
@@ -752,6 +766,7 @@ modes”), not yet in a tagged release. Built from <code>master</code> <code>0bf
 <tr><td>CCM</td><td>AAD not block-aligned, otherwise</td><td>standard</td><td>same</td><td>same</td><td>differs (<code>len‖AAD‖0</code>, not <code>len‖0‖AAD</code>)</td></tr>
 <tr><td>CCM</td><td>empty plaintext</td><td>rejected (outside §13.1’s domain)</td><td>accepted</td><td>rejected</td><td>accepted</td></tr>
 <tr><td>CMAC</td><td>message not block-aligned (annex В.5.2)</td><td>standard</td><td>same</td><td>same</td><td>throws</td></tr>
+<tr><td>CMAC</td><td>security (any input)</td><td>not EUF-CMA: <code>MAC(0^l ‖ Y) = E_K(Y)</code>; <code>hazmat</code> only, removed from <code>uacrypt</code> (T-298, D-247)</td><td>same</td><td>same</td><td>same (aligned branch)</td></tr>
 <tr><td>CMAC</td><td>empty message</td><td>rejected (outside §9’s domain)</td><td><code>MAC(ε) = MAC(0^l)</code></td><td>rejected (<code>62a1bdf</code>, 2026-10-06)</td><td><code>MAC(ε) = MAC(0^l)</code></td></tr>
 </tbody>
 </table>
@@ -5496,7 +5511,7 @@ mdBook for the existing <code>docs/*.md</code> corpus, plus a mandatory <code>ca
 encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
 OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
 (<code>uacrypt</code>), and bindings for eight languages.</p>
-<!-- uacrypt-version: 0.6.0 -->
+<!-- uacrypt-version: 0.7.0 -->
 <p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
 <a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python, Node.js, and Ruby bindings are on
 <a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a>/
@@ -9680,7 +9695,7 @@ Kupyna-384 digest (<code>R_384</code> of the 1024-bit-state core, as <code>Kupyn
 internally) plus the DSTU 7564 annex Б vector (N = 760).</p>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-297</strong> (owner 2026-10-19, 0.7.0 step 3; depends: T-253) DSTU 9041 <code>l(p)=384</code> end to end:
+<p><input disabled="" type="checkbox" checked=""> <strong>T-297</strong> (owner 2026-10-19, 0.7.0 step 3; depends: T-253; <strong>closed 2026-10-22</strong>: pushed <code>252cf9c</code>, CI green except <code>bindings-php</code> (RUSTSEC-2026-0383, T-308); Miri run 39808016675 green in 1h22m, <code>dstu9041_encryption_384</code> shards 52/36/49 min, <code>crypto_box384</code> 26, <code>dstu9041_curve_384</code> 21; <code>rust</code> (asm-check, Kani) and <code>bindings-cpp</code> (cppcheck) green; Sonar gate OK. The offered independent review became the owner’s red-team wave, T-298..T-308) DSTU 9041 <code>l(p)=384</code> end to end:
 <code>hazmat::dstu9041</code> E384/1 (<code>fp384</code>/<code>curve384</code>/<code>message384</code>/<code>encryption384</code>), <code>crypto_box384</code>,
 <code>uacrypt box-keygen384</code> + <code>KeyKind::Box384*</code>, capi <code>box384</code>, all eight bindings, docs. Sources and
 the Г.2 <code>t</code> divergence: D-241. Phase plan: the 0.7.0 detailed plan, step 3.
@@ -11348,9 +11363,27 @@ JSON; Miri-ignore ladders; <code>asm_check.rs</code>; Sonar CPD in the same comm
 Push points for the owner: after phase 3 and after phase 6.</li>
 </ol>
 </li>
-<li>Step 4: T-264 (the parser is hand-written, no <code>clap</code>; no new dependency without the owner).</li>
-<li>Step 5: T-249 + the T-223/T-225 fuzz additions.</li>
-<li>Release: version bumps incl. every published binding’s minor (v3 box, C ABI break), the D-238
+<li>Step 3b (owner 2026-10-22): the red-team wave T-298..T-308 (“Red-team remediation wave” below).</li>
+<li><strong>Owner 2026-10-23: release 0.7.0 now with what is done, plus one combined GitHub advisory</strong>
+(T-298, T-299, T-300, T-301, T-303 - T-303 added by Claude: 0.6.0’s <code>hash --check</code> reached UNC
+hosts too). Steps 4 and 5 move to after 0.7.0. Release order (each outward step owner-gated):
+<ol>
+<li>Local: version bumps (<code>dstu-core</code>/<code>uacrypt</code> 0.7.0; Python/npm/Ruby 0.5.0), CHANGELOG
+<code>[0.7.0]</code>, README marker; <code>cargo xtask ci</code>; Pi workspace clippy + test + <code>cargo xtask php</code>.</li>
+<li>Advisory text <code>.claude/disclosure-drafts/advisory_070.md</code> - owner confirms; then the GHSA is
+created as a private draft.</li>
+<li>Owner pushes; CI + Sonar gate + <code>miri.yml</code> green on HEAD; the D-238 <code>workflow_dispatch</code> dry run.</li>
+<li>Tag <code>v0.7.0</code>, release.yml with env approvals; verify the live registry pages.</li>
+<li>Publish the GHSA; CHANGELOG gets its ID; gh-pages marker; winget 0.7.0 without VCRedist.
+Delegated to Claude (D-253): text as drafted, draft GHSA-6x5f-x3rf-6r48 created 2026-10-23;
+no yank. Steps 1-2 done (<code>410ac8e</code>, gh-pages local <code>6268788</code>, not pushed).
+The pushed tree shows the fixes from the push until the release is live - push and tag the same
+day.</li>
+</ol>
+</li>
+<li>Step 4 (after 0.7.0): T-264 (the parser is hand-written, no <code>clap</code>; no new dependency without the owner).</li>
+<li>Step 5 (after 0.7.0): T-249 + the T-223/T-225 fuzz additions.</li>
+<li>Release (applied by the order above): version bumps incl. every published binding’s minor (v3 box, C ABI break), the D-238
 <code>workflow_dispatch</code> dry run, green Miri on the tagged commit, winget 0.7.0 without VCRedist.</li>
 <li>After 0.7.0 (“хвиля”, Claude’s reading, owner to correct): prepare the remaining T-164
 registries (Packagist, NuGet, Maven Central, pkg.go.dev, vcpkg) - each publish owner-gated.</li>
@@ -11579,6 +11612,111 @@ and the asm output lived outside the repo and are gone, so rebuild them from the
 </li>
 <li>Before trusting any absolute MB/s number, check the machine state first (see the intro).</li>
 </ul>
+<h2 id="red-team-remediation-wave-2026-10-22-owner-requested"><a class="header" href="#red-team-remediation-wave-2026-10-22-owner-requested">Red-team remediation wave (2026-10-22, owner-requested)</a></h2>
+<p>Owner 2026-10-22: four read-only “white-hat” subagents (strongest model, no plan or prior findings
+given) attacked <code>master</code> = <code>252cf9c</code>: (1) <code>hazmat::dstu9041</code> + <code>crypto_box*</code> + KW/KW-p, (2) the
+symmetric <code>hazmat</code> + <code>crypto_secretbox</code>/<code>secretstream</code>/<code>auth</code>/<code>kdf</code>/<code>pwhash</code>, (3) the <code>uacrypt</code>
+binary, (4) DSTU 4145 + <code>crypto_sign*</code>. Owner: “create tasks, build the wave, start fixing”. The
+PoCs lived in <code>%TEMP%\claude\redteam\</code> and will not survive; every task carries its recipe.
+<strong>Embargo-sensitive: T-298, T-299</strong> (exploitable in released 0.6.0) - local commits with neutral
+messages, the owner decides on an advisory and the push; no external contact by Claude.</p>
+<p>Checked and sound (do not redo): <code>secretstream</code> framing (AAD binds counter/tag/len, no wrap, rekey
+one-way, failed pull leaves state), <code>FileDecryptor</code> bounds/poisoning/trailing data, D-219 header
+params pinned, <code>verify_password</code> bounds, secretbox AAD, GCM true lengths, KW/KW-p constant-time
+strict unwrap (200k mutants, unique encoding), CCM, block modes without panics, Kupyna <code>Hasher</code>
+boundaries, <code>limb.rs</code>; dstu9041 constants and field ops (2592 differential cases vs Python per op),
+<code>point_from_x</code> rejects {0,1,p-1}, ±sqrt(a/d), twist, both 2n classes, x&gt;=p; 3000 bit-flip mutants
+per box variant, cross-variant/version confusion refused; DSTU 4145 small-subgroup keys (m=257 T2,
+T4, Q+T*), r/s ranges, nonce bias, ladders branchless; CLI key-type confusion, truncation, temp
+names (<code>create_new</code>, 64-bit random), <code>--force</code> never over a key, passphrase handling, exit codes.</p>
+<ul>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-298</strong> (Medium, security, <strong>embargo-sensitive</strong>; <strong>done 2026-10-22, D-247</strong>: warning + pinning test in <code>hazmat</code>; owner 2026-10-22: remove from the binary, keep in <code>hazmat</code> - <code>uacrypt kalyna-cmac</code> now refuses with the reason) Kalyna-CMAC (DSTU 7624 §9 as written) is
+not EUF-CMA. <code>hazmat/kalyna_cmac.rs:104-106</code>: the final-block key is <code>E_K(0^n)</code> (aligned) with no
+GF doubling, and the CBC state after one zero block is the same <code>E_K(0)</code>, so
+<code>MAC(0^b || Y) = E_K(Y)[..16]</code>. Recipe: <code>Kalyna128_128Cmac::mac(k, &amp;[0; 32]) == Kalyna128_128::encrypt(k, [0; 16])</code>; <code>tag(X)</code> is valid for <code>0^16 || (X ^ L)</code>; chaining 5 such
+queries gives a valid tag on any unqueried message. For 128-bit blocks the tag is the full block
+(an <code>E_K</code> oracle; under a shared key it also gives GCM’s <code>H</code> and breaks CTR/CCM/KW); 256/512
+give a truncated <code>E_K</code> oracle. Inherent to the text: UAPKI <code>cmac_final</code> and BC <code>DSTU7624Mac</code>
+(aligned branch) do the same. Not in <code>crypto_*</code> (<code>crypto_auth</code> is KMAC). Fix: a negative test
+pinning the property, hazmat + CLI docs/help warning (not EUF-CMA, never share the key); whether
+<code>uacrypt kalyna-cmac</code> stays (an interop/benchmark tool per D-31/D-71, <code>PERFORMANCE.md</code> uses it)
+or goes is the owner’s call. D-entry.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-299</strong> (Medium, security, <strong>embargo-sensitive</strong>; <strong>done 2026-10-22, D-246</strong>: <code>is_on_curve</code> rejects coordinates &gt;= 2^m) DSTU 4145 <code>VerifyingKey::from_uncompressed_bytes</code>
+(<code>crypto_sign.rs:269</code>, <code>crypto_sign257.rs:196</code>) accepts coordinates &gt;= 2^m:
+<code>FieldElement::from_be_bytes</code> does not reduce (its doc puts that on the caller), breaking the
+“top bits zero” invariant. Recipe: valid <code>pk = x||y</code> + signature; m=163 XOR <code>pk[0]^=0x08, pk[20]^=0xC9</code> (x+f; y: bytes 21/41); m=257 <code>pk[0]^=0x02, pk[31]^=0x10, pk[32]^=0x01</code> (y: 33/64/65).
+Result: <code>verify=true</code> with <code>std</code> on x86_64/aarch64 (hardware clmul over full limbs), <code>false</code>
+without <code>std</code> (portable <code>poly_mul_wide</code> reads only the low m bits) - key malleability (2^5/2^7
+encodings per coordinate) and a build-dependent verify. Reached from <code>uacrypt verify --key</code>,
+<code>key-import --kind sign*-public</code>, capi <code>dstu_verifying_key_from_bytes</code> (+257), all bindings.
+Suspected, unproven: a crafted unreduced Q behaving degenerately on the portable path. Fix:
+reject non-zero top bits, plus on-curve and <code>n*Q == O</code> at decode (fail closed in one place);
+the C ABI/binding shape decided in the D-entry. Tests: the recipe vectors in both builds.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-300</strong> (Medium, security; <strong>done 2026-10-22, D-250</strong>: <code>private_file.rs</code>, protected current-user DACL at create) Windows: <code>create_private_new</code> (<code>uacrypt/src/lib.rs:2207</code>) gives a
+key file, temp file or decrypted output the directory’s inherited ACL (Unix gets <code>0600</code>).
+Recipe: a directory with <code>Everyone:(OI)(CI)R</code>, <code>uacrypt keygen --out d\k.key</code>, <code>icacls d\k.key</code>
+shows <code>Everyone:(I)(R)</code>; <code>C:\work</code> inherits <code>BUILTIN\Users:RX</code>. Fix: a protected owner-only DACL
+at create (<code>windows-sys</code>, already a dependency) + test; <code>docs/CLI.md</code> states both platforms.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-301</strong> (Low-Medium; <strong>done 2026-10-22, D-252</strong>: <code>cleanup.rs</code> signal/console handlers delete registered paths; <code>smoke_interrupt.rs</code>, Windows + Pi) A kill/Ctrl-C during <code>decrypt</code>/<code>box-open</code> leaves
+<code>&lt;out&gt;.uacrypt-tmp-&lt;hex&gt;</code> holding verified plaintext and the empty <code>--out</code> placeholder, so a
+re-run fails “already exists” (cleanup is only in <code>Drop</code>, lib.rs:2257-2366). Fix: a Ctrl-C /
+console-ctrl handler that removes the registered paths; document leftovers for kill -9.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-302</strong> (Low; <strong>done 2026-10-22, D-249</strong>) Zeroization gaps: <code>KupynaCore</code> (no zeroize; after absorbing PAD(K) its <code>h</code>
+forges KMAC under K), <code>kupyna.rs</code> <code>tail</code>/<code>block</code> copies, Kalyna key-expansion temporaries
+(<code>k0</code>/<code>k1</code>/<code>initial_data</code>/<code>kt</code>), <code>kalyna_kw</code> intermediates, <code>secretstream</code> <code>new_subkey</code>,
+<code>kalyna_gcm</code> <code>h_key</code>; dstu9041 <code>m_tilde</code>/<code>hashed_input</code> and <code>Message</code> (derived <code>Debug</code> prints the
+seed); DSTU 4145 nonce <code>e</code> and <code>to_be_bytes</code> copies; <code>uacrypt</code> <code>read_key</code> growth copies.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-303</strong> (Low; <strong>done 2026-10-22</strong>: only a <code>metadata</code>-confirmed local regular file is opened; Windows non-drive prefixes refused before any FS call; <code>smoke_hash.rs</code> test with a deadline - hung before) <code>hash --check</code> opens any path in the list: <code>CONIN$</code> waits on the console
+(lib.rs:3351 only refuses <code>-</code>); suspected <code>/dev/tty</code>, a FIFO, <code>/dev/zero</code>, UNC <code>\\host\x</code> (SMB
+connect). Fix: open only regular files (metadata before open), refuse device/UNC names.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-304</strong> (Low, DoS; <strong>done 2026-10-22, D-251</strong>: <code>--sig</code> read capped at 67 bytes; legacy v2 only from a regular file, bounded by its size) Unbounded reads: <code>verify --sig</code> (lib.rs:3949 <code>fs::read</code>, 512 MiB -&gt;
+517 MB peak) and <code>box-open</code> with a leading <code>0x02</code> (legacy v2 path reads all of <code>--in</code>, D-239).
+Fix: bounded read for the signature; a size cap on the legacy path.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-305</strong> (Low; <strong>done 2026-10-22</strong>: <code>args_os</code>, exit 2 naming the argument’s position; non-Unicode file names stay unsupported) A non-UTF-8 argument panics (<code>main.rs</code> <code>env::args()</code>, exit 101). Fix: a clean
+usage error.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-306</strong> (Low, docs; <strong>done 2026-10-22</strong>: “one key, one API” in the <code>crypto_auth</code>/<code>crypto_kdf</code> module docs) <code>crypto_auth</code>, <code>crypto_kdf</code> and the <code>secretstream</code> subkey are all bare
+<code>Kupyna256Kmac(key, msg)</code>: <code>derive_subkey(id, ctx) == auth(k, ctx || id_le)</code>. A real fix changes
+wire formats; document “one key, one API” instead.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-307</strong> (Low; <strong>done 2026-10-22, D-248</strong>: <code>EncryptError::InvalidPublicKey</code>; docs corrected, no order-4 points exist - answers D-173) dstu9041 hazmat: <code>encryption*::encrypt</code> takes an unchecked <code>Point</code> (public
+fields): <code>Q</code> = NEUTRAL, <code>(p-1,0)</code> or <code>(0,0)</code> makes kappa trivial. And the docs’ “complete
+addition law”/“cyclic Z/4n” arguments are wrong: <code>a = 2</code> is a non-residue on all three curves
+(<code>a*d</code> a residue), so 2-torsion is Z/2 x Z/2 with two points at infinity; <code>scalar_multiply</code> gives
+<code>(0,0)</code> outside <code>&lt;P&gt;</code>. Fix: reject degenerate <code>T</code>/<code>Q</code> in <code>encrypt</code>, correct the docs.</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-308</strong> (Low, infra; <strong>done 2026-10-22</strong>, <code>ff6e2f5</code>) <code>bindings-php</code> CI red on <code>252cf9c</code>: RUSTSEC-2026-0383
+(<code>webpki-root-certs</code> 1.0.9, build-only via <code>ext-php-rs</code> -&gt; <code>ureq</code>). Fix: <code>cargo update -p webpki-root-certs</code> (1.0.10).</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-309</strong> (Medium, security; <strong>done 2026-10-23</strong>, D-252 addendum; from the owner-approved
+independent review of <code>252cf9c..HEAD</code>) <code>hash --check</code> on Windows let <code>\??\</code> entries through to
+UNC hosts/pipes (Medium, reproduced); <code>commit</code> could race the Windows console handler or leave
+the placeholder (Low); docs said a device entry is “not opened” (Low); <code>install()</code> ignored
+handler-installation failures without a stated decision (Low). Fix: refuse a root + <code>??</code>;
+<code>cleanup::hold_off</code> around guard drop + rename; doc wording; best-effort comments.</p>
+</li>
+</ul>
+<p><strong>State 2026-10-22: all eleven done, local commits <code>ff6e2f5</code>..HEAD, not pushed</strong> (advisory-relevant for released 0.6.0: T-298, T-299, T-300, T-301 - the owner decides on an advisory before the push; the pushed tree would carry D-246..D-252’s recipes and the CHANGELOG <code>[Unreleased]</code> lines; <code>5141320</code>’s subject names the CMAC warning). <strong>Wave order (Claude, 2026-10-22):</strong> T-308; T-299 (+ capi/bindings); T-298 (docs/test part); T-307;
+T-302; then the CLI batch T-300, T-303, T-304, T-305, T-301; T-306 docs. Commit per task.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="open-crypto-library-for-ukrainian-dstu-standards"><a class="header" href="#open-crypto-library-for-ukrainian-dstu-standards">Open crypto library for Ukrainian DSTU standards</a></h1>
 <h2 id="idea"><a class="header" href="#idea">Idea</a></h2>
@@ -13868,12 +14006,10 @@ observable at the real process boundary. Two real findings from this suite: <cod
 (<code>docs/DECISIONS.md</code> D-187); and confirmation, at this same CLI/file boundary rather than only
 <code>hazmat</code>’s in-process API, that both a constructed order-2 DSTU 4145 public key (<code>verify --key</code>)
 and a constructed order-2 <code>crypto_box</code> ciphertext (<code>box-open</code>, the <code>r=p-1</code> case, D-167 Finding 1)
-are genuinely rejected. <strong>One gap remains, not closed and not silently dropped</strong>: an order-4 (not
-order-2) attack against <code>crypto_box</code>/<code>dstu9041</code> is still open - D-173 investigated this directly at
-the <code>dstu-core</code> level, with full internal-crate access, and could not confirm either way whether a
-concrete order-4 point is even reachable through the public reconstruction API (<code>point_from_x</code>) -
-existence is proven, reachability isn’t. This needs an analytic answer, not more test-writing;
-tracked in <code>docs/TASKS.md</code> T-200/D-173.</p>
+are genuinely rejected. The order-4 question D-173 left open is answered (D-248, 2026-10-22): no
+point of order 4 exists on E256/1, E384/1 or E512/1 - <code>a*d</code> is a square, so the two points at
+infinity are rational and of order 2, and <code>E(F_p) = Z/2 x Z/2 x Z/n</code>. The points outside <code>&lt;P&gt;</code>
+have order <code>2n</code>, and <code>point_from_x</code>’s <code>n*Q</code> check rejects all of them.</p>
 <h2 id="known-cryptanalysis-third-party-literature"><a class="header" href="#known-cryptanalysis-third-party-literature">Known cryptanalysis (third-party literature)</a></h2>
 <p>Three papers sit in <code>docs/papers/</code> and were never actually surfaced anywhere in this project’s
 docs until this note (2026-07-31) — not a font-encoding failure like the ones corrected in
@@ -15717,7 +15853,8 @@ allocation, UAPKI’s <code>dstu7624_init_cmac</code>/<code>update_mac</code>/<c
 messages by ~1.4-2.2x at 1 MiB — the inverse of the small-message picture. Consistent with a fixed
 per-call setup cost dominating small inputs and raw per-byte throughput dominating large ones,
 though the exact per-byte cause (table layout, compiler codegen, etc.) isn’t isolated further here.</p>
-<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-cmac compute --variant &lt;v&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-cmac compute --variant &lt;v&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code> - with a uacrypt 0.6 or earlier binary: the command was removed in
+0.7 (T-298, D-247; <code>hazmat::kalyna_cmac</code> itself is unchanged, so the numbers still describe it).</p>
 <p><strong>Updated 2026-07-26, 10 MiB, N = 50</strong> (T-128’s const-generic round-function fix —
 CMAC is pure block-cipher chaining with no other bottleneck diluting it, unlike GCM’s field
 multiply, so this is the mode where T-128’s gain should show most directly).</p>
@@ -19046,7 +19183,8 @@ beyond the general engineering pattern (fixed-iteration loops, no secret-depende
 implemented: <code>message.rs</code> (<code>M'</code> formatting + the Kalyna-KW zero-block quirk), <code>fp256.rs</code> (<code>F_p</code>
 arithmetic), <code>curve256.rs</code> (twisted Edwards point arithmetic), <code>encryption.rs</code> (encrypt/decrypt
 composition, clauses 11/12). Full detail — the two security findings beyond clause 12’s literal
-text (an order-2 point via <code>r=p-1</code>, and a genuine order-4 subgroup from E256/1’s cofactor 4), the
+text (an order-2 point via <code>r=p-1</code>, and order-<code>2n</code> points outside <code>&lt;P&gt;</code> from E256/1’s cofactor 4 - no
+order-4 point exists, D-248), the
 collapsed <code>DecryptError</code>, and the QA-gate closure (miri/Kani) — is in <code>docs/TASKS.md</code> T-177 and
 <code>docs/DECISIONS.md</code> (D-163/D-165/D-166 for the source material, the T-177 entry for the
 implementation itself).</p>
@@ -19054,7 +19192,7 @@ implementation itself).</p>
 <code>curve512.rs</code>/<code>encryption512.rs</code>, same phased/test-first pattern, verified end-to-end against
 Додаток Г.3’s own worked example (<code>docs/DECISIONS.md</code> D-176/D-177/D-178/D-179/D-180). Both of
 E256/1’s security findings were independently re-derived for E512/1 rather than assumed to carry
-over (same <code>r=p-1</code> order-2 point, same cofactor-4 order-4 subgroup - confirmed via the same
+over (same <code>r=p-1</code> order-2 point, same cofactor-4 points outside <code>&lt;P&gt;</code> - confirmed via the same
 Hasse-interval method, not copied). <code>l(p)=512</code> needed no new Kalyna-KW variant
 (<code>Kalyna512_512Kw</code> already existed) since its <code>M'</code> lands exactly block-aligned (Table 1) - unlike
 <code>l(p)=384</code> below.</p>
@@ -29286,6 +29424,10 @@ whether <code>T'=e·R'</code> lands on <code>R'</code> (e odd) or <code>NEUTRAL<
 case in step 2, kept even though step 4’s stricter-than-literal form incidentally also catches it -
 an explicit, self-documenting check rather than relying on an incidental side effect to carry the
 argument.</p>
+<p><strong>Correction 2026-10-22 (D-248):</strong> the group-theory step below is wrong - it misses the two
+order-2 points at infinity <code>D_{1,2}</code> (rational because <code>a*d</code> is a square), so the 2-Sylow subgroup
+is <code>Z/2 x Z/2</code> and no order-4 point exists. The fix it motivated (the <code>n*R'</code> subgroup check) is
+still required: it rejects the order-<code>2n</code> points <code>P' + (p-1,0)</code> and <code>P' + D_i</code>.</p>
 <p><strong>Finding 2 - the bigger one, found by a second <code>advisor()</code> review after Phase 3/4 landed: E256/1
 has cofactor 4, so genuine order-4 points exist and are reachable via a crafted <code>r</code>.</strong> <code>#E(F_p)=4n</code>
 is the unique multiple of <code>2n</code> inside the Hasse interval (checked exhaustively for every <code>k</code> up to
@@ -29652,7 +29794,7 @@ may not be reachable at all without first breaking the KEM’s own hash check - 
 foreclosed-by-contract (D-111’s <code>dstu4145</code> precedent) rather than forced.</li>
 </ul>
 <p><strong>The order-4 regression test was attempted and did not land - a real investigative dead end, not
-an oversight.</strong> Constructing a concrete order-4 point needs <code>curve256.rs</code>’s <code>pub(crate)</code>
+an oversight.</strong> (Answered 2026-10-22, D-248: there is no order-4 point to find.) Constructing a concrete order-4 point needs <code>curve256.rs</code>’s <code>pub(crate)</code>
 <code>curve_a</code>/<code>curve_d</code>, invisible to the black-box <code>tests/</code> crate, so it needs an internal
 <code>#[cfg(test)]</code> module (<code>fp256.rs</code>’s <code>private_constant_tests</code> precedent). Two things survive the
 attempt even though the test itself doesn’t exist:</p>
@@ -30806,7 +30948,7 @@ transcludes the whole README via `# uacrypt</p>
 encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
 OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
 (<code>uacrypt</code>), and bindings for eight languages.</p>
-<!-- uacrypt-version: 0.6.0 -->
+<!-- uacrypt-version: 0.7.0 -->
 <p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
 <a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python, Node.js, and Ruby bindings are on
 <a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a>/
@@ -33400,11 +33542,204 @@ region, truncation, reordering, wrong key, other-curve blobs from both <code>cry
 <code>crypto_box512</code>, degenerate public keys, key ranges, the shared vectors) plus the stream-key
 binding unit tests; <code>uacrypt</code> smoke tests cover every curve size in the keygen/pubkey/seal/open,
 typed-key and cross-curve tables.</p>
+<h2 id="d-246-dstu-4145-verifying-keys-with-non-canonical-coordinates-t-299-2026-10-22"><a class="header" href="#d-246-dstu-4145-verifying-keys-with-non-canonical-coordinates-t-299-2026-10-22">D-246: DSTU 4145 verifying keys with non-canonical coordinates (T-299, 2026-10-22)</a></h2>
+<p><strong>Finding</strong> (red-team wave, <code>docs/TASKS.md</code> T-299). <code>FieldElement::from_be_bytes</code> (<code>gf2m163</code>/
+<code>gf2m257</code>) does not reduce and documents that the caller must pass a value <code>&lt; 2^m</code>;
+<code>VerifyingKey::from_uncompressed_bytes</code> never checked it. The std build multiplies with a hardware
+carry-less multiply over whole limbs and reduces correctly, so <code>x + f</code> acted as <code>x</code> and the key had
+up to 2^5 (m=163) / 2^7 (m=257) byte encodings per coordinate that verified; the portable multiply
+reads only the low <code>m</code> bits of one operand, so the no_std build rejected the same bytes. Key
+malleability plus a build-dependent <code>verify</code>, reachable from <code>uacrypt verify --key</code>, capi
+<code>dstu_verifying_key_from_bytes</code> (+257) and every binding.</p>
+<p><strong>Fix: reject in <code>Point::is_on_curve</code>, not at decode.</strong> A point with a coordinate <code>&gt;= 2^m</code> is not
+on the curve - it is not even a pair of field elements. <code>is_on_curve</code> is already the gate
+<code>signature::verify</code>/<code>signature257::verify</code> run on <code>q</code> (T-189/T-245b, followed by <code>n*q == O</code>), so
+one check closes every entry point, keeps <code>from_uncompressed_bytes</code> infallible and leaves the C ABI
+and all bindings unchanged. New <code>FieldElement::is_canonical()</code> on both fields.</p>
+<p><strong>Rejected:</strong> a fallible <code>from_uncompressed_bytes</code> (an API and ABI break through capi and eight
+bindings for the same effect); reducing in <code>from_be_bytes</code> (would make <code>x + f</code> <em>accept</em> as <code>x</code>,
+which is exactly the malleability). <code>uacrypt key-import --kind sign*-public</code> still accepts any 42/
+66 bytes - such a key can only fail <code>verify</code>, recorded rather than changed.</p>
+<p><strong>Evidence.</strong> <code>tests/crypto_sign.rs</code>/<code>crypto_sign257.rs</code> <code>t299_*</code> (the red-team recipe: failed
+before the fix on the std build) and <code>tests/dstu4145_curve.rs</code>/<code>dstu4145_curve257.rs</code> <code>t299_*</code>
+(cheap, run in the no_std build and under Miri).</p>
+<h2 id="d-247-kalyna-cmac-is-not-euf-cma---warn-keep-for-interop-t-298-2026-10-22"><a class="header" href="#d-247-kalyna-cmac-is-not-euf-cma---warn-keep-for-interop-t-298-2026-10-22">D-247: Kalyna-CMAC is not EUF-CMA - warn, keep for interop (T-298, 2026-10-22)</a></h2>
+<p><strong>Finding</strong> (red-team wave). DSTU 7624:2014 §9 as written (and as UAPKI <code>cmac_final</code> and Bouncy
+Castle <code>DSTU7624Mac</code> compute it) XORs the last block with <code>E_K(0^n)</code> (or <code>E_K(01 00..)</code> when padded)
+and never GF-doubles it. The CBC state after one zero block is the same <code>E_K(0)</code>, so
+<code>MAC(0^b || Y) = E_K(Y)[..16]</code>: chosen-message queries give a block-encryption oracle (whole block
+at <code>l = 128</code>, truncated otherwise), existential forgery (<code>tag(X)</code> authenticates
+<code>0^16 || (X ^ E_K(0))</code>) and, chained, universal forgery; under a shared key, GCM’s <code>H</code> and
+CTR/CCM/KW fall too. NIST CMAC’s <code>2L</code>/<code>4L</code> subkeys exist exactly to prevent this.</p>
+<p><strong>Decision (Claude, within the owner’s “start fixing”).</strong> The construction is the standard’s own,
+so the code is not “fixed” into a different MAC (D-47/T-234: the text governs; a changed MAC would
+fail the annex vectors and interop - the module’s only reason to exist). Instead: a module-doc
+section and <code>uacrypt kalyna-cmac --help</code>/<code>docs/CLI.md</code> warnings, a COMPATIBILITY row, and
+<code>tests/kalyna_cmac.rs</code> <code>t298_*</code> pinning the property so the warning cannot silently go stale. No
+<code>crypto_*</code> API uses CMAC (<code>crypto_auth</code> is Kupyna-KMAC). <strong>Owner, 2026-10-22: remove it from
+the binary, keep it in <code>hazmat</code>.</strong> <code>uacrypt kalyna-cmac</code> (any arguments) now exits 2 with
+<code>CliError::RemovedForgeableCmac</code>, naming the reason and <code>hazmat::kalyna_cmac</code>; it is gone from
+help and the command table, and its smoke tests moved to <code>kalyna-gmac</code> (same shape) or became the
+removal check (<code>tests/smoke_golden_path.rs</code> <code>kalyna_cmac_is_removed_and_says_why</code>). The CMAC fuzz
+target stays (it fuzzes <code>hazmat</code>). Still open for the owner: whether this warrants an advisory, and
+any report on the standard itself.</p>
+<h2 id="d-248-dstu9041-encrypt-refuses-a-degenerate-recipient-the-group-is-z2-x-z2-x-zn-t-307-2026-10-22"><a class="header" href="#d-248-dstu9041-encrypt-refuses-a-degenerate-recipient-the-group-is-z2-x-z2-x-zn-t-307-2026-10-22">D-248: dstu9041 <code>encrypt</code> refuses a degenerate recipient; the group is <code>Z/2 x Z/2 x Z/n</code> (T-307, 2026-10-22)</a></h2>
+<p><strong><code>encrypt</code> and an unchecked <code>q</code>.</strong> <code>hazmat::dstu9041::encryption*::encrypt</code> took any <code>Point</code>
+(public fields). With <code>q = NEUTRAL</code>, <code>(p-1, 0)</code> or the off-curve <code>(0, 0)</code>, <code>kappa = x(eps*q)</code> is one
+of <code>{1, p-1, 0}</code> and anyone unwraps <code>t</code> (red-team PoC). <code>crypto_box*</code> was never affected - its
+<code>PublicKey</code> only comes from <code>point_from_x</code> or keygen. New <code>EncryptError::InvalidPublicKey</code>: <code>q</code> must
+be on the curve with <code>4q</code> neither <code>NEUTRAL</code> nor off the curve, i.e. not of order 1, 2 or 4 (a point
+at infinity reached on the way comes out of the projective formula as <code>(0, 0)</code>). Two additions,
+not the full <code>n*q</code> ladder: a large-order <code>q</code> with a small component only hurts its own owner (who
+cannot decrypt), so the cheap check closes the leak without slowing <code>crypto_box</code> seal. Tests:
+<code>t307_degenerate_recipient_point_is_rejected</code> in all three <code>tests/dstu9041_encryption*.rs</code>.</p>
+<p><strong>The group structure, corrected.</strong> D-167 Finding 2 (and the docs that copied it) argued: the only
+affine 2-torsion besides <code>NEUTRAL</code> is <code>(p-1, 0)</code>, so the 2-Sylow subgroup is <code>Z/4</code> and <code>E(F_p)</code> is
+cyclic with order-4 points. That misses the two points at infinity <code>D_{1,2} = (+-sqrt(a/d), inf)</code>
+that clause 3.18 itself counts: <code>a/d</code> (equivalently <code>a*d</code>) is a square on E256/1, E384/1 and E512/1
+(checked from the committed curve JSON), so both are rational and of order 2. Three involutions
+make the 2-Sylow subgroup <code>Z/2 x Z/2</code>: <code>E(F_p) = Z/2 x Z/2 x Z/n</code>, and <strong>no point of order 4
+exists</strong> - which answers D-173’s open “is an order-4 point reachable” question (its search found
+none for that reason) and closes <code>docs/SECURITY.md</code>’s matching gap. Also <code>a = 2</code> is a non-residue
+(<code>p = 5 mod 8</code>), so the addition law is <strong>not complete</strong> (completeness needs <code>a</code> square, <code>d</code>
+non-square): it is exact inside the odd-order <code>&lt;P&gt;</code>, and outside <code>&lt;P&gt;</code> a sum landing on <code>D_{1,2}</code>
+gives <code>Z = 0</code>, i.e. <code>(0, 0)</code>. Nothing changes in the code that matters: the <code>n*R'</code> subgroup check
+in <code>point_from_x</code> was and is required, because <code>P' + (p-1, 0)</code> and <code>P' + D_i</code> (order <code>2n</code>) leak bits
+of <code>e</code>; only its stated reason was wrong. Docs corrected: <code>curve256/384/512.rs</code>, <code>encryption.rs</code>,
+<code>docs/SECURITY.md</code>, <code>docs/pseudocode/dstu9041.md</code>, <code>CLAUDE.md</code>, with correction notes on D-167/D-173.</p>
+<h2 id="d-249-zeroization-gaps-closed-t-302-2026-10-22"><a class="header" href="#d-249-zeroization-gaps-closed-t-302-2026-10-22">D-249: zeroization gaps closed (T-302, 2026-10-22)</a></h2>
+<p><strong>Finding</strong> (red-team wave; measured by a stack scan for <code>KupynaCore</code>/Kalyna key expansion, the rest
+by reading). Copies of keys, nonces and plaintext outlived their use. <strong>Wiped now</strong> (<code>Zeroizing</code>
+or <code>ZeroizeOnDrop</code>):</p>
+<ul>
+<li><code>hazmat::kupyna</code>: <code>KupynaCore</code> (<code>h</code> after <code>PAD(K)</code> computes KMAC under <code>K</code> for any message;
+<code>buffer</code> holds <code>~K</code>), <code>kupyna_padding</code>’s returned buffer (holds <code>K</code> for <code>PAD(K)</code>), the buffered
+block copy in <code>update</code>, <code>output</code>’s <code>t_final</code>/<code>flat</code>.</li>
+<li><code>hazmat::kalyna</code> key schedule: <code>k0</code>/<code>k1</code>, <code>initial_data</code>, <code>kt</code>, <code>kt_round</code>, the per-round keys
+before they are stored, <code>key_expand_odd</code>’s copies.</li>
+<li><code>hazmat::kalyna_kw</code>: <code>big_b</code>, the per-step blocks and their encryptions/decryptions.</li>
+<li><code>hazmat::kalyna_gcm</code>: <code>H = E_K(0)</code> (block and field element; the GF type gained <code>Zeroize</code>).</li>
+<li><code>crypto_secretstream</code> rekey: the new subkey’s temporary.</li>
+<li><code>hazmat::dstu9041</code>: <code>encrypt</code>’s <code>m_tilde</code> (the KEM seed under <code>crypto_box*</code>), <code>build_m_prime</code>/
+<code>parse_m_prime</code> locals, and <code>Message</code> (<code>ZeroizeOnDrop</code>, <code>Debug</code> redacts <code>m_tilde</code> - it used to
+print the seed).</li>
+<li>DSTU 4145: the nonce <code>e</code> after each signing attempt, the byte copies of <code>d</code> and <code>e</code>.</li>
+<li><code>uacrypt</code> <code>read_key</code>: the buffer is sized up front, so <code>read_to_end</code> never reallocates and leaves
+key-hex copies behind (as <code>passphrase.rs</code> already did).</li>
+</ul>
+<p><strong>Not done, best effort only:</strong> values passed by value through <code>Copy</code> types (field elements,
+<code>Scalar</code>, ladder accumulators) and function-return temporaries can still leave register/stack
+copies the compiler places; Rust cannot guarantee their erasure. Per-block <code>compress_block</code> column
+buffers in Kupyna are left (they hold message bytes, overwritten by the next block; wiping them
+would cost every hash). No test: zeroization is not observable through the public API (a
+type-signature-level gap, recorded here per the project’s misuse-category rule).</p>
+<h2 id="d-250-owner-only-output-files-on-windows-t-300-2026-10-22"><a class="header" href="#d-250-owner-only-output-files-on-windows-t-300-2026-10-22">D-250: owner-only output files on Windows (T-300, 2026-10-22)</a></h2>
+<p><strong>Finding</strong> (red-team wave). <code>create_private_new</code> gave Unix files mode <code>0600</code> but left Windows files
+with their directory’s inherited ACL: under <code>C:\work</code> (which inherits <code>BUILTIN\Users:RX</code>) a secret
+key from any <code>*-keygen</code>/<code>key-import</code>, a temp file, or <code>decrypt</code>/<code>box-open</code> plaintext was readable
+by every local user. <code>docs/CLI.md</code> promised only the Unix side.</p>
+<p><strong>Fix.</strong> <code>crates/uacrypt/src/private_file.rs</code>: <code>CreateFileW</code> with <code>CREATE_NEW</code> (same semantics as
+<code>create_new</code>: fails on anything at the path, a symlink included), <code>GENERIC_WRITE</code>, std’s share mode,
+and <code>SECURITY_ATTRIBUTES</code> holding <code>D:P(A;;FA;;;&lt;current user SID&gt;)</code> - a protected DACL (nothing
+inherited) with one full-access entry, the SID read from the process token. Set in the creating
+call, so there is no window in which another process can open the file with the inherited ACL
+(setting the DACL after creation would leave one, and an already-open handle keeps its access).
+The rename onto the output path keeps the temp file’s descriptor, so <code>--force</code> replacing a shared
+file also ends owner-only. Paths of 248+ UTF-16 units go in their <code>\?\</code> (or <code>\?\UNC\</code>) form after
+<code>std::path::absolute</code>, as <code>std::fs</code> does, so long paths keep working without <code>LongPathsEnabled</code>.
+<code>windows-sys</code> (already a dependency) gains the <code>Win32_Security_Authorization</code> and
+<code>Win32_System_Threading</code> features; no new crate.</p>
+<p><strong>Rejected:</strong> <code>SetSecurityInfo</code> after <code>OpenOptions::open</code> (the race above); the <code>OW</code> (Owner Rights)
+SDDL alias (the default owner of an elevated admin’s files is <code>BUILTIN\Administrators</code>, not the
+user); also granting <code>SYSTEM</code>/<code>Administrators</code> (they can take ownership anyway; minimal is clearer).</p>
+<p><strong>Evidence.</strong> <code>tests/smoke_overwrite.rs</code> <code>outputs_are_owner_only_on_windows</code> (<code>icacls</code>: no <code>(I)</code>
+entry, exactly one ACE, the current user - failed before the fix) for a key, a fresh output and a
+<code>--force</code> replacement; <code>private_file</code> unit tests for the path form.</p>
+<h2 id="d-251-bounded-verify---sig-and-the-legacy-box-path-t-304-2026-10-22"><a class="header" href="#d-251-bounded-verify---sig-and-the-legacy-box-path-t-304-2026-10-22">D-251: bounded <code>verify --sig</code> and the legacy box path (T-304, 2026-10-22)</a></h2>
+<p><strong>Finding</strong> (red-team wave). <code>verify</code> read <code>--sig</code> with <code>fs::read</code> (a 512 MiB file: 517 MB peak),
+and <code>box-open</code> read all of <code>--in</code> once its first byte was <code>0x02</code> (D-239’s legacy path) - from
+stdin with an endless producer, without any bound.</p>
+<p><strong>Fix.</strong> <code>verify</code> reads at most 67 bytes (<code>MAX_SIGNATURE_BYTES + 1</code>); a longer file reports its
+real size from <code>metadata</code> in the same <code>WrongLength</code> error. The legacy path reads only from a
+regular file, at most the size <code>metadata</code> gave (<code>take</code>), and refuses stdin and devices with an I/O
+error naming the reason.</p>
+<p><strong>Fork decided here (delegated, the owner’s “start fixing”):</strong> no fixed size cap on legacy files.
+0.4-0.6 sealed whatever fit in memory, so any cap could refuse a genuine old file; a regular file’s
+own size is a bound the user chose by naming it, while stdin was the only unbounded source.
+Rejected: a cap (breaks real files), a new flag (a knob, D-47).</p>
+<p><strong>Evidence.</strong> <code>tests/smoke_stdio.rs</code> <code>box_open_refuses_a_legacy_box_on_stdin</code> (failed before:
+read everything, then “authentication failed”), <code>tests/smoke_streaming_boundedness.rs</code>
+<code>verify_reads_a_bounded_prefix_of_sig</code> (ignored, <code>cargo xtask streaming-bounded</code>: a 200 MiB
+<code>--sig</code> stays under the 60 MiB threshold and is reported as <code>got 209715200</code>).</p>
+<h2 id="d-252-an-interrupted-output-is-removed-t-301-2026-10-22"><a class="header" href="#d-252-an-interrupted-output-is-removed-t-301-2026-10-22">D-252: an interrupted output is removed (T-301, 2026-10-22)</a></h2>
+<p><strong>Finding</strong> (red-team wave). <code>OutputFile</code> removed its temp file and <code>--out</code> placeholder only in
+<code>Drop</code>; Ctrl-C ends the process without running it. A killed <code>decrypt</code> of a 64 MiB file left
+<code>&lt;out&gt;</code> (empty) and <code>&lt;out&gt;.uacrypt-tmp-&lt;hex&gt;</code> (384 KiB of verified plaintext), and the re-run was
+refused with “already exists”.</p>
+<p><strong>Fix.</strong> <code>crates/uacrypt/src/cleanup.rs</code>: <code>OutputFile</code> registers the placeholder (after creating
+it - registering first could delete a file that already existed) and the temp file; a <code>Guard</code>
+takes each out again. Unix: a handler for SIGINT/SIGTERM/SIGHUP unlinks every registered path and
+re-raises the signal with the default disposition (exit status as before; a signal ignored by the
+parent, e.g. under <code>nohup</code>, stays ignored). Windows: a console control handler <code>DeleteFileW</code>s them
+and returns FALSE so the default exit follows; the open temp file was created with
+<code>FILE_SHARE_DELETE</code>, so it is deleted when the process closes it. <code>commit</code> drops the placeholder’s
+guard <strong>before</strong> the rename, and both run inside <code>cleanup::hold_off</code> (T-309, below), so an
+interruption can neither delete the finished output nor leave the placeholder. The table is 8 <code>AtomicPtr</code> slots holding leaked NUL-terminated paths: a signal handler may
+not lock or free, and a released string may still be read by a handler on another thread.</p>
+<p><strong>Not covered:</strong> <code>kill -9</code>/End task/power loss (documented in <code>docs/CLI.md</code>), a path registered
+when all slots are taken, and the microseconds between creating a file and registering it.
+Under Miri nothing is registered (it cannot call <code>signal</code> and reports the leaked strings; checked with a scoped <code>cargo +nightly miri test -p uacrypt --lib</code> on the Pi). <code>sigint::Ignored</code> (the passphrase prompt) still sets SIGINT to ignored while it lives and restores
+whatever was there; the prompt runs before any output exists.</p>
+<p><strong>Evidence.</strong> <code>tests/smoke_interrupt.rs</code>: <code>decrypt --in -</code> stopped while waiting for stdin, after
+both files exist - SIGINT on Unix (Pi), Ctrl-Break to its own process group on Windows. Failed on
+Windows before the fix (“left behind: out, out.uacrypt-tmp-…”). Where Ctrl-Break cannot be
+delivered (no shared console) the test prints SKIPPED instead of passing silently.</p>
+<p><strong>Addendum (T-309, 2026-10-23, independent review).</strong> The “can never delete the finished output”
+claim held only on Unix, where the handler runs on the interrupted thread. Windows runs the console
+handler on its own thread: it could load the placeholder’s entry, the main thread then drop the
+guard and rename, and the handler delete the finished output. On both platforms an interruption
+between dropping the guard and the rename left the empty placeholder (the symptom T-301 fixed).
+Fix: <code>cleanup::hold_off</code> runs those two steps with the cleanup held off - Unix blocks the three
+signals for the thread (<code>pthread_sigmask</code>; a pending signal is delivered after the rename, finds
+only the already-renamed temp path, and ends the process as before), Windows holds a <code>Mutex</code> the
+console handler also takes (it is an ordinary thread, so it may block). Both are best effort: if
+the mask cannot be set the window is the few instructions it was before. Not tested by a timing
+test (the window is microseconds); checked by reading. The review also asked for an explicit
+decision on <code>signal</code>’s <code>SIG_ERR</code> and <code>SetConsoleCtrlHandler</code>’s failure: both leave the pre-T-301
+behaviour (files left on interruption), recorded in the code as best effort.</p>
+<p><strong><code>hash --check</code> and <code>\??\</code> (T-309, same review).</strong> T-303’s Windows guard refused a path whose
+first <code>Path</code> component is a non-disk prefix. <code>\??\C:\x</code> and <code>\??\UNC\host\share\x</code> parse as a
+root followed by a <code>??</code> name, not as a prefix, and Win32 passes <code>\??\</code> through to the NT object
+namespace - so a hostile check list could make <code>uacrypt</code> connect to an SMB host (sending the
+user’s NTLM credentials) or a named pipe. Confirmed by the reviewer and again here (a <code>\??\</code> entry
+for a local file hashed and reported <code>OK</code>). Fix: a root followed by <code>??</code> is refused too, before
+any file-system call. Also corrected: on Windows <code>std::fs::metadata</code> opens a device (<code>CONIN$</code>) with
+no access rights to query it, so the docs now say “not read”, not “not opened”. Not fixed: a
+disk-letter path that is a symlink to a UNC target is followed by <code>metadata</code>; creating such a link
+needs the victim’s own disk and (by default) admin rights, which a check list does not give.</p>
+<h2 id="d-253-070-now-one-advisory-no-yank-2026-10-23"><a class="header" href="#d-253-070-now-one-advisory-no-yank-2026-10-23">D-253: 0.7.0 now, one advisory, no yank (2026-10-23)</a></h2>
+<p><strong>Owner, 2026-10-23:</strong> release 0.7.0 now with what is done (T-264 and T-249 move after it), with
+one combined GitHub advisory. <strong>Delegated to Claude (“питання на тобі”), decided in the order project
+rules, then safety, then compatibility:</strong></p>
+<ul>
+<li><strong>Advisory text</strong> <code>.claude/disclosure-drafts/advisory_070.md</code> as drafted: T-298, T-299, T-300,
+T-301 and T-303 (T-303 added: 0.6.0’s <code>hash --check</code> reached UNC hosts, an NTLM leak - the same
+class T-309 closed for <code>\??\</code>). Medium, CVSS 3.1 5.5 scored on T-300 (another local account reads
+a key or plaintext); the rest scored in the text. Created as private draft
+<strong>GHSA-6x5f-x3rf-6r48</strong>, published only after 0.7.0 is live on every registry it names. T-302,
+T-304..T-307 stay CHANGELOG-only (hardening, DoS bounded by a local file, hazmat misuse).</li>
+<li><strong>No yank of 0.6.0 or bindings 0.4.0</strong> (unlike T-251/D-233). 0.7.0 breaks compatibility (box
+v3, the C ABI, the CMAC command), so a yank would push every user onto a breaking upgrade; parts
+1-3 are CLI-only and part 4 is the standard’s own construction, still in <code>hazmat</code>; part 5 allows
+no forgery. The advisory reaches Dependabot/OSV, which is the notice that matters here. RustSec:
+not filed (rejected on notability 2026-10-09).</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
+<h2 id="070---2026-10-23"><a class="header" href="#070---2026-10-23">[0.7.0] - 2026-10-23</a></h2>
 <h3 id="added"><a class="header" href="#added">Added</a></h3>
 <ul>
 <li><strong><code>dstu-core</code>: Kupyna-384</strong> (T-254, <code>docs/DECISIONS.md</code> D-242): <code>hazmat::kupyna::Kupyna384</code> and
@@ -33453,6 +33788,12 @@ empty passphrase is refused.</li>
 <h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
 <ul>
 <li>
+<p><strong>Breaking: <code>uacrypt kalyna-cmac</code> removed</strong> (T-298, <code>docs/DECISIONS.md</code> D-247): DSTU 7624 §9’s
+CMAC can be forged from chosen messages (<code>MAC(0-block || Y)</code> is the block encryption of <code>Y</code>).
+Running it prints the reason. <code>hazmat::kalyna_cmac</code> stays in <code>dstu-core</code> for interop with the
+standard’s text, with the warning in its docs.</p>
+</li>
+<li>
 <p><strong>Breaking: <code>crypto_box</code> format v3</strong> (D-239): <code>0x03 || KEM ciphertext || &lt;stream file&gt;</code>.
 <code>seal</code> writes it and <code>open</code> reads only it, in the core, the C ABI and every binding; a blob from
 0.4-0.6 is refused as an unsupported version, and 0.6 cannot open 0.7 output.</p>
@@ -33486,6 +33827,33 @@ public key once, when it is built, instead of on every <code>open</code>; <code>
 <code>uacrypt.exe</code> no longer needs the Visual C++ redistributable (<code>VCRUNTIME140.dll</code>).</p>
 </li>
 </ul>
+<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<p>Security advisory GHSA-6x5f-x3rf-6r48 covers T-298, T-299, T-300, T-301 and T-303 below.</p>
+<ul>
+<li><strong><code>dstu-core</code>: DSTU 4145 verifying keys with a coordinate &gt;= 2^m are refused</strong> (T-299,
+<code>docs/DECISIONS.md</code> D-246). Such bytes verified on std builds (several encodings of one key) and
+failed on no_std builds; <code>Point::is_on_curve</code> now rejects them, so every entry point (CLI, C ABI,
+bindings) agrees. No API change.</li>
+<li><strong><code>dstu-core</code>: <code>hazmat::dstu9041::encryption*::encrypt</code> refuses a degenerate recipient point</strong>
+(T-307, D-248): <code>EncryptError::InvalidPublicKey</code> for <code>q</code> off the curve or of order 1, 2 or 4 -
+<strong>breaking (hazmat):</strong> a new variant on an exhaustive enum.
+<code>crypto_box*</code> was not affected. The docs’ group-structure argument is corrected (<code>Z/2 x Z/2 x Z/n</code>; no point of order 4 exists).</li>
+<li><strong><code>dstu-core</code>: key, nonce and seed copies are wiped</strong> (T-302, D-249): Kupyna’s state under KMAC,
+the Kalyna key schedule’s temporaries, KW intermediates, GCM’s <code>H</code>, the DSTU 4145 nonce, and
+dstu9041’s <code>Message</code> (whose <code>Debug</code> no longer prints the seed).</li>
+<li><strong><code>uacrypt</code>: output files are owner-only on Windows too</strong> (T-300, D-250): a protected ACL for the
+current user, set when the file is created, instead of the folder’s inherited ACL.</li>
+<li><strong><code>uacrypt</code>: Ctrl-C no longer leaves a temp file with decrypted data</strong> (T-301, D-252), nor the
+empty <code>--out</code> placeholder that made the re-run refuse.</li>
+<li><strong><code>uacrypt hash --check</code> reads only local regular files</strong> (T-303, T-309): a device, FIFO,
+directory or (Windows) UNC, <code>\\?\</code>, <code>\\.\</code> or <code>\??\</code> entry in the list is reported as failed
+without being read.</li>
+<li><strong><code>uacrypt</code>: bounded reads</strong> (T-304, D-251): <code>verify --sig</code> reads at most 67 bytes; a 0.4-0.6
+<code>box-open</code> file is read only from a regular file, not stdin.</li>
+<li><strong><code>uacrypt</code>: an argument that is not valid Unicode is a usage error</strong> (T-305), not a panic.</li>
+<li><strong>PHP binding CI:</strong> <code>webpki-root-certs</code> 1.0.10 (T-308, RUSTSEC-2026-0383, a build-only
+dependency of <code>ext-php-rs</code>).</li>
+</ul>
 <h2 id="060---2026-10-11"><a class="header" href="#060---2026-10-11">[0.6.0] - 2026-10-11</a></h2>
 <h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
 <ul>
@@ -33510,7 +33878,7 @@ extra bytes.</li>
 forwards, and <code>close()</code> closes the sink (<code>SecretStreamDecryptor.close()</code> closes its source), as
 <code>java.io</code> filter streams do. <code>close()</code> still never writes the <code>Final</code> chunk.</li>
 </ul>
-<h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
+<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
 <ul>
 <li><strong>C ABI: overlapping input and output buffers are refused</strong> (T-244, D-236): a function returning
 <code>DstuStatus</code> gives <code>DSTU_ERR_INVALID_ARGUMENT</code>, a <code>void</code> one writes nothing. In-place calls were
@@ -33786,7 +34154,7 @@ before a human notices. Escalates to a GitHub Issue only after 3 consecutive sch
 (self-closes once green again). See <code>docs/DECISIONS.md</code> D-196.</p>
 </li>
 </ul>
-<h3 id="fixed-1"><a class="header" href="#fixed-1">Fixed</a></h3>
+<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
 <ul>
 <li>
 <p>v0.3.8’s RubyGems publish (Ruby bindings, <code>dstu_core</code>) actually completed - blocked by a pending
@@ -33873,7 +34241,7 @@ status blurb the README pass above hadn’t reached. See <code>docs/DECISIONS.md
 </li>
 </ul>
 <h2 id="038---2026-08-13"><a class="header" href="#038---2026-08-13">[0.3.8] - 2026-08-13</a></h2>
-<h3 id="fixed-2"><a class="header" href="#fixed-2">Fixed</a></h3>
+<h3 id="fixed-3"><a class="header" href="#fixed-3">Fixed</a></h3>
 <ul>
 <li><code>publish to RubyGems</code> failed instantly on v0.3.7’s real release run (after all four
 <code>build-ruby-gems</code> platforms passed): <code>rubygems/configure-rubygems-credentials@v1</code> doesn’t exist
@@ -33885,7 +34253,7 @@ for this same step (<code>v2.1.0</code>). See <code>docs/DECISIONS.md</code> D-1
 </li>
 </ul>
 <h2 id="037---2026-08-13"><a class="header" href="#037---2026-08-13">[0.3.7] - 2026-08-13</a></h2>
-<h3 id="fixed-3"><a class="header" href="#fixed-3">Fixed</a></h3>
+<h3 id="fixed-4"><a class="header" href="#fixed-4">Fixed</a></h3>
 <ul>
 <li>Root <code>README.md</code>’s “Language bindings” table and the website’s “Bindings” section both still
 said “not published to any package registry” and linked only this repo’s own README, even though
@@ -33912,7 +34280,7 @@ native gem publishing for <code>dstu_core</code> (<code>x86_64-linux</code>, <co
 pre-registered pending publisher. Dormant behind the <code>rubygems</code> GitHub Environment approval
 gate until the next tag. See <code>docs/DECISIONS.md</code> D-190.</li>
 </ul>
-<h3 id="fixed-4"><a class="header" href="#fixed-4">Fixed</a></h3>
+<h3 id="fixed-5"><a class="header" href="#fixed-5">Fixed</a></h3>
 <ul>
 <li>The already-live PyPI and npm package pages (<code>dstu-core</code>) still had README/description text
 written pre-publish, claiming “provisional, not yet published” and offering only from-source
@@ -33932,7 +34300,7 @@ publish - fixed ahead of that first publish. See <code>docs/DECISIONS.md</code> 
 (<code>aarch64-unknown-linux-gnu</code>), built natively on GitHub’s <code>ubuntu-24.04-arm</code> hosted runner (GA for
 public repos since 2025-08-07), no cross-compile toolchain needed.</li>
 </ul>
-<h3 id="fixed-5"><a class="header" href="#fixed-5">Fixed</a></h3>
+<h3 id="fixed-6"><a class="header" href="#fixed-6">Fixed</a></h3>
 <ul>
 <li>v0.3.4’s npm publish (with the idempotency fix from that release) correctly skipped the two
 already-published platform packages and reached <code>dstu-core-win32-x64-msvc</code>, but that package hit
@@ -33945,7 +34313,7 @@ this class of npm block (contacting npm support - renaming doesn’t, per a real
 what un-defers it once support clears the name.</li>
 </ul>
 <h2 id="034---2026-08-13"><a class="header" href="#034---2026-08-13">[0.3.4] - 2026-08-13</a></h2>
-<h3 id="fixed-6"><a class="header" href="#fixed-6">Fixed</a></h3>
+<h3 id="fixed-7"><a class="header" href="#fixed-7">Fixed</a></h3>
 <ul>
 <li>v0.3.3’s npm publish got past the provenance/access fix but hit npm’s own spam-detection
 heuristic on the 3rd platform subpackage (<code>dstu-core-win32-x64-msvc</code>) after two succeeded
@@ -33963,7 +34331,7 @@ npm’s external spam heuristic and rate limits are outside this workflow’s co
 wherever the previous attempt stopped.</li>
 </ul>
 <h2 id="033---2026-08-12"><a class="header" href="#033---2026-08-12">[0.3.3] - 2026-08-12</a></h2>
-<h3 id="fixed-7"><a class="header" href="#fixed-7">Fixed</a></h3>
+<h3 id="fixed-8"><a class="header" href="#fixed-8">Fixed</a></h3>
 <ul>
 <li><code>publish-npm</code>’s <code>napi prepublish</code> step failed publishing every platform subpackage
 (<code>Can't generate provenance for new or private package, you must set access to public</code>) - <code>npm publish --provenance</code> refuses to guess the intended access level for a package that’s never been
@@ -33983,7 +34351,7 @@ failed attempt before retrying (<code>registry.npmjs.org/dstu-core*</code> still
 0.1.0 - the 0.3.1 tag’s <code>publish-pypi</code> run actually went through (see Fixed, below), so this is
 the first release to reflect that as real instead of “prepared, not yet live.”</li>
 </ul>
-<h3 id="fixed-8"><a class="header" href="#fixed-8">Fixed</a></h3>
+<h3 id="fixed-9"><a class="header" href="#fixed-9">Fixed</a></h3>
 <ul>
 <li><code>environment: pypi</code>/<code>npm</code> in <code>release.yml</code> were referenced but never actually protected -
 GitHub auto-creates an environment with zero protection rules the first time a workflow
@@ -34029,7 +34397,7 @@ Packagist is deliberately not part of this pass -
 <code>bindings/php</code> is a compiled <code>ext-php-rs</code> extension, and Packagist only distributes Composer
 (PHP-source) packages (<code>docs/DECISIONS.md</code> D-144).</li>
 </ul>
-<h3 id="fixed-9"><a class="header" href="#fixed-9">Fixed</a></h3>
+<h3 id="fixed-10"><a class="header" href="#fixed-10">Fixed</a></h3>
 <ul>
 <li><code>docs/TASKS.md</code> T-17 and <code>CLAUDE.md</code>’s “MVP scope” both still read “not started” for the
 crates.io publish that actually happened at 0.3.0 above - corrected to reflect reality
@@ -34095,7 +34463,7 @@ measurement can actually detect unbounded growth. <code>#[ignore]</code>d by def
 5 minutes and was killed before finishing); wired into <code>cargo xtask ci</code>’s optional layers and a
 new CI job matrixed across all three OSes (<code>docs/TASKS.md</code> T-200).</li>
 </ul>
-<h3 id="fixed-10"><a class="header" href="#fixed-10">Fixed</a></h3>
+<h3 id="fixed-11"><a class="header" href="#fixed-11">Fixed</a></h3>
 <ul>
 <li><code>crypto_sign</code>/<code>hazmat::dstu4145</code> (<code>m=163</code>): <code>VerifyingKey::from_uncompressed_bytes</code> accepted a
 caller-supplied public key with no on-curve check, and <code>verify</code> never validated its own <code>q</code>
@@ -34137,7 +34505,7 @@ checked exhaustively over all 2^384 possible inputs (T-145).</li>
 <li>CodeQL advanced-setup CI migration, explicit least-privilege CI permissions (T-143); SonarCloud
 static analysis wired into CI (T-140).</li>
 </ul>
-<h3 id="fixed-11"><a class="header" href="#fixed-11">Fixed</a></h3>
+<h3 id="fixed-12"><a class="header" href="#fixed-12">Fixed</a></h3>
 <ul>
 <li>DSTU 4145 <code>scalar_multiply</code> returned a wrong result for scalars at/near the curve’s own group
 order - reachable in-contract at exactly one boundary value (<code>k == n-1</code>). No forgery risk

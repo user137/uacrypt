@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-840787e1.js";
+            window.path_to_searchindex_js = "searchindex-92cf85a7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -228,12 +228,10 @@ observable at the real process boundary. Two real findings from this suite: <cod
 (<code>docs/DECISIONS.md</code> D-187); and confirmation, at this same CLI/file boundary rather than only
 <code>hazmat</code>’s in-process API, that both a constructed order-2 DSTU 4145 public key (<code>verify --key</code>)
 and a constructed order-2 <code>crypto_box</code> ciphertext (<code>box-open</code>, the <code>r=p-1</code> case, D-167 Finding 1)
-are genuinely rejected. <strong>One gap remains, not closed and not silently dropped</strong>: an order-4 (not
-order-2) attack against <code>crypto_box</code>/<code>dstu9041</code> is still open - D-173 investigated this directly at
-the <code>dstu-core</code> level, with full internal-crate access, and could not confirm either way whether a
-concrete order-4 point is even reachable through the public reconstruction API (<code>point_from_x</code>) -
-existence is proven, reachability isn’t. This needs an analytic answer, not more test-writing;
-tracked in <code>docs/TASKS.md</code> T-200/D-173.</p>
+are genuinely rejected. The order-4 question D-173 left open is answered (D-248, 2026-10-22): no
+point of order 4 exists on E256/1, E384/1 or E512/1 - <code>a*d</code> is a square, so the two points at
+infinity are rational and of order 2, and <code>E(F_p) = Z/2 x Z/2 x Z/n</code>. The points outside <code>&lt;P&gt;</code>
+have order <code>2n</code>, and <code>point_from_x</code>’s <code>n*Q</code> check rejects all of them.</p>
 <h2 id="known-cryptanalysis-third-party-literature"><a class="header" href="#known-cryptanalysis-third-party-literature">Known cryptanalysis (third-party literature)</a></h2>
 <p>Three papers sit in <code>docs/papers/</code> and were never actually surfaced anywhere in this project’s
 docs until this note (2026-07-31) — not a font-encoding failure like the ones corrected in

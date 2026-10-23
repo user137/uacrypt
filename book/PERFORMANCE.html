@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-840787e1.js";
+            window.path_to_searchindex_js = "searchindex-92cf85a7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -1039,7 +1039,8 @@ allocation, UAPKI’s <code>dstu7624_init_cmac</code>/<code>update_mac</code>/<c
 messages by ~1.4-2.2x at 1 MiB — the inverse of the small-message picture. Consistent with a fixed
 per-call setup cost dominating small inputs and raw per-byte throughput dominating large ones,
 though the exact per-byte cause (table layout, compiler codegen, etc.) isn’t isolated further here.</p>
-<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-cmac compute --variant &lt;v&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-cmac compute --variant &lt;v&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code> - with a uacrypt 0.6 or earlier binary: the command was removed in
+0.7 (T-298, D-247; <code>hazmat::kalyna_cmac</code> itself is unchanged, so the numbers still describe it).</p>
 <p><strong>Updated 2026-07-26, 10 MiB, N = 50</strong> (T-128’s const-generic round-function fix —
 CMAC is pure block-cipher chaining with no other bottleneck diluting it, unlike GCM’s field
 multiply, so this is the mode where T-128’s gain should show most directly).</p>
