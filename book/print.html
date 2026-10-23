@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-706607d1.js";
+            window.path_to_searchindex_js = "searchindex-cd6279fe.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -592,6 +592,28 @@ with the standard’s text only.</p>
 <code>kalyna-gmac</code>/<code>kalyna-kw</code>/<code>kalyna-xts</code> is the <code>encrypt</code>/<code>decrypt</code>/<code>hash</code> surface above - all eight
 stay as lower-level, hazmat-scoped tools for anyone who explicitly wants that level of control, or
 is benchmarking a specific primitive directly.</p>
+<h2 id="shell-completions-and-the-man-page"><a class="header" href="#shell-completions-and-the-man-page">Shell completions and the man page</a></h2>
+<p><code>uacrypt completions &lt;shell&gt;</code> prints a tab-completion script for bash, zsh, fish or PowerShell, and
+<code>uacrypt man</code> prints the <code>uacrypt(1)</code> manual page (the overview plus every command’s <code>--help</code>).
+Both are built from the same table the argument parser scans with, so they offer exactly the
+flags each command accepts, its subcommands and the fixed values of <code>--variant</code>/<code>--kind</code>; other
+flag values complete as file names (T-264, <code>docs/DECISIONS.md</code> D-257). A script is static -
+completing never runs <code>uacrypt</code> - so regenerate it after upgrading. The benchmark <code>--iterations</code>
+of <code>sign</code>/<code>verify</code>/<code>box-seal</code>/<code>box-open</code> is not offered (see <code>docs/PERFORMANCE.md</code>).</p>
+<pre><code class="language-sh"># bash (bash-completion 2.x loads this directory on demand)
+uacrypt completions bash &gt; ~/.local/share/bash-completion/completions/uacrypt
+# zsh: any directory on $fpath; e.g. fpath=(~/.zfunc $fpath) in ~/.zshrc before compinit
+uacrypt completions zsh &gt; ~/.zfunc/_uacrypt
+# fish
+uacrypt completions fish &gt; ~/.config/fish/completions/uacrypt.fish
+# man page
+mkdir -p ~/.local/share/man/man1 &amp;&amp; uacrypt man &gt; ~/.local/share/man/man1/uacrypt.1
+</code></pre>
+<p>PowerShell (Windows PowerShell 5.1 or PowerShell 7): save the script once, then dot-source it from
+your profile, so no shell start runs <code>uacrypt</code>:</p>
+<pre><code class="language-powershell">uacrypt completions powershell | Set-Content -Encoding ascii "$HOME\uacrypt-completion.ps1"
+Add-Content $PROFILE '. "$HOME\uacrypt-completion.ps1"'
+</code></pre>
 <h2 id="verifying-a-downloaded-release"><a class="header" href="#verifying-a-downloaded-release">Verifying a downloaded release</a></h2>
 <p>From 0.4.0 on, every GitHub Release carries <code>SHA256SUMS</code>, its Sigstore signature bundle
 <code>SHA256SUMS.sigstore.json</code>, and a CycloneDX SBOM (<code>uacrypt.cdx.json</code>); every asset also has a
@@ -9101,7 +9123,10 @@ Windows-vs-Unix signal-delivery differences apply here - confirm the test’s me
 this project’s actual CI runners, not just locally.</p>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-223</strong> Core: fuzz targets for the high-value <code>crypto_*</code> wrappers that currently have none -
+<p><input disabled="" type="checkbox" checked=""> <strong>T-223</strong> (done 2026-10-23, 0.8.0 wave step 3: <code>crypto_secretbox_open</code>, <code>crypto_box_open</code>,
+<code>crypto_box384_open</code>, <code>crypto_box512_open</code> over pinned blobs with the negative property in
+<code>fuzz/common/negative.rs</code>; 20 s each locally, zero findings; control - an <code>open</code> that ignores
+the last tag byte - crashed at once) Core: fuzz targets for the high-value <code>crypto_*</code> wrappers that currently have none -
 <code>crypto_secretbox</code>, <code>crypto_box</code>, <code>crypto_box512</code>. These parse untrusted wire-format bytes
 directly from CLI/binding callers (<code>nonce||ciphertext||tag</code>, the sealed KEM blob), unlike the
 hazmat-level primitives which already get fuzzed indirectly through their AEAD/MAC/KW callers.
@@ -9120,7 +9145,7 @@ historically-32-bit <code>Buffer</code> lengths in Node.js are the two languages
 most plausible - do those two first if sequencing this incrementally.</p>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-225</strong> Core: fuzz targets for the remaining primitives T-223’s original entry listed
+<p><input disabled="" type="checkbox" checked=""> <strong>T-225</strong> Core: fuzz targets for the remaining primitives T-223’s original entry listed
 before it was narrowed (2026-09-02) - tier-2 <code>crypto_stream</code>/<code>crypto_sign</code>/<code>crypto_sign257</code>, then
 the <code>hazmat</code> primitives that still have none at all (<code>dstu4145</code>, <code>dstu9041</code>, <code>kalyna_cbc</code>/<code>ctr</code>/
 <code>ecb</code>/<code>ofb</code>, <code>kupyna_kmac</code>/<code>kupyna_kdf</code>). Same three-spot sync as T-223. Lower priority than
@@ -9129,7 +9154,16 @@ internal IV, the signature verifiers take structured key+sig not a length-prefix
 hazmat-level and already exercised indirectly. Do after Batch 3c unless a T-223 finding points
 straight at one of them.</p>
 <ul>
-<li><strong>Done 2026-09-26:</strong> <code>crypto_pwhash_verify</code> (T-272’s attachment, D-222) - the 11th target.
+<li><strong>Done 2026-09-26:</strong> <code>crypto_pwhash_verify</code> (T-272’s attachment, D-222) - the 11th target.</li>
+<li><strong>Done 2026-10-23 (0.8.0 wave step 3, phase A):</strong> <code>crypto_sign_verify</code>/<code>crypto_sign257_verify</code>
+(input <code>key || sig || msg</code>, <code>from_uncompressed_bytes</code> included; spare key bits checked by hand
+first - they fail <code>is_on_curve</code>) and the negative property in <code>crypto_secretstream</code> (the pinned
+<code>secretstream-file/v2.json</code> record through <code>pull</code>). Zero findings.</li>
+<li><strong>Done 2026-10-23 (phase B):</strong> the 9 hazmat targets <code>kalyna_cbc</code>/<code>ctr</code>/<code>ecb</code>/<code>ofb</code>/<code>xts</code>,
+<code>kupyna_kmac</code>/<code>kupyna_kdf</code>, <code>dstu4145</code> (<code>verify</code> on arbitrary q/r/s/hash, plus sign-then-verify
+on a fixed key) and <code>dstu9041</code> (clause 12 <code>decrypt</code> on arbitrary ciphertext+key, all three
+curves) - 28 targets in all. Local 20 s runs clean (<code>dstu9041</code> 33934 runs). <code>crypto_stream</code> stays
+without a target: no wire parsing, <code>decrypt</code> cannot fail, <code>strumok</code> is fuzzed underneath.
 <strong>2026-09-22 scope addition</strong>: negative-property fuzz check - see “Security audit remediation” (“Attached to existing tasks”).</li>
 </ul>
 </li>
@@ -9560,7 +9594,7 @@ accepted, fold it into T-232’s wire-format break rather than a separate one. S
 RFC 9180’s <code>kem_context = enc ‖ pkR</code> -&gt; bind <code>kem_ct ‖ recipient_pk</code>; <code>derive_subkey</code>’s fixed
 8-byte context can’t carry it, so add a new Kupyna-KMAC-based KDF entry point + <code>D-</code> entry - no
 HKDF/HMAC-Kupyna (uncited construction). No sender static key exists (anonymous sealed box).</li>
-<li><input disabled="" type="checkbox"> <strong>T-249</strong> (coverage gaps - what the 2026-09-22 audit did <strong>not</strong> check) Second pass over:
+<li><input disabled="" type="checkbox" checked=""> <strong>T-249</strong> (<strong>done 2026-10-23, D-256</strong>: findings T-312..T-316 in the 0.8.0 wave) (coverage gaps - what the 2026-09-22 audit did <strong>not</strong> check) Second pass over:
 the <code>crypto_auth</code>/<code>crypto_kdf</code>/<code>crypto_generichash</code>/<code>crypto_pwhash</code>/<code>crypto_stream</code> wrappers
 beyond a grep of their compares; <code>hazmat::strumok</code>; the Kalyna key schedule; <code>tables.rs</code>
 transcription (relies on KATs/BC today); <code>dstu9041</code> l=512 files line by line (only structurally
@@ -10268,7 +10302,7 @@ documented <code>#[allow(clippy::cast_possible_truncation)]</code>, the x86 sibl
 clippy, all four CI invocations, clean; Pi (1.98.1) <code>cargo xtask clippy</code> + getrandom/small-tables
 clippy clean, <code>cargo test -p dstu-core --all-features</code> 760/760. The <code>master</code> cherry-pick is not
 done (its reason was wrong; owner decides).</li>
-<li><input disabled="" type="checkbox"> <strong>T-264</strong> Shell completions (<code>uacrypt completions bash|zsh|fish|powershell</code>) and a man page,
+<li><input disabled="" type="checkbox" checked=""> <strong>T-264</strong> (<strong>done 2026-10-23, D-257</strong>: per-command <code>Flags</code> table the parsers scan with; static scripts; <code>uacrypt man</code> to stdout; hidden flags never offered) Shell completions (<code>uacrypt completions bash|zsh|fish|powershell</code>) and a man page,
 generated from the same command table the parser uses.</li>
 <li><input disabled="" type="checkbox" checked=""> <strong>T-265</strong> (<strong>done 2026-10-19</strong>: pushed on <code>1fa8634</code>, every workflow green incl.
 <code>bindings-php</code> and <code>miri.yml</code> (~60 min); the binding gate and the C++/.NET/Go “too short” fix
@@ -11404,12 +11438,15 @@ registries (Packagist, NuGet, Maven Central, pkg.go.dev, vcpkg) - each publish o
 runs in order (T-164 deferred, below). Pushes batched
 per phase (<code>rust.yml</code>/<code>miri.yml</code> are <code>cancel-in-progress</code>; a docs push mid-run cost a full run on
 0.7.0 release day).</p>
-<p><strong>RESUME HERE (state at /clear, 2026-10-23):</strong> 0.7.0 fully released and closed (registries live,
-GHSA published, yanks done, CodeQL clean, winget PR #460150 waiting on a moderator). <code>master</code> =
-<code>1b13b68</code> (PHP <code>ctutils</code> RUSTSEC fix): every workflow green, <code>rust</code> still running at save time -
-check it first. Unpushed, docs only: <code>8397cf6</code>, <code>2a9c0c0</code>, <code>25060fd</code> (push after <code>rust</code> is done).
-Owner confirmed the order below. <strong>T-311 done 2026-10-23 (D-255), T-310 done (D-239 addendum); next: T-223/T-225 fuzz.</strong> Pi: packages up to date (PHP 8.2.35
-by unattended-upgrades, Docker 29.9.2), Docker stays disabled. Nothing uncommitted.</p>
+<p><strong>RESUME HERE (2026-10-23, third save):</strong> 0.7.0 closed (winget PR #460150 waits on a
+moderator). Done today, all local commits <strong>not pushed yet</strong> (owner: one batched push at the end):
+<strong>T-311</strong> (<code>779acc7</code>) and <strong>T-310</strong> (<code>daeb58f</code>+<code>5d32cc2</code>) are on <code>master</code> (CI green, <code>miri</code> too);
+<strong>T-223/T-225</strong> phase A (<code>2563770</code>) and B (<code>b795494</code>), <strong>T-249</strong> (D-256, findings T-312..T-316).
+<strong>T-264</strong> done (D-257). Next: Pi clippy/test, closing
+<code>advisor</code>, push <code>HEAD:master</code>, <code>gh run view</code> every workflow (28 <code>fuzz-smoke</code> jobs). Open with the
+owner: the independent reviewer for T-249 and for T-310; whether T-312..T-316 join 0.8.0.
+Local fuzz on Windows: <code>call vcvars64.bat &amp;&amp; cargo +nightly-x86_64-pc-windows-msvc fuzz run --target x86_64-pc-windows-msvc &lt;t&gt;</code> from <code>crates/dstu-core</code>. Pi: Kani per harness under
+<code>ulimit -v</code>, never <code>gf2m512</code> (rebooted it, 2026-10-23).</p>
 <p><strong>Code chain:</strong></p>
 <ol>
 <li><input disabled="" type="checkbox" checked=""> <strong>T-311</strong> (done 2026-10-23, D-255: native remainder after an aggressive GC, 2 MiB; Pi:
@@ -11431,12 +11468,47 @@ the hazmat ones without a target (<code>dstu4145</code>, <code>dstu9041</code>, 
 blob inside the target; <code>input != original =&gt; open fails</code>; also for <code>crypto_secretstream</code>.
 Three-spot sync each (<code>fuzz/Cargo.toml</code>, <code>rust.yml</code> <code>fuzz-smoke</code>, <code>FUZZ_TARGETS</code> incl. its
 <code>[&amp;str; N]</code> count).</li>
-<li><strong>T-249</strong> second-pass audit (read-only; findings become new tasks, not fixes in the same pass):
+<li><input disabled="" type="checkbox" checked=""> <strong>T-249</strong> (done 2026-10-23, D-256; findings T-312..T-316 below) second-pass audit (read-only; findings become new tasks, not fixes in the same pass):
 the <code>crypto_auth/kdf/generichash/pwhash/stream</code> wrappers, <code>hazmat::strumok</code>, the Kalyna key
 schedule, <code>tables.rs</code>, <code>dstu9041</code> l=512 (and l=384) line by line against l=256, D-118’s two
 pitfalls read in full in Node.js/PHP/Java/.NET/Go/C++, and actually running Miri/Kani/longer
-fuzz locally. Offer the independent reviewer subagent at the end (owner’s yes).</li>
-<li><strong>T-264</strong> completions (bash/zsh/fish/PowerShell) and a man page, hand-written generators, no
+fuzz locally. Offer the independent reviewer subagent at the end (owner’s yes).
+<strong>T-249 findings (D-256), all Low, none advisory-relevant; owner: in 0.8.0 or later:</strong>
+<ul>
+<li><input disabled="" type="checkbox"> <strong>T-312</strong> (Low, constant-time) <code>tables::gf_mul</code> branches on the secret byte’s top bit in
+the source; it is production code under <code>small-tables</code> (every Kalyna/Kupyna round, Strumok’s
+<code>T</code>). Shipped asm is branchless in all 8 cells read (masks/IT/cmov, rustc 1.97.1) only
+because LLVM chooses so; <code>asm-check</code> builds the default profile only. Fix: mask-form
+<code>gf_mul</code> (<code>0u8.wrapping_sub(x &gt;&gt; 7) &amp; 0x1D</code>, same for <code>y &amp; 1</code>), and <code>small-tables</code> cells in
+<code>asm-check</code> (a zero-jump row where <code>gf_mul</code>/<code>mds_column_via_gf_mul</code> is its own symbol, plus
+a crate scan for a conditional branch in front of a <code>0x1D</code> reduction).</li>
+<li><input disabled="" type="checkbox"> <strong>T-313</strong> (Low, zeroization) D-249 leftovers: (a) KMAC’s last <code>compress_block</code> (the tail
+block holding <code>~K</code>) leaves <code>columns_buf</code>/<code>compress_n</code>’s <code>q_input</code>/<code>t_input</code> and nothing
+overwrites them - D-249’s “message bytes, overwritten by the next block” does not hold for
+KMAC; (b) <code>kalyna::rotate_bytes_left</code>’s <code>rotated</code> holds each odd round key; (c)
+<code>strumok::Core::new</code>’s <code>init_state</code> result (key words XOR IV). Fix: <code>Zeroizing</code> for (b)/(c);
+for (a) measure a per-block wipe first (every hash pays it), else wipe on the KMAC path only;
+correct D-249’s text either way.</li>
+<li><input disabled="" type="checkbox"> <strong>T-314</strong> (Low, error path) C++ <code>SecretStreamDecryptor</code> (<code>ReadPrefix</code>/<code>Step</code> ignore
+<code>badbit</code>) and PHP <code>DstuCoreSecretStreamReader</code> (<code>readPrefix</code>/<code>step</code> treat <code>fread() === false</code>
+as EOF): a read error is reported as truncation/“too short”, the I/O cause lost (still
+fail-closed). Fix: check <code>in.bad()</code> / <code>false</code> and raise an I/O error; a test with a failing
+stream in each.</li>
+<li><input disabled="" type="checkbox"> <strong>T-315</strong> (Low, robustness) <code>crypto_pwhash::hash_password</code> lets <code>argon2</code> allocate its
+blocks (1 GiB at <code>Sensitive</code>), so allocation failure aborts the process instead of
+<code>PwHashError::OutOfMemory</code> as in <code>derive_key</code>/<code>verify_password</code>. Fix: <code>try_reserve_exact</code> +
+<code>hash_password_into_with_memory</code> + PHC encoding, with the existing <code>hash_password</code> tests.</li>
+<li><input disabled="" type="checkbox"> <strong>T-316</strong> (Low, docs/test) Make D-256’s table derivation a <code>cfg(not(small-tables))</code> unit
+test in <code>strumok.rs</code> (<code>Ti</code> from <code>tables::SBOXES</code>/MDS; <code>MUL_ALPHA</code> from <code>g(z)</code>’s coefficients
+via <code>gf_mul</code>; <code>mul_alpha_inv(mul_alpha(w)) == w</code>), then retire “not transcription-verified in
+full” for Strumok’s tables (CLAUDE.md x2, <code>docs/ORACLES.md</code>, <code>strumok.rs</code>/<code>crypto_stream.rs</code>
+module docs, <code>docs/pseudocode/strumok.md</code>), citing D-256.</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox" checked=""> <strong>T-264</strong> (done 2026-10-23, D-257; the precondition below failed - hidden <code>--iterations</code>/
+<code>decrypt --passphrase</code>, help texts naming other commands’ flags - so the flag table came first,
+plan mode + advisor; owner: hidden stay hidden, <code>man</code> to stdout, release archives unchanged)
+completions (bash/zsh/fish/PowerShell) and a man page, hand-written generators, no
 new dependency. Source: the existing <code>COMMANDS</code> table (<code>lib.rs</code>, help text per command, already
 test-checked against <code>run</code>’s dispatch) - flags taken from each help text’s <code>--flag</code> tokens, with
 a test that every flag the parser accepts appears there. If that does not hold, a per-command
@@ -33873,11 +33945,152 @@ managed growth: committed growth that is resident is subtracted cleanly, the con
 inflation, but lowers the floor to ~235 B per iteration whenever the GC shrinks; the aggressive
 collect fixes the cause instead and keeps the formula. Raising the raw-VmRSS threshold (hides the
 retention and still cannot see a leak, D-234).</p>
+<h2 id="d-256-t-249-second-pass-audit---method-and-result-2026-10-23"><a class="header" href="#d-256-t-249-second-pass-audit---method-and-result-2026-10-23">D-256: T-249 second-pass audit - method and result (2026-10-23)</a></h2>
+<p><strong>Scope</strong> (T-249, read-only; findings became T-312..T-316, nothing fixed in this pass): the
+<code>crypto_auth</code>/<code>kdf</code>/<code>generichash</code>/<code>pwhash</code>/<code>stream</code> wrappers, <code>hazmat::strumok</code>, the Kalyna key
+schedule, <code>tables.rs</code>, <code>dstu9041</code> l=384/512 against l=256, D-118’s two pitfalls in Node.js, PHP,
+Java, .NET, Go and C++, and actually running the test/Miri/Kani/fuzz layers. Hardware side
+channels stay out of scope.</p>
+<p><strong>Method.</strong> Code read in full where named below; the tables and curve constants checked by
+throwaway scripts (not committed - T-316 makes the table part a test), not by eye:</p>
+<ul>
+<li><code>tables.rs</code>: <code>SBOXES</code>/<code>SBOXES_DEC</code> equal <code>kalyna-reference</code> <code>sboxes_enc</code>/<code>dec</code>,
+<code>kupyna-reference</code> <code>sboxes</code>, UAPKI <code>s_blocks_default</code>/<code>inv_s_blocks_default</code> and Bouncy Castle
+<code>DSTU7624Engine</code> <code>S0..S3</code>/<code>T0..T3</code>; each <code>SBOXES_DEC[i]</code> inverts <code>SBOXES[i]</code>; <code>MDS_MATRIX</code>/
+<code>MDS_INV_MATRIX</code> equal <code>kalyna-reference</code> and multiply to the identity over GF(2^8)/0x11D;
+<code>MDS_TABLE</code>/<code>MDS_INV_TABLE</code> recomputed from them. Zero mismatches.</li>
+<li>Strumok: <code>T0..T7</code> recomputed as the MDS column of <code>SBOXES[i % 4]</code> at row <code>i</code> (so they now rest
+on the four sources above, not on <code>strumok-dstu8845</code> alone) and equal to that oracle;
+<code>MUL_ALPHA</code>/<code>MUL_ALPHA_INV</code> equal UAPKI and <code>strumok-dstu8845</code>, are GF(2)-linear,
+<code>mul_alpha_inv(mul_alpha(w)) == w</code> for 100k random words, and <code>MUL_ALPHA[b]</code> byte <code>j</code> is
+<code>b * g_j</code> over GF(2^8)/0x11D with <code>(g_0..g_7) = (γ^2, 0, 0, γ^70, γ^224, γ^2, γ^166, γ^170)</code>:
+exactly <code>g(z) = z^8 + γ^170 z^7 + γ^166 z^6 + γ^2 z^5 + γ^224 z^4 + γ^70 z^3 + γ^2</code> of
+<code>docs/papers/Strumok.pdf</code> section 2 (γ the root of p(y), checked against the paper’s text
+layer, not the DSTU scan). All ten Strumok tables are now derived independently, not only
+spot-checked (D-198).</li>
+<li><code>dstu9041</code>, all three sizes: <code>p = 2^l - C</code> prime and <code>= 5 mod 8</code>; <code>P_MINUS_2</code>,
+<code>(p-1)/2</code>, <code>(p-1)/4</code>, <code>(p+3)/8</code> and <code>W = 2^((p-1)/4)</code> (<code>W^2 = -1</code>) consistent; <code>C^2 &lt; 2^64</code>
+(two folds in <code>reduce_wide</code> cannot carry out); <code>A_DIV_D = a/d</code>; the base point satisfies
+<code>x^2 + a*y^2 = 1 + d*x^2*y^2</code>; <code>n</code> prime, <code>4n</code> within Hasse’s bound, <code>n*P = (1, 0)</code> and
+<code>(n-1)*P = -P</code>. <code>a</code> and <code>d</code> are both non-residues (<code>a/d</code> a residue), as T-307 found. A
+normalized diff (comments, sizes and constants masked) of <code>fp</code>/<code>curve</code>/<code>message</code>/<code>encryption</code>
+384 and 512 against 256 shows only the size-driven lines plus the documented 384 differences
+(KW-p and <code>kappa</code> = the low 32 bytes of <code>x</code>, D-241/D-244); <code>L_MAX_P</code> = <code>l - 8 - 8*L_H - 16</code>
+at every size.</li>
+<li><code>gf_mul</code> under <code>small-tables</code>: release asm for <code>--no-default-features --features small-tables</code>, x86_64-unknown-linux-gnu and aarch64-unknown-none at O3, thumbv7em-none-eabihf and
+riscv32imc-unknown-none-elf at O3/s/z (rustc 1.97.1). Every conditional branch in
+<code>tables</code>/<code>kalyna</code>/<code>kupyna</code>/<code>strumok</code> listed with the instructions that set it: loop counters,
+lengths and <code>columns</code>/<code>nb</code> dispatch only. The reduction step compiles to a sign mask (riscv,
+<code>slli 24; srai 31; andi 29</code>), IT-predication (thumb, <code>it mi; eormi</code>) or <code>cmov</code>/masks (x86_64,
+aarch64); no XOR with <code>0x1D</code> follows a conditional branch in any cell (two hits of the scan
+read and dismissed: a loop-setup <code>movs r1, #29</code>, an <code>lsl #29</code>).</li>
+</ul>
+<p><strong>Clean</strong> (no finding): the five wrappers (fixed-length key types forbid the hazmat error cases,
+<code>Zeroize</code> on drop, constant-time compares inherited); <code>strumok</code> init/next/strm/bulk path (ring
+index arithmetic and the <code>head == 0</code> rotation hold, every slice bound visible at the line);
+the Kalyna key schedule against <code>kalyna-reference</code> step for step (Kσ, the even/odd rounds, the
+<code>nk != nb</code> half-buffer branch); <code>crypto_pwhash</code> verify’s bounds before allocation (D-222). D-118
+in the six bindings (a re-confirmation - TASKS’ 2026-10-22 audit already covered this item by
+grep and reading): every encryptor finalizes only on an explicit success call (<code>Complete</code>/
+<code>complete()</code>/<code>Finish()</code>/<code>close()</code> reached only on success in PHP’s <code>withStream</code>, Node’s <code>_flush</code>
+only on <code>.end()</code>, never <code>_destroy</code>); every decryptor collects exactly <code>next_len()</code> bytes and calls
+<code>finish()</code> on a short read. The trailing-data rule holds by construction in the codec: after
+<code>Final</code>, <code>next_len()</code> is 1, so any extra byte arrives as a full <code>feed</code> and fails; a partial record
+dropped at <code>finish()</code> is <code>Truncated</code>.</p>
+<p><strong>Findings</strong> (all Low, none advisory-relevant - nothing exploitable today):</p>
+<ul>
+<li>T-312: <code>tables::gf_mul</code> branches on the secret byte’s top bit and on the multiplier’s low bit
+in the source (<code>if high_bit == 0x80</code>), and it is production code under <code>small-tables</code>
+(every Kalyna/Kupyna round and Strumok’s <code>T</code>). The hard constraint is “no secret-dependent
+branching”; the shipped asm is branchless only because LLVM chooses masks today, and
+<code>asm-check</code> (D-229) builds the default profile only.</li>
+<li>T-313: D-249 left three key-derived copies. (a) Kupyna’s per-block column buffers were kept on
+the grounds that they hold message bytes the next block overwrites; under KMAC, <code>finalize</code>’s
+last <code>compress_block</code> processes the tail block holding <code>~K</code> and no later block overwrites it
+(<code>compress_block</code>’s <code>columns_buf</code>, <code>compress_n</code>’s <code>q_input</code>/<code>t_input</code>). (b) <code>kalyna:: rotate_bytes_left</code>’s <code>rotated</code> scratch holds each odd round key (D-249 lists <code>key_expand_odd</code>’s
+copies as wiped; its helper’s are not). (c) <code>strumok::Core::new</code>’s local <code>s</code> from <code>init_state</code> is
+key words XOR IV, never wiped.</li>
+<li>T-314: C++ <code>SecretStreamDecryptor</code> (<code>ReadPrefix</code>/<code>Step</code>, <code>badbit</code> not checked) and PHP
+<code>DstuCoreSecretStreamReader</code> (<code>readPrefix</code>/<code>step</code>, <code>fread() === false</code>) treat a read error as end
+of input: still fail-closed (truncation, or the authenticated <code>Final</code> when it falls on a record
+boundary), but the I/O error is reported as “truncated”/“too short” and its cause is lost. Go,
+.NET, Java and Node propagate it.</li>
+<li>T-315: <code>crypto_pwhash::hash_password</code> lets <code>argon2</code> allocate its blocks itself, so an allocation
+failure (1 GiB at <code>Strength::Sensitive</code>) aborts the process instead of returning
+<code>PwHashError::OutOfMemory</code> as <code>derive_key</code> and <code>verify_password</code> do.</li>
+<li>T-316 (docs/test): make the table derivation above a test and retire the “not transcription-
+verified in full” caveat for Strumok’s tables.</li>
+</ul>
+<p><strong>Runs.</strong></p>
+<ul>
+<li><code>cargo xtask test</code> on Windows (default + <code>--all-features</code>): 176 suites, 2836 passed, 0 failed.</li>
+<li>Kani on the Pi (<code>cargo-kani</code> 0.62.0): 20 of the 21 harnesses <code>SUCCESSFUL</code>; the Pi rebooted
+(8 GB, CBMC) inside <code>gf2m_wide::kani_proofs::gf2m512::reduce_matches_bit_serial_reference</code>, which
+passes in CI’s <code>kani</code> job (all 21, on <code>5d32cc2</code>).</li>
+<li>Miri on the Pi (CI’s flags: default profile, <code>MIRIFLAGS=-Zmiri-disable-isolation</code>,
+<code>PROPTEST_CASES=1</code>, <code>ulimit -v 5 GB</code>): <code>dstu-core --lib</code> 152, <code>--test strumok</code> 18,
+<code>kupyna_kmac</code> 7, <code>crypto_secretstream_file</code> 10, <code>kalyna</code> 17 - all passed, no UB. The full
+sharded <code>miri.yml</code> run on <code>5d32cc2</code> was green too.</li>
+<li><code>cargo fuzz</code> on Windows (MSVC, ASan), all 28 targets 180 s each: 13.6 M executions, no crash or
+failed property (from 4.3 k for <code>crypto_pwhash_verify</code> to 5.4 M for <code>strumok</code>).</li>
+</ul>
+<p><strong>Not done.</strong> The independent strongest-model reviewer the 0.8.0 plan offers at the end of T-249
+(owner’s call); <code>gf_mul</code> timing on real Cortex-M (IT-predicated instructions are assumed
+fixed-cost, not measured - no hardware here, and no side-channel claim follows either way).</p>
+<h2 id="d-257-uacrypt-completions-and-uacrypt-man-from-the-parsers-own-flag-table-t-264-2026-10-23"><a class="header" href="#d-257-uacrypt-completions-and-uacrypt-man-from-the-parsers-own-flag-table-t-264-2026-10-23">D-257: <code>uacrypt completions</code> and <code>uacrypt man</code> from the parser’s own flag table (T-264, 2026-10-23)</a></h2>
+<p><strong>Problem.</strong> The 0.8.0 plan meant to take each command’s flags from its <code>--help</code> text and test
+that every parsed flag appears there. That does not hold, both ways: the parsers accept flags the
+help hides on purpose (the D-34 benchmark <code>--iterations</code> on <code>sign</code>/<code>verify</code>/<code>box-seal</code>/<code>box-open</code>;
+<code>decrypt --passphrase</code>, accepted only to refuse it with a hint), and the help texts name other
+commands’ flags (<code>encrypt</code>’s mentions <code>--kind</code>, <code>hash</code>’s <code>--variant</code>), so help-derived lists would
+offer flags the command refuses.</p>
+<p><strong>Decision</strong> (owner, 2026-10-23, on the three forks):</p>
+<ul>
+<li><strong>The parser’s lists are the table.</strong> <code>struct Flags { values, bools, hidden, choices }</code>, one
+<code>const</code> per parser; every <code>parse_*_args</code> scans with <code>X_FLAGS.values</code>/<code>X_FLAGS.bools</code>
+(<code>ArgScanner::scan</code> unchanged). <code>COMMANDS</code> became <code>&amp;[Command { name, help, subcommands, flags }]</code>.
+Checked: the pre-change and post-change binaries answer “unknown flag” identically for every
+command x every flag of any command (408 runs), and unit tests keep the table and the parsers
+equal both ways (each listed flag accepted, each other command’s flag refused), no inline scan
+list left, every visible flag a whole <code>--flag</code> token of its help, no hidden one there.</li>
+<li><strong>Hidden flags stay hidden</strong>: accepted, never completed, never in <code>--help</code> or the man page.
+“Did you mean” still draws from every accepted flag, hidden ones included (unchanged behaviour:
+a typo of <code>--iterations</code> is still corrected).</li>
+<li><strong>Static scripts</strong> for bash, zsh, fish and PowerShell, generated from <code>COMMANDS</code>; completing never
+runs <code>uacrypt</code>, so the script must be regenerated after an upgrade (its header says so). Names
+only, no descriptions: every word is <code>[A-Za-z0-9-]</code> (a unit test), so no shell needs escaping
+rules. <code>--iterations</code> completes to nothing, <code>--variant</code>/<code>--kind</code> to their values, every other
+value flag to file names.</li>
+<li><strong><code>uacrypt man</code> prints roff to stdout</strong> (no generated file in the repo to go stale); <code>.TH</code> carries
+only the crate version, no date, so the output is deterministic. Text is escaped for no-fill
+mode (<code>\e</code>, <code>\-</code>, <code>\&amp;</code> before a leading <code>.</code>/<code>'</code>, <code>\[uXXXX]</code> for non-ASCII).</li>
+<li><strong>Not in the release archives yet</strong> (<code>release.yml</code> unchanged).</li>
+</ul>
+<p><strong>Tests.</strong> Real shells, running the completer: Git Bash on Windows (located through <code>git --exec-path</code>, since a bare <code>bash</code> may be WSL’s) and bash elsewhere (<code>COMP_WORDS</code>/<code>COMPREPLY</code>),
+PowerShell (<code>TabExpansion2</code>), fish (<code>complete -C</code>), <code>zsh -n</code>; <code>mandoc -Tlint</code>/<code>groff -Tutf8 -z -ww</code> on the
+man page. Ten shared cases (command prefix, subcommand slot, a visible and a hidden <code>--iterations</code>,
+<code>--passphrase</code> vs <code>--passphrase-file</code>, <code>--kind</code>/<code>--variant</code> values, <code>help &lt;command&gt;</code>, <code>completions &lt;shell&gt;</code>, a file name). A missing shell is skipped (a <code>SKIPPED</code> line, seen only with <code>--nocapture</code>);
+an installed one that fails or hangs fails the test. Actually run so far: bash (Git Bash, the Pi;
+CI Linux/macOS) and PowerShell (Windows; <code>pwsh</code> on CI); zsh only parsed (<code>zsh -n</code>, macOS CI); the fish
+script has not run anywhere yet (no fish on the dev machine, the Pi or CI). Misuse (<code>completions</code>, <code>completions tcsh</code>, <code>completions bash extra</code>, <code>man extra</code>) exits 2 with nothing on stdout; a failing stdout is a
+<code>CliError::Io</code>, not a panic.</p>
+<p><strong>Rejected.</strong> Help-text tokens as the source (wrong both ways, above). A test-only hook recording
+<code>ArgScanner::scan</code>’s arguments (proves the lists match only for the calls a test makes, and
+completions would still need a table). Dynamic completion calling back into <code>uacrypt</code> (runs a
+binary on every Tab; a static script is enough for a fixed command set). A checked-in
+<code>docs/uacrypt.1</code> (one more generated file to regenerate and diff).</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
+<h3 id="added"><a class="header" href="#added">Added</a></h3>
+<ul>
+<li><strong><code>uacrypt completions bash|zsh|fish|powershell</code> and <code>uacrypt man</code></strong> (T-264,
+<code>docs/DECISIONS.md</code> D-257): a tab-completion script for each shell and the <code>uacrypt(1)</code> manual
+page, both generated from the table the argument parser uses, so they offer exactly the flags
+each command accepts. See <code>docs/CLI.md</code> “Shell completions and the man page”.</li>
+</ul>
 <h3 id="removed"><a class="header" href="#removed">Removed</a></h3>
 <ul>
 <li><strong>Breaking - reading the 0.4-0.6 <code>crypto_box</code> format</strong> (T-310, <code>docs/DECISIONS.md</code> D-239
@@ -33887,7 +34100,7 @@ as an unsupported version, like every other <code>open</code> already did. To ke
 with uacrypt 0.7.x (<code>box-open</code>) or dstu-core 0.7.x (<code>open_v2_legacy</code>) and seal it again.</li>
 </ul>
 <h2 id="070---2026-10-23"><a class="header" href="#070---2026-10-23">[0.7.0] - 2026-10-23</a></h2>
-<h3 id="added"><a class="header" href="#added">Added</a></h3>
+<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
 <ul>
 <li><strong><code>dstu-core</code>: Kupyna-384</strong> (T-254, <code>docs/DECISIONS.md</code> D-242): <code>hazmat::kupyna::Kupyna384</code> and
 <code>Kupyna384Hasher</code>, checked against DSTU 7564 annex Б and Bouncy Castle. <code>hazmat</code> only:
@@ -34002,7 +34215,7 @@ without being read.</li>
 dependency of <code>ext-php-rs</code>).</li>
 </ul>
 <h2 id="060---2026-10-11"><a class="header" href="#060---2026-10-11">[0.6.0] - 2026-10-11</a></h2>
-<h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
+<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
 <ul>
 <li><strong><code>dstu-core</code>: one stream-file codec</strong>, <code>crypto_secretstream::FileEncryptor</code>/<code>FileDecryptor</code>
 (T-284, <code>docs/DECISIONS.md</code> D-235): the <code>uacrypt encrypt</code> file format (D-208) implemented once,
@@ -34140,7 +34353,7 @@ or a byte counter for stdin once 64 MiB have been read - only when stderr is a t
 10 redraws a second, erased before the result or error is printed. No flag, no new dependency;
 with stderr redirected or piped nothing changes.</li>
 </ul>
-<h3 id="added-2"><a class="header" href="#added-2">Added</a></h3>
+<h3 id="added-3"><a class="header" href="#added-3">Added</a></h3>
 <ul>
 <li><strong>Passphrase encryption</strong> (T-262, <code>docs/DECISIONS.md</code> D-219), like <code>age -p</code>:
 <code>encrypt --passphrase</code> asks twice on the terminal without echo, <code>encrypt --passphrase-file &lt;path&gt;</code> reads the first line of a file (for scripts); <code>decrypt</code> recognises a passphrase file by
@@ -34272,7 +34485,7 @@ scalar multiplication.</li>
 so it is unreachable in practice. The new <code>SecretstreamError::CounterExhausted</code> variant is
 <code>DSTU_ERR_FINALIZED</code> in the C ABI (T-245a).</li>
 </ul>
-<h3 id="added-3"><a class="header" href="#added-3">Added</a></h3>
+<h3 id="added-4"><a class="header" href="#added-4">Added</a></h3>
 <ul>
 <li>
 <p>Verifiable releases (T-252). Every GitHub Release now carries <code>SHA256SUMS</code> with a Sigstore
@@ -34419,7 +34632,7 @@ current-state line, pointing to <code>docs/CHANGELOG.md</code> for what changed 
 re-narrating it in the banner itself.</li>
 </ul>
 <h2 id="036---2026-08-13"><a class="header" href="#036---2026-08-13">[0.3.6] - 2026-08-13</a></h2>
-<h3 id="added-4"><a class="header" href="#added-4">Added</a></h3>
+<h3 id="added-5"><a class="header" href="#added-5">Added</a></h3>
 <ul>
 <li><code>build-ruby-gems</code>/<code>publish-rubygems</code> jobs in <code>release.yml</code> (T-164): cross-compiled RubyGems
 native gem publishing for <code>dstu_core</code> (<code>x86_64-linux</code>, <code>aarch64-linux</code>, <code>arm64-darwin</code>,
@@ -34441,7 +34654,7 @@ gemspec had a distinct, more serious bug caught in the same sweep: <code>README.
 publish - fixed ahead of that first publish. See <code>docs/DECISIONS.md</code> D-191.</li>
 </ul>
 <h2 id="035---2026-08-13"><a class="header" href="#035---2026-08-13">[0.3.5] - 2026-08-13</a></h2>
-<h3 id="added-5"><a class="header" href="#added-5">Added</a></h3>
+<h3 id="added-6"><a class="header" href="#added-6">Added</a></h3>
 <ul>
 <li><code>dstu-core-linux-arm64-gnu</code> - a new npm platform package for the Node.js bindings
 (<code>aarch64-unknown-linux-gnu</code>), built natively on GitHub’s <code>ubuntu-24.04-arm</code> hosted runner (GA for
@@ -34492,7 +34705,7 @@ lacking <code>contents: write</code> in this job, failing 401 against) <code>rel
 failed attempt before retrying (<code>registry.npmjs.org/dstu-core*</code> still 404).</li>
 </ul>
 <h2 id="032---2026-08-12"><a class="header" href="#032---2026-08-12">[0.3.2] - 2026-08-12</a></h2>
-<h3 id="added-6"><a class="header" href="#added-6">Added</a></h3>
+<h3 id="added-7"><a class="header" href="#added-7">Added</a></h3>
 <ul>
 <li><code>dstu-core</code> (Python bindings) is now genuinely live on <a href="https://pypi.org/project/dstu-core/">PyPI</a>
 0.1.0 - the 0.3.1 tag’s <code>publish-pypi</code> run actually went through (see Fixed, below), so this is
@@ -34527,7 +34740,7 @@ crates.io/PyPI don’t need re-publishing, just <code>dstu-core</code>/<code>uac
 <code>0.3.2</code> so <code>cargo publish</code> has something new to accept.</li>
 </ul>
 <h2 id="031---2026-08-12"><a class="header" href="#031---2026-08-12">[0.3.1] - 2026-08-12</a></h2>
-<h3 id="added-7"><a class="header" href="#added-7">Added</a></h3>
+<h3 id="added-8"><a class="header" href="#added-8">Added</a></h3>
 <ul>
 <li><code>crypto_box512</code>/<code>crypto_sign257</code>: wired into <code>dstu-core-capi</code> and all eight language bindings
 (Python/Node.js/Ruby/Java/PHP/.NET/Go/C++) - both landed in <code>dstu-core</code> itself already, in 0.3.0
@@ -34561,7 +34774,7 @@ still pre-1.0, still not independently audited, and the headline provisional gap
 yet confirmed against their primary DSTU texts) are unchanged by this release - see that document
 and <code>docs/DECISIONS.md</code> for the full standing caveats, repeated here exactly as prominently as
 0.2.0’s own notes did below.</p>
-<h3 id="added-8"><a class="header" href="#added-8">Added</a></h3>
+<h3 id="added-9"><a class="header" href="#added-9">Added</a></h3>
 <ul>
 <li><code>hazmat::dstu9041</code>: DSTU 9041:2020 hybrid (ECIES-style) asymmetric encryption over a twisted
 Edwards curve, <code>l(p)=256</code>/E256/1 only (D-47’s “ship the recommended curve first” precedent) -
@@ -34639,7 +34852,7 @@ DSTU 4145 <code>sign</code>/<code>verify</code> up ~26-32x on the dev machine (<
 <h2 id="020---2026-08-02"><a class="header" href="#020---2026-08-02">[0.2.0] - 2026-08-02</a></h2>
 <p>Second tagged release - GitHub Releases only, no crates.io publish (<code>docs/TASKS.md</code> T-17 stays
 separately gated, same posture as v0.1.0).</p>
-<h3 id="added-9"><a class="header" href="#added-9">Added</a></h3>
+<h3 id="added-10"><a class="header" href="#added-10">Added</a></h3>
 <ul>
 <li><code>crypto_sign</code>/<code>uacrypt</code>: DSTU 4145 digital-signature CLI commands - <code>sign-keygen</code>, <code>sign-pubkey</code>,
 <code>sign</code>, <code>verify</code> (<code>docs/TASKS.md</code> T-124).</li>
@@ -34689,7 +34902,7 @@ instead.</li>
 <p>First tagged release - GitHub Releases only (<code>docs/TASKS.md</code> T-18); not published to crates.io
 (<code>docs/TASKS.md</code> T-17 stays separately gated on an explicit owner request). Everything below predates
 this tag; there is no reconstructed per-commit history before it.</p>
-<h3 id="added-10"><a class="header" href="#added-10">Added</a></h3>
+<h3 id="added-11"><a class="header" href="#added-11">Added</a></h3>
 <ul>
 <li><code>dstu-core</code>: <code>hazmat</code> primitives for all three in-scope DSTU algorithms - Kupyna (DSTU
 7564:2014, one-shot and streaming), Kalyna (DSTU 7624:2014, single-block encrypt/decrypt across

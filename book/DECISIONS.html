@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-706607d1.js";
+            window.path_to_searchindex_js = "searchindex-cd6279fe.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -14775,6 +14775,140 @@ managed growth: committed growth that is resident is subtracted cleanly, the con
 inflation, but lowers the floor to ~235 B per iteration whenever the GC shrinks; the aggressive
 collect fixes the cause instead and keeps the formula. Raising the raw-VmRSS threshold (hides the
 retention and still cannot see a leak, D-234).</p>
+<h2 id="d-256-t-249-second-pass-audit---method-and-result-2026-10-23"><a class="header" href="#d-256-t-249-second-pass-audit---method-and-result-2026-10-23">D-256: T-249 second-pass audit - method and result (2026-10-23)</a></h2>
+<p><strong>Scope</strong> (T-249, read-only; findings became T-312..T-316, nothing fixed in this pass): the
+<code>crypto_auth</code>/<code>kdf</code>/<code>generichash</code>/<code>pwhash</code>/<code>stream</code> wrappers, <code>hazmat::strumok</code>, the Kalyna key
+schedule, <code>tables.rs</code>, <code>dstu9041</code> l=384/512 against l=256, D-118’s two pitfalls in Node.js, PHP,
+Java, .NET, Go and C++, and actually running the test/Miri/Kani/fuzz layers. Hardware side
+channels stay out of scope.</p>
+<p><strong>Method.</strong> Code read in full where named below; the tables and curve constants checked by
+throwaway scripts (not committed - T-316 makes the table part a test), not by eye:</p>
+<ul>
+<li><code>tables.rs</code>: <code>SBOXES</code>/<code>SBOXES_DEC</code> equal <code>kalyna-reference</code> <code>sboxes_enc</code>/<code>dec</code>,
+<code>kupyna-reference</code> <code>sboxes</code>, UAPKI <code>s_blocks_default</code>/<code>inv_s_blocks_default</code> and Bouncy Castle
+<code>DSTU7624Engine</code> <code>S0..S3</code>/<code>T0..T3</code>; each <code>SBOXES_DEC[i]</code> inverts <code>SBOXES[i]</code>; <code>MDS_MATRIX</code>/
+<code>MDS_INV_MATRIX</code> equal <code>kalyna-reference</code> and multiply to the identity over GF(2^8)/0x11D;
+<code>MDS_TABLE</code>/<code>MDS_INV_TABLE</code> recomputed from them. Zero mismatches.</li>
+<li>Strumok: <code>T0..T7</code> recomputed as the MDS column of <code>SBOXES[i % 4]</code> at row <code>i</code> (so they now rest
+on the four sources above, not on <code>strumok-dstu8845</code> alone) and equal to that oracle;
+<code>MUL_ALPHA</code>/<code>MUL_ALPHA_INV</code> equal UAPKI and <code>strumok-dstu8845</code>, are GF(2)-linear,
+<code>mul_alpha_inv(mul_alpha(w)) == w</code> for 100k random words, and <code>MUL_ALPHA[b]</code> byte <code>j</code> is
+<code>b * g_j</code> over GF(2^8)/0x11D with <code>(g_0..g_7) = (γ^2, 0, 0, γ^70, γ^224, γ^2, γ^166, γ^170)</code>:
+exactly <code>g(z) = z^8 + γ^170 z^7 + γ^166 z^6 + γ^2 z^5 + γ^224 z^4 + γ^70 z^3 + γ^2</code> of
+<code>docs/papers/Strumok.pdf</code> section 2 (γ the root of p(y), checked against the paper’s text
+layer, not the DSTU scan). All ten Strumok tables are now derived independently, not only
+spot-checked (D-198).</li>
+<li><code>dstu9041</code>, all three sizes: <code>p = 2^l - C</code> prime and <code>= 5 mod 8</code>; <code>P_MINUS_2</code>,
+<code>(p-1)/2</code>, <code>(p-1)/4</code>, <code>(p+3)/8</code> and <code>W = 2^((p-1)/4)</code> (<code>W^2 = -1</code>) consistent; <code>C^2 &lt; 2^64</code>
+(two folds in <code>reduce_wide</code> cannot carry out); <code>A_DIV_D = a/d</code>; the base point satisfies
+<code>x^2 + a*y^2 = 1 + d*x^2*y^2</code>; <code>n</code> prime, <code>4n</code> within Hasse’s bound, <code>n*P = (1, 0)</code> and
+<code>(n-1)*P = -P</code>. <code>a</code> and <code>d</code> are both non-residues (<code>a/d</code> a residue), as T-307 found. A
+normalized diff (comments, sizes and constants masked) of <code>fp</code>/<code>curve</code>/<code>message</code>/<code>encryption</code>
+384 and 512 against 256 shows only the size-driven lines plus the documented 384 differences
+(KW-p and <code>kappa</code> = the low 32 bytes of <code>x</code>, D-241/D-244); <code>L_MAX_P</code> = <code>l - 8 - 8*L_H - 16</code>
+at every size.</li>
+<li><code>gf_mul</code> under <code>small-tables</code>: release asm for <code>--no-default-features --features small-tables</code>, x86_64-unknown-linux-gnu and aarch64-unknown-none at O3, thumbv7em-none-eabihf and
+riscv32imc-unknown-none-elf at O3/s/z (rustc 1.97.1). Every conditional branch in
+<code>tables</code>/<code>kalyna</code>/<code>kupyna</code>/<code>strumok</code> listed with the instructions that set it: loop counters,
+lengths and <code>columns</code>/<code>nb</code> dispatch only. The reduction step compiles to a sign mask (riscv,
+<code>slli 24; srai 31; andi 29</code>), IT-predication (thumb, <code>it mi; eormi</code>) or <code>cmov</code>/masks (x86_64,
+aarch64); no XOR with <code>0x1D</code> follows a conditional branch in any cell (two hits of the scan
+read and dismissed: a loop-setup <code>movs r1, #29</code>, an <code>lsl #29</code>).</li>
+</ul>
+<p><strong>Clean</strong> (no finding): the five wrappers (fixed-length key types forbid the hazmat error cases,
+<code>Zeroize</code> on drop, constant-time compares inherited); <code>strumok</code> init/next/strm/bulk path (ring
+index arithmetic and the <code>head == 0</code> rotation hold, every slice bound visible at the line);
+the Kalyna key schedule against <code>kalyna-reference</code> step for step (Kσ, the even/odd rounds, the
+<code>nk != nb</code> half-buffer branch); <code>crypto_pwhash</code> verify’s bounds before allocation (D-222). D-118
+in the six bindings (a re-confirmation - TASKS’ 2026-10-22 audit already covered this item by
+grep and reading): every encryptor finalizes only on an explicit success call (<code>Complete</code>/
+<code>complete()</code>/<code>Finish()</code>/<code>close()</code> reached only on success in PHP’s <code>withStream</code>, Node’s <code>_flush</code>
+only on <code>.end()</code>, never <code>_destroy</code>); every decryptor collects exactly <code>next_len()</code> bytes and calls
+<code>finish()</code> on a short read. The trailing-data rule holds by construction in the codec: after
+<code>Final</code>, <code>next_len()</code> is 1, so any extra byte arrives as a full <code>feed</code> and fails; a partial record
+dropped at <code>finish()</code> is <code>Truncated</code>.</p>
+<p><strong>Findings</strong> (all Low, none advisory-relevant - nothing exploitable today):</p>
+<ul>
+<li>T-312: <code>tables::gf_mul</code> branches on the secret byte’s top bit and on the multiplier’s low bit
+in the source (<code>if high_bit == 0x80</code>), and it is production code under <code>small-tables</code>
+(every Kalyna/Kupyna round and Strumok’s <code>T</code>). The hard constraint is “no secret-dependent
+branching”; the shipped asm is branchless only because LLVM chooses masks today, and
+<code>asm-check</code> (D-229) builds the default profile only.</li>
+<li>T-313: D-249 left three key-derived copies. (a) Kupyna’s per-block column buffers were kept on
+the grounds that they hold message bytes the next block overwrites; under KMAC, <code>finalize</code>’s
+last <code>compress_block</code> processes the tail block holding <code>~K</code> and no later block overwrites it
+(<code>compress_block</code>’s <code>columns_buf</code>, <code>compress_n</code>’s <code>q_input</code>/<code>t_input</code>). (b) <code>kalyna:: rotate_bytes_left</code>’s <code>rotated</code> scratch holds each odd round key (D-249 lists <code>key_expand_odd</code>’s
+copies as wiped; its helper’s are not). (c) <code>strumok::Core::new</code>’s local <code>s</code> from <code>init_state</code> is
+key words XOR IV, never wiped.</li>
+<li>T-314: C++ <code>SecretStreamDecryptor</code> (<code>ReadPrefix</code>/<code>Step</code>, <code>badbit</code> not checked) and PHP
+<code>DstuCoreSecretStreamReader</code> (<code>readPrefix</code>/<code>step</code>, <code>fread() === false</code>) treat a read error as end
+of input: still fail-closed (truncation, or the authenticated <code>Final</code> when it falls on a record
+boundary), but the I/O error is reported as “truncated”/“too short” and its cause is lost. Go,
+.NET, Java and Node propagate it.</li>
+<li>T-315: <code>crypto_pwhash::hash_password</code> lets <code>argon2</code> allocate its blocks itself, so an allocation
+failure (1 GiB at <code>Strength::Sensitive</code>) aborts the process instead of returning
+<code>PwHashError::OutOfMemory</code> as <code>derive_key</code> and <code>verify_password</code> do.</li>
+<li>T-316 (docs/test): make the table derivation above a test and retire the “not transcription-
+verified in full” caveat for Strumok’s tables.</li>
+</ul>
+<p><strong>Runs.</strong></p>
+<ul>
+<li><code>cargo xtask test</code> on Windows (default + <code>--all-features</code>): 176 suites, 2836 passed, 0 failed.</li>
+<li>Kani on the Pi (<code>cargo-kani</code> 0.62.0): 20 of the 21 harnesses <code>SUCCESSFUL</code>; the Pi rebooted
+(8 GB, CBMC) inside <code>gf2m_wide::kani_proofs::gf2m512::reduce_matches_bit_serial_reference</code>, which
+passes in CI’s <code>kani</code> job (all 21, on <code>5d32cc2</code>).</li>
+<li>Miri on the Pi (CI’s flags: default profile, <code>MIRIFLAGS=-Zmiri-disable-isolation</code>,
+<code>PROPTEST_CASES=1</code>, <code>ulimit -v 5 GB</code>): <code>dstu-core --lib</code> 152, <code>--test strumok</code> 18,
+<code>kupyna_kmac</code> 7, <code>crypto_secretstream_file</code> 10, <code>kalyna</code> 17 - all passed, no UB. The full
+sharded <code>miri.yml</code> run on <code>5d32cc2</code> was green too.</li>
+<li><code>cargo fuzz</code> on Windows (MSVC, ASan), all 28 targets 180 s each: 13.6 M executions, no crash or
+failed property (from 4.3 k for <code>crypto_pwhash_verify</code> to 5.4 M for <code>strumok</code>).</li>
+</ul>
+<p><strong>Not done.</strong> The independent strongest-model reviewer the 0.8.0 plan offers at the end of T-249
+(owner’s call); <code>gf_mul</code> timing on real Cortex-M (IT-predicated instructions are assumed
+fixed-cost, not measured - no hardware here, and no side-channel claim follows either way).</p>
+<h2 id="d-257-uacrypt-completions-and-uacrypt-man-from-the-parsers-own-flag-table-t-264-2026-10-23"><a class="header" href="#d-257-uacrypt-completions-and-uacrypt-man-from-the-parsers-own-flag-table-t-264-2026-10-23">D-257: <code>uacrypt completions</code> and <code>uacrypt man</code> from the parser’s own flag table (T-264, 2026-10-23)</a></h2>
+<p><strong>Problem.</strong> The 0.8.0 plan meant to take each command’s flags from its <code>--help</code> text and test
+that every parsed flag appears there. That does not hold, both ways: the parsers accept flags the
+help hides on purpose (the D-34 benchmark <code>--iterations</code> on <code>sign</code>/<code>verify</code>/<code>box-seal</code>/<code>box-open</code>;
+<code>decrypt --passphrase</code>, accepted only to refuse it with a hint), and the help texts name other
+commands’ flags (<code>encrypt</code>’s mentions <code>--kind</code>, <code>hash</code>’s <code>--variant</code>), so help-derived lists would
+offer flags the command refuses.</p>
+<p><strong>Decision</strong> (owner, 2026-10-23, on the three forks):</p>
+<ul>
+<li><strong>The parser’s lists are the table.</strong> <code>struct Flags { values, bools, hidden, choices }</code>, one
+<code>const</code> per parser; every <code>parse_*_args</code> scans with <code>X_FLAGS.values</code>/<code>X_FLAGS.bools</code>
+(<code>ArgScanner::scan</code> unchanged). <code>COMMANDS</code> became <code>&amp;[Command { name, help, subcommands, flags }]</code>.
+Checked: the pre-change and post-change binaries answer “unknown flag” identically for every
+command x every flag of any command (408 runs), and unit tests keep the table and the parsers
+equal both ways (each listed flag accepted, each other command’s flag refused), no inline scan
+list left, every visible flag a whole <code>--flag</code> token of its help, no hidden one there.</li>
+<li><strong>Hidden flags stay hidden</strong>: accepted, never completed, never in <code>--help</code> or the man page.
+“Did you mean” still draws from every accepted flag, hidden ones included (unchanged behaviour:
+a typo of <code>--iterations</code> is still corrected).</li>
+<li><strong>Static scripts</strong> for bash, zsh, fish and PowerShell, generated from <code>COMMANDS</code>; completing never
+runs <code>uacrypt</code>, so the script must be regenerated after an upgrade (its header says so). Names
+only, no descriptions: every word is <code>[A-Za-z0-9-]</code> (a unit test), so no shell needs escaping
+rules. <code>--iterations</code> completes to nothing, <code>--variant</code>/<code>--kind</code> to their values, every other
+value flag to file names.</li>
+<li><strong><code>uacrypt man</code> prints roff to stdout</strong> (no generated file in the repo to go stale); <code>.TH</code> carries
+only the crate version, no date, so the output is deterministic. Text is escaped for no-fill
+mode (<code>\e</code>, <code>\-</code>, <code>\&amp;</code> before a leading <code>.</code>/<code>'</code>, <code>\[uXXXX]</code> for non-ASCII).</li>
+<li><strong>Not in the release archives yet</strong> (<code>release.yml</code> unchanged).</li>
+</ul>
+<p><strong>Tests.</strong> Real shells, running the completer: Git Bash on Windows (located through <code>git --exec-path</code>, since a bare <code>bash</code> may be WSL’s) and bash elsewhere (<code>COMP_WORDS</code>/<code>COMPREPLY</code>),
+PowerShell (<code>TabExpansion2</code>), fish (<code>complete -C</code>), <code>zsh -n</code>; <code>mandoc -Tlint</code>/<code>groff -Tutf8 -z -ww</code> on the
+man page. Ten shared cases (command prefix, subcommand slot, a visible and a hidden <code>--iterations</code>,
+<code>--passphrase</code> vs <code>--passphrase-file</code>, <code>--kind</code>/<code>--variant</code> values, <code>help &lt;command&gt;</code>, <code>completions &lt;shell&gt;</code>, a file name). A missing shell is skipped (a <code>SKIPPED</code> line, seen only with <code>--nocapture</code>);
+an installed one that fails or hangs fails the test. Actually run so far: bash (Git Bash, the Pi;
+CI Linux/macOS) and PowerShell (Windows; <code>pwsh</code> on CI); zsh only parsed (<code>zsh -n</code>, macOS CI); the fish
+script has not run anywhere yet (no fish on the dev machine, the Pi or CI). Misuse (<code>completions</code>, <code>completions tcsh</code>, <code>completions bash extra</code>, <code>man extra</code>) exits 2 with nothing on stdout; a failing stdout is a
+<code>CliError::Io</code>, not a panic.</p>
+<p><strong>Rejected.</strong> Help-text tokens as the source (wrong both ways, above). A test-only hook recording
+<code>ArgScanner::scan</code>’s arguments (proves the lists match only for the calls a test makes, and
+completions would still need a table). Dynamic completion calling back into <code>uacrypt</code> (runs a
+binary on every Tab; a static script is enough for a fixed command set). A checked-in
+<code>docs/uacrypt.1</code> (one more generated file to regenerate and diff).</p>
 
                     </main>
 

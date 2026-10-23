@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-706607d1.js";
+            window.path_to_searchindex_js = "searchindex-cd6279fe.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -8490,7 +8490,10 @@ Windows-vs-Unix signal-delivery differences apply here - confirm the test’s me
 this project’s actual CI runners, not just locally.</p>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-223</strong> Core: fuzz targets for the high-value <code>crypto_*</code> wrappers that currently have none -
+<p><input disabled="" type="checkbox" checked=""> <strong>T-223</strong> (done 2026-10-23, 0.8.0 wave step 3: <code>crypto_secretbox_open</code>, <code>crypto_box_open</code>,
+<code>crypto_box384_open</code>, <code>crypto_box512_open</code> over pinned blobs with the negative property in
+<code>fuzz/common/negative.rs</code>; 20 s each locally, zero findings; control - an <code>open</code> that ignores
+the last tag byte - crashed at once) Core: fuzz targets for the high-value <code>crypto_*</code> wrappers that currently have none -
 <code>crypto_secretbox</code>, <code>crypto_box</code>, <code>crypto_box512</code>. These parse untrusted wire-format bytes
 directly from CLI/binding callers (<code>nonce||ciphertext||tag</code>, the sealed KEM blob), unlike the
 hazmat-level primitives which already get fuzzed indirectly through their AEAD/MAC/KW callers.
@@ -8509,7 +8512,7 @@ historically-32-bit <code>Buffer</code> lengths in Node.js are the two languages
 most plausible - do those two first if sequencing this incrementally.</p>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-225</strong> Core: fuzz targets for the remaining primitives T-223’s original entry listed
+<p><input disabled="" type="checkbox" checked=""> <strong>T-225</strong> Core: fuzz targets for the remaining primitives T-223’s original entry listed
 before it was narrowed (2026-09-02) - tier-2 <code>crypto_stream</code>/<code>crypto_sign</code>/<code>crypto_sign257</code>, then
 the <code>hazmat</code> primitives that still have none at all (<code>dstu4145</code>, <code>dstu9041</code>, <code>kalyna_cbc</code>/<code>ctr</code>/
 <code>ecb</code>/<code>ofb</code>, <code>kupyna_kmac</code>/<code>kupyna_kdf</code>). Same three-spot sync as T-223. Lower priority than
@@ -8518,7 +8521,16 @@ internal IV, the signature verifiers take structured key+sig not a length-prefix
 hazmat-level and already exercised indirectly. Do after Batch 3c unless a T-223 finding points
 straight at one of them.</p>
 <ul>
-<li><strong>Done 2026-09-26:</strong> <code>crypto_pwhash_verify</code> (T-272’s attachment, D-222) - the 11th target.
+<li><strong>Done 2026-09-26:</strong> <code>crypto_pwhash_verify</code> (T-272’s attachment, D-222) - the 11th target.</li>
+<li><strong>Done 2026-10-23 (0.8.0 wave step 3, phase A):</strong> <code>crypto_sign_verify</code>/<code>crypto_sign257_verify</code>
+(input <code>key || sig || msg</code>, <code>from_uncompressed_bytes</code> included; spare key bits checked by hand
+first - they fail <code>is_on_curve</code>) and the negative property in <code>crypto_secretstream</code> (the pinned
+<code>secretstream-file/v2.json</code> record through <code>pull</code>). Zero findings.</li>
+<li><strong>Done 2026-10-23 (phase B):</strong> the 9 hazmat targets <code>kalyna_cbc</code>/<code>ctr</code>/<code>ecb</code>/<code>ofb</code>/<code>xts</code>,
+<code>kupyna_kmac</code>/<code>kupyna_kdf</code>, <code>dstu4145</code> (<code>verify</code> on arbitrary q/r/s/hash, plus sign-then-verify
+on a fixed key) and <code>dstu9041</code> (clause 12 <code>decrypt</code> on arbitrary ciphertext+key, all three
+curves) - 28 targets in all. Local 20 s runs clean (<code>dstu9041</code> 33934 runs). <code>crypto_stream</code> stays
+without a target: no wire parsing, <code>decrypt</code> cannot fail, <code>strumok</code> is fuzzed underneath.
 <strong>2026-09-22 scope addition</strong>: negative-property fuzz check - see “Security audit remediation” (“Attached to existing tasks”).</li>
 </ul>
 </li>
@@ -8949,7 +8961,7 @@ accepted, fold it into T-232’s wire-format break rather than a separate one. S
 RFC 9180’s <code>kem_context = enc ‖ pkR</code> -&gt; bind <code>kem_ct ‖ recipient_pk</code>; <code>derive_subkey</code>’s fixed
 8-byte context can’t carry it, so add a new Kupyna-KMAC-based KDF entry point + <code>D-</code> entry - no
 HKDF/HMAC-Kupyna (uncited construction). No sender static key exists (anonymous sealed box).</li>
-<li><input disabled="" type="checkbox"> <strong>T-249</strong> (coverage gaps - what the 2026-09-22 audit did <strong>not</strong> check) Second pass over:
+<li><input disabled="" type="checkbox" checked=""> <strong>T-249</strong> (<strong>done 2026-10-23, D-256</strong>: findings T-312..T-316 in the 0.8.0 wave) (coverage gaps - what the 2026-09-22 audit did <strong>not</strong> check) Second pass over:
 the <code>crypto_auth</code>/<code>crypto_kdf</code>/<code>crypto_generichash</code>/<code>crypto_pwhash</code>/<code>crypto_stream</code> wrappers
 beyond a grep of their compares; <code>hazmat::strumok</code>; the Kalyna key schedule; <code>tables.rs</code>
 transcription (relies on KATs/BC today); <code>dstu9041</code> l=512 files line by line (only structurally
@@ -9657,7 +9669,7 @@ documented <code>#[allow(clippy::cast_possible_truncation)]</code>, the x86 sibl
 clippy, all four CI invocations, clean; Pi (1.98.1) <code>cargo xtask clippy</code> + getrandom/small-tables
 clippy clean, <code>cargo test -p dstu-core --all-features</code> 760/760. The <code>master</code> cherry-pick is not
 done (its reason was wrong; owner decides).</li>
-<li><input disabled="" type="checkbox"> <strong>T-264</strong> Shell completions (<code>uacrypt completions bash|zsh|fish|powershell</code>) and a man page,
+<li><input disabled="" type="checkbox" checked=""> <strong>T-264</strong> (<strong>done 2026-10-23, D-257</strong>: per-command <code>Flags</code> table the parsers scan with; static scripts; <code>uacrypt man</code> to stdout; hidden flags never offered) Shell completions (<code>uacrypt completions bash|zsh|fish|powershell</code>) and a man page,
 generated from the same command table the parser uses.</li>
 <li><input disabled="" type="checkbox" checked=""> <strong>T-265</strong> (<strong>done 2026-10-19</strong>: pushed on <code>1fa8634</code>, every workflow green incl.
 <code>bindings-php</code> and <code>miri.yml</code> (~60 min); the binding gate and the C++/.NET/Go “too short” fix
@@ -10793,12 +10805,15 @@ registries (Packagist, NuGet, Maven Central, pkg.go.dev, vcpkg) - each publish o
 runs in order (T-164 deferred, below). Pushes batched
 per phase (<code>rust.yml</code>/<code>miri.yml</code> are <code>cancel-in-progress</code>; a docs push mid-run cost a full run on
 0.7.0 release day).</p>
-<p><strong>RESUME HERE (state at /clear, 2026-10-23):</strong> 0.7.0 fully released and closed (registries live,
-GHSA published, yanks done, CodeQL clean, winget PR #460150 waiting on a moderator). <code>master</code> =
-<code>1b13b68</code> (PHP <code>ctutils</code> RUSTSEC fix): every workflow green, <code>rust</code> still running at save time -
-check it first. Unpushed, docs only: <code>8397cf6</code>, <code>2a9c0c0</code>, <code>25060fd</code> (push after <code>rust</code> is done).
-Owner confirmed the order below. <strong>T-311 done 2026-10-23 (D-255), T-310 done (D-239 addendum); next: T-223/T-225 fuzz.</strong> Pi: packages up to date (PHP 8.2.35
-by unattended-upgrades, Docker 29.9.2), Docker stays disabled. Nothing uncommitted.</p>
+<p><strong>RESUME HERE (2026-10-23, third save):</strong> 0.7.0 closed (winget PR #460150 waits on a
+moderator). Done today, all local commits <strong>not pushed yet</strong> (owner: one batched push at the end):
+<strong>T-311</strong> (<code>779acc7</code>) and <strong>T-310</strong> (<code>daeb58f</code>+<code>5d32cc2</code>) are on <code>master</code> (CI green, <code>miri</code> too);
+<strong>T-223/T-225</strong> phase A (<code>2563770</code>) and B (<code>b795494</code>), <strong>T-249</strong> (D-256, findings T-312..T-316).
+<strong>T-264</strong> done (D-257). Next: Pi clippy/test, closing
+<code>advisor</code>, push <code>HEAD:master</code>, <code>gh run view</code> every workflow (28 <code>fuzz-smoke</code> jobs). Open with the
+owner: the independent reviewer for T-249 and for T-310; whether T-312..T-316 join 0.8.0.
+Local fuzz on Windows: <code>call vcvars64.bat &amp;&amp; cargo +nightly-x86_64-pc-windows-msvc fuzz run --target x86_64-pc-windows-msvc &lt;t&gt;</code> from <code>crates/dstu-core</code>. Pi: Kani per harness under
+<code>ulimit -v</code>, never <code>gf2m512</code> (rebooted it, 2026-10-23).</p>
 <p><strong>Code chain:</strong></p>
 <ol>
 <li><input disabled="" type="checkbox" checked=""> <strong>T-311</strong> (done 2026-10-23, D-255: native remainder after an aggressive GC, 2 MiB; Pi:
@@ -10820,12 +10835,47 @@ the hazmat ones without a target (<code>dstu4145</code>, <code>dstu9041</code>, 
 blob inside the target; <code>input != original =&gt; open fails</code>; also for <code>crypto_secretstream</code>.
 Three-spot sync each (<code>fuzz/Cargo.toml</code>, <code>rust.yml</code> <code>fuzz-smoke</code>, <code>FUZZ_TARGETS</code> incl. its
 <code>[&amp;str; N]</code> count).</li>
-<li><strong>T-249</strong> second-pass audit (read-only; findings become new tasks, not fixes in the same pass):
+<li><input disabled="" type="checkbox" checked=""> <strong>T-249</strong> (done 2026-10-23, D-256; findings T-312..T-316 below) second-pass audit (read-only; findings become new tasks, not fixes in the same pass):
 the <code>crypto_auth/kdf/generichash/pwhash/stream</code> wrappers, <code>hazmat::strumok</code>, the Kalyna key
 schedule, <code>tables.rs</code>, <code>dstu9041</code> l=512 (and l=384) line by line against l=256, D-118’s two
 pitfalls read in full in Node.js/PHP/Java/.NET/Go/C++, and actually running Miri/Kani/longer
-fuzz locally. Offer the independent reviewer subagent at the end (owner’s yes).</li>
-<li><strong>T-264</strong> completions (bash/zsh/fish/PowerShell) and a man page, hand-written generators, no
+fuzz locally. Offer the independent reviewer subagent at the end (owner’s yes).
+<strong>T-249 findings (D-256), all Low, none advisory-relevant; owner: in 0.8.0 or later:</strong>
+<ul>
+<li><input disabled="" type="checkbox"> <strong>T-312</strong> (Low, constant-time) <code>tables::gf_mul</code> branches on the secret byte’s top bit in
+the source; it is production code under <code>small-tables</code> (every Kalyna/Kupyna round, Strumok’s
+<code>T</code>). Shipped asm is branchless in all 8 cells read (masks/IT/cmov, rustc 1.97.1) only
+because LLVM chooses so; <code>asm-check</code> builds the default profile only. Fix: mask-form
+<code>gf_mul</code> (<code>0u8.wrapping_sub(x &gt;&gt; 7) &amp; 0x1D</code>, same for <code>y &amp; 1</code>), and <code>small-tables</code> cells in
+<code>asm-check</code> (a zero-jump row where <code>gf_mul</code>/<code>mds_column_via_gf_mul</code> is its own symbol, plus
+a crate scan for a conditional branch in front of a <code>0x1D</code> reduction).</li>
+<li><input disabled="" type="checkbox"> <strong>T-313</strong> (Low, zeroization) D-249 leftovers: (a) KMAC’s last <code>compress_block</code> (the tail
+block holding <code>~K</code>) leaves <code>columns_buf</code>/<code>compress_n</code>’s <code>q_input</code>/<code>t_input</code> and nothing
+overwrites them - D-249’s “message bytes, overwritten by the next block” does not hold for
+KMAC; (b) <code>kalyna::rotate_bytes_left</code>’s <code>rotated</code> holds each odd round key; (c)
+<code>strumok::Core::new</code>’s <code>init_state</code> result (key words XOR IV). Fix: <code>Zeroizing</code> for (b)/(c);
+for (a) measure a per-block wipe first (every hash pays it), else wipe on the KMAC path only;
+correct D-249’s text either way.</li>
+<li><input disabled="" type="checkbox"> <strong>T-314</strong> (Low, error path) C++ <code>SecretStreamDecryptor</code> (<code>ReadPrefix</code>/<code>Step</code> ignore
+<code>badbit</code>) and PHP <code>DstuCoreSecretStreamReader</code> (<code>readPrefix</code>/<code>step</code> treat <code>fread() === false</code>
+as EOF): a read error is reported as truncation/“too short”, the I/O cause lost (still
+fail-closed). Fix: check <code>in.bad()</code> / <code>false</code> and raise an I/O error; a test with a failing
+stream in each.</li>
+<li><input disabled="" type="checkbox"> <strong>T-315</strong> (Low, robustness) <code>crypto_pwhash::hash_password</code> lets <code>argon2</code> allocate its
+blocks (1 GiB at <code>Sensitive</code>), so allocation failure aborts the process instead of
+<code>PwHashError::OutOfMemory</code> as in <code>derive_key</code>/<code>verify_password</code>. Fix: <code>try_reserve_exact</code> +
+<code>hash_password_into_with_memory</code> + PHC encoding, with the existing <code>hash_password</code> tests.</li>
+<li><input disabled="" type="checkbox"> <strong>T-316</strong> (Low, docs/test) Make D-256’s table derivation a <code>cfg(not(small-tables))</code> unit
+test in <code>strumok.rs</code> (<code>Ti</code> from <code>tables::SBOXES</code>/MDS; <code>MUL_ALPHA</code> from <code>g(z)</code>’s coefficients
+via <code>gf_mul</code>; <code>mul_alpha_inv(mul_alpha(w)) == w</code>), then retire “not transcription-verified in
+full” for Strumok’s tables (CLAUDE.md x2, <code>docs/ORACLES.md</code>, <code>strumok.rs</code>/<code>crypto_stream.rs</code>
+module docs, <code>docs/pseudocode/strumok.md</code>), citing D-256.</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox" checked=""> <strong>T-264</strong> (done 2026-10-23, D-257; the precondition below failed - hidden <code>--iterations</code>/
+<code>decrypt --passphrase</code>, help texts naming other commands’ flags - so the flag table came first,
+plan mode + advisor; owner: hidden stay hidden, <code>man</code> to stdout, release archives unchanged)
+completions (bash/zsh/fish/PowerShell) and a man page, hand-written generators, no
 new dependency. Source: the existing <code>COMMANDS</code> table (<code>lib.rs</code>, help text per command, already
 test-checked against <code>run</code>’s dispatch) - flags taken from each help text’s <code>--flag</code> tokens, with
 a test that every flag the parser accepts appears there. If that does not hold, a per-command
