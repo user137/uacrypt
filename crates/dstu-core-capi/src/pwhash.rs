@@ -81,7 +81,7 @@ fn strength_from_raw(strength: u32) -> Option<Strength> {
 
 /// Hashes `password` into a NUL-terminated PHC string written to `out` (a caller-owned buffer of
 /// at least `DSTU_PWHASH_STRBYTES` bytes). Returns `DSTU_ERR_RANDOM` if the OS CSPRNG fails,
-/// `DSTU_ERR_HASH_ERROR` on an internal Argon2/PHC-encoding failure (not expected in practice for
+/// `DSTU_ERR_OUT_OF_MEMORY` if the preset's memory cannot be allocated, `DSTU_ERR_HASH_ERROR` on an internal Argon2/PHC-encoding failure (not expected in practice for
 /// this module's own fixed-length salt), or `DSTU_ERR_NULL_POINTER`. `strength` must be one of the
 /// `DSTU_PWHASH_*` values - `DSTU_ERR_INVALID_ARGUMENT` otherwise, checked before any hashing.
 ///
@@ -131,11 +131,7 @@ pub unsafe extern "C" fn dstu_pwhash_hash_password(
                 out[bytes.len()] = 0;
                 DstuStatus::DSTU_OK
             }
-            Err(PwHashError::Random(_)) => DstuStatus::DSTU_ERR_RANDOM,
-            // `hash_password` never returns the `derive_key`-only variants (D-219).
-            Err(PwHashError::Hash(_) | PwHashError::OutOfMemory | PwHashError::Derive(_)) => {
-                DstuStatus::DSTU_ERR_HASH_ERROR
-            }
+            Err(e) => pwhash_status(&e),
         }
     })
 }

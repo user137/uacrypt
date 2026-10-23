@@ -16303,3 +16303,21 @@ now, best effort as in D-249: Rust cannot guarantee erasure of compiler-placed c
   the stack locals are wiped when `new` returns.
 
 No new test of erasure itself: it is not observable through the API (D-249's recorded gap).
+
+## D-261: T-315 - `hash_password` reserves its Argon2 memory (2026-10-23)
+
+`crypto_pwhash::hash_password` called `argon2`'s `PasswordHasher::hash_password`, which allocates
+the Argon2 blocks itself: an allocation failure (1 GiB at `Strength::Sensitive`) aborted the
+process. It now runs Argon2 through the same helper as `derive_key`
+(`hash_into_reserved_memory`: `try_reserve_exact`, `hash_password_into_with_memory`, blocks
+zeroized before they are freed) and encodes the PHC string itself from the `argon2` crate's own
+pieces (`Algorithm::ident`, `ParamsString::try_from(&Params)`, `Output::new`), the way its
+`PasswordHasher` does. Allocation failure is now `PwHashError::OutOfMemory`; the capi maps it to
+`DSTU_ERR_OUT_OF_MEMORY` (it was `DSTU_ERR_HASH_ERROR` for every non-RNG error). The bindings map
+`PwHashError` by its message or through the capi status, so they need no change.
+
+Test: the private `hash_with_salt` (the fixed-salt core of `hash_password`) gives a string
+byte-identical to `argon2`'s own `PasswordHasher` for the same salt and preset; the existing
+`hash_password` tests (round trip, salts differ, each preset's PHC parameters) still pass. The
+allocation failure itself is not tested: forcing it needs an allocator hook this crate does not
+have, the same untested gap `derive_key` and `verify_password` already carry.

@@ -36,7 +36,7 @@
 pub mod passphrase_file;
 
 use crate::randombytes::{randombytes_buf, RandomError};
-use argon2::password_hash::{PasswordHash, PasswordHasher, SaltString};
+use argon2::password_hash::{Output, ParamsString, PasswordHash, SaltString};
 use argon2::{Algorithm, Argon2, Params, Version};
 use core::fmt;
 
@@ -122,11 +122,11 @@ pub enum PwHashError {
     /// salt this module always generates - included because the underlying crate's API is
     /// fallible, not because a known failure mode exists here.
     Hash(argon2::password_hash::Error),
-    /// [`derive_key`] could not allocate the preset's Argon2 memory (256 MiB for
-    /// [`Strength::Moderate`]) - reported instead of aborting the process.
+    /// [`hash_password`] or [`derive_key`] could not allocate the preset's Argon2 memory (256 MiB
+    /// for [`Strength::Moderate`]) - reported instead of aborting the process.
     OutOfMemory,
-    /// [`derive_key`]'s raw Argon2 call failed. Not expected for the fixed presets, salt and
-    /// output length used here.
+    /// The raw Argon2 call of [`hash_password`] or [`derive_key`] failed. Not expected for the
+    /// fixed presets, salt and output length used here.
     Derive(argon2::Error),
 }
 
@@ -162,17 +162,58 @@ impl From<argon2::password_hash::Error> for PwHashError {
 /// `SaltString::generate`, so this module pulls in no `CryptoRng` dependency of its own
 /// (`docs/DECISIONS.md` D-48/D-50).
 ///
+/// The Argon2 memory is reserved with `try_reserve_exact`, as in [`derive_key`].
+///
 /// # Errors
 ///
-/// Returns [`PwHashError::Random`] if the OS CSPRNG fails. [`PwHashError::Hash`] is not expected
-/// for the fixed 16-byte salt generated here.
+/// Returns [`PwHashError::Random`] if the OS CSPRNG fails and [`PwHashError::OutOfMemory`] if the
+/// preset's memory cannot be allocated. [`PwHashError::Hash`] and [`PwHashError::Derive`] are not
+/// expected for the fixed 16-byte salt and parameters used here.
 pub fn hash_password(password: &[u8], strength: Strength) -> Result<String, PwHashError> {
-    let mut salt_bytes = [0u8; 16];
+    let mut salt_bytes = [0u8; SALT_BYTES];
     randombytes_buf(&mut salt_bytes)?;
-    let salt = SaltString::encode_b64(&salt_bytes)?;
+    hash_with_salt(password, &salt_bytes, strength)
+}
+
+fn hash_with_salt(
+    password: &[u8],
+    salt_bytes: &[u8; SALT_BYTES],
+    strength: Strength,
+) -> Result<String, PwHashError> {
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, strength.params());
-    let hash = argon2.hash_password(password, &salt)?;
+    let mut tag = zeroize::Zeroizing::new([0u8; Params::DEFAULT_OUTPUT_LEN]);
+    hash_into_reserved_memory(&argon2, password, salt_bytes, tag.as_mut_slice())?;
+    let salt = SaltString::encode_b64(salt_bytes)?;
+    let hash = PasswordHash {
+        algorithm: Algorithm::Argon2id.ident(),
+        version: Some(Version::V0x13.into()),
+        params: ParamsString::try_from(argon2.params())?,
+        salt: Some(salt.as_salt()),
+        hash: Some(Output::new(tag.as_slice())?),
+    };
     Ok(hash.to_string())
+}
+
+/// Runs `argon2` over blocks reserved with `try_reserve_exact` (allocation failure is
+/// [`PwHashError::OutOfMemory`], not an abort) and zeroized before they are freed.
+fn hash_into_reserved_memory(
+    argon2: &Argon2<'_>,
+    password: &[u8],
+    salt: &[u8],
+    out: &mut [u8],
+) -> Result<(), PwHashError> {
+    use zeroize::Zeroize;
+
+    let block_count = argon2.params().block_count();
+    let mut blocks = Vec::new();
+    blocks
+        .try_reserve_exact(block_count)
+        .map_err(|_| PwHashError::OutOfMemory)?;
+    blocks.resize(block_count, argon2::Block::default());
+
+    let result = argon2.hash_password_into_with_memory(password, salt, out, &mut blocks);
+    blocks.iter_mut().for_each(Zeroize::zeroize);
+    result.map_err(PwHashError::Derive)
 }
 
 /// Largest `m_cost` (KiB) [`verify_password`] accepts: the [`Strength::Sensitive`] preset.
@@ -312,29 +353,16 @@ pub fn derive_key(
     salt: &[u8; SALT_BYTES],
     strength: Strength,
 ) -> Result<zeroize::Zeroizing<[u8; KEY_BYTES]>, PwHashError> {
-    use zeroize::Zeroize;
-
-    let params = strength.params();
-    let block_count = params.block_count();
-    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
-
-    let mut blocks = Vec::new();
-    blocks
-        .try_reserve_exact(block_count)
-        .map_err(|_| PwHashError::OutOfMemory)?;
-    blocks.resize(block_count, argon2::Block::default());
-
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, strength.params());
     let mut key = zeroize::Zeroizing::new([0u8; KEY_BYTES]);
-    let result =
-        argon2.hash_password_into_with_memory(password, salt, key.as_mut_slice(), &mut blocks);
-    blocks.iter_mut().for_each(Zeroize::zeroize);
-    result.map_err(PwHashError::Derive)?;
+    hash_into_reserved_memory(&argon2, password, salt, key.as_mut_slice())?;
     Ok(key)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use argon2::password_hash::PasswordHasher;
     use argon2::AssociatedData;
 
     /// Confirms the `argon2` dependency itself is spec-correct before trusting it through this
@@ -417,6 +445,24 @@ mod tests {
         assert!(!ok("argon2d", v19, (8, 1, 1), 32, 16));
         assert!(!ok("argon2id", Some(0x10), (8, 1, 1), 32, 16));
         assert!(!ok("argon2id", None, (8, 1, 1), 32, 16));
+    }
+
+    /// T-315: the PHC string built over caller-reserved memory is byte-identical to the one
+    /// `argon2`'s own `PasswordHasher` encodes (and allocates for) with the same salt.
+    #[test]
+    fn hash_with_salt_matches_argon2s_own_phc_encoding() -> Result<(), PwHashError> {
+        let salt_bytes = [0x5Au8; 16];
+        let ours = hash_with_salt(b"password", &salt_bytes, Strength::Interactive)?;
+        let salt = SaltString::encode_b64(&salt_bytes)?;
+        let theirs = Argon2::new(
+            Algorithm::Argon2id,
+            Version::V0x13,
+            Strength::Interactive.params(),
+        )
+        .hash_password(b"password", &salt)?
+        .to_string();
+        assert_eq!(ours, theirs);
+        Ok(())
     }
 
     /// `Sensitive`'s own `(m_cost, t_cost, p_cost)` checked directly against a real `Params`,

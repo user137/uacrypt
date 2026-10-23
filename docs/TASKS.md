@@ -10339,7 +10339,7 @@ targets), T-249 (D-256, findings T-312..T-316), T-264 (completions + `uacrypt ma
 (incl. 28 `fuzz-smoke` jobs, macOS bash 3.2 + `zsh -n`, Linux `pwsh` completion tests) and `miri`
 still queued - **first: `gh run list` / `gh run view` both for `3432912`**. D-258 and the CI-shells change were pushed together. Owner delegated the open forks (D-258): no reviewer subagent for
 T-249/T-310; **T-312..T-316 join 0.8.0** - next in order T-312, T-313, T-315, T-314, T-316, then
-step 6 (release 0.8.0). **T-312 done 2026-10-23 (D-259), T-313 done (D-260); next T-315.** `3432912`'s `rust`/`miri` were
+step 6 (release 0.8.0). **T-312 done 2026-10-23 (D-259), T-313 done (D-260), T-315 done (D-261); next T-314.** `3432912`'s `rust`/`miri` were
 cancelled by the next push (`cancel-in-progress`); the T-312 push carries everything since, so read its `rust`/`miri` runs (incl. `asm-check`'s 16 builds and `smoke_completions`). CI's Linux `test` job now installs zsh/fish/mandoc/groff
 and requires them (`UACRYPT_REQUIRE_SHELLS=1`, D-257 addendum) - the fish completer's first real
 run is there: check `smoke_completions` in the `rust` run of the push after `df62897`. `.git/worktrees/old_wt` is an
@@ -10392,7 +10392,7 @@ from `crates/dstu-core`. Pi: Kani per harness under `ulimit -v`, never `gf2m512`
      as EOF): a read error is reported as truncation/"too short", the I/O cause lost (still
      fail-closed). Fix: check `in.bad()` / `false` and raise an I/O error; a test with a failing
      stream in each.
-   - [ ] **T-315** (Low, robustness) `crypto_pwhash::hash_password` lets `argon2` allocate its
+   - [x] **T-315** (done 2026-10-23, D-261: shared reserved-memory helper, own PHC encoding; capi `DSTU_ERR_OUT_OF_MEMORY`) (Low, robustness) `crypto_pwhash::hash_password` lets `argon2` allocate its
      blocks (1 GiB at `Sensitive`), so allocation failure aborts the process instead of
      `PwHashError::OutOfMemory` as in `derive_key`/`verify_password`. Fix: `try_reserve_exact` +
      `hash_password_into_with_memory` + PHC encoding, with the existing `hash_password` tests.

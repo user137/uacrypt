@@ -30,6 +30,10 @@ All notable changes to this project are documented in this file. Format follows
 - **`dstu-core`: three more key-derived copies wiped** (T-313, `docs/DECISIONS.md` D-260):
   Kupyna-KMAC's last compression block (`~K`), the Kalyna round-key rotation scratch, and
   Strumok's initial state and registers in `new`.
+- **`dstu-core` `crypto_pwhash::hash_password`: out of memory is an error, not an abort**
+  (T-315, `docs/DECISIONS.md` D-261): it reserves the Argon2 memory itself, as `derive_key`
+  already did, and returns `PwHashError::OutOfMemory` (capi: `DSTU_ERR_OUT_OF_MEMORY`) when the
+  preset's memory (1 GiB at `Sensitive`) cannot be allocated.
 
 ## [0.7.0] - 2026-10-23
 
