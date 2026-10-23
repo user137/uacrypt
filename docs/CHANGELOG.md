@@ -23,7 +23,7 @@ All notable changes to this project are documented in this file. Format follows
 ### Fixed
 
 - **`dstu-core` `small-tables`: no secret-dependent branch in the `GF(2^8)` multiply** (T-312,
-  `docs/DECISIONS.md` D-259): `gf_mul`, which every Kalyna/Kupyna round calls in that profile,
+  `docs/DECISIONS.md` D-259): `gf_mul`, which every Kalyna/Kupyna round and Strumok's `T` call in that profile,
   now reduces with masks instead of an `if` on the state byte's top bit. Shipped builds were
   already branchless there by the compiler's choice; `cargo xtask asm-check` now checks the
   `small-tables` build too, so a compiler change that brings the branch back fails CI.

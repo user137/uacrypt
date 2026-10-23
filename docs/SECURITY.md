@@ -113,6 +113,10 @@ attack closes the gap to the full round count for either cipher.
     four checked targets. It also branched on `a+b >= p` in `fp256`/`fp512` add and reduction
     (`crypto_box`/`crypto_box512`, every platform). All 17 mask sites in `hazmat` now use the
     barrier, and each is asm-checked on x86_64, thumbv7em, riscv32imc and aarch64.
+  - **One documented exception: `tables::gf_mul`** (`small-tables` only, T-312, `docs/DECISIONS.md`
+    D-259). Its two masks have no barrier: one cost 5x of that profile's throughput (Kupyna-256
+    3.8 -> 0.7 MB/s). They compile to masks today, and `cargo xtask asm-check` pins exact jump
+    counts in every symbol the multiply lands in, so a branch the compiler adds fails CI.
   - **Open (T-291):** riscv32imc still branches in the `u64` carry lowering of the limb arithmetic,
     through a different mechanism than the mask idiom.
 - All comparisons involving secret data use `subtle::ConstantTimeEq`, never `==`.

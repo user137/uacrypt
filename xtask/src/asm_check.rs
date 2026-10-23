@@ -227,7 +227,8 @@ const EXACT_JUMPS: &[(&str, &str, &str, u32)] = &[
 /// production code on secret state bytes. Its loops keep public jumps, so these are exact counts
 /// as in [`EXACT_JUMPS`] (D-230's exception, D-259): the symbols where a branchy reduction showed
 /// up in every cell when tried (`black_box(0x1D)` behind an `if`, D-259's negative control).
-/// The default profile's rows are not checked in this build.
+/// The default profile's rows are checked in this build too: that code is compiled in both, and
+/// the feature changes its inlining context (`verify_combine`).
 const SMALL_TABLES_EXACT_JUMPS: &[(&str, &str, &str, u32)] = &[
     (X86_64, "3", "kalyna::encipher_round", 3),
     (X86_64, "3", "kalyna::encipher_round_n<Kj2_>", 2),
@@ -477,11 +478,13 @@ fn check_cell(asm: &str, target: &str, arch: Arch, opt: &str, profile: Profile) 
             failures.push(e);
         }
     }
-    let (zero, exact_rows): (&[(&str, &str, &str)], _) = match profile {
-        Profile::Default => (ZERO_JUMPS, EXACT_JUMPS),
-        Profile::SmallTables => (&[], SMALL_TABLES_EXACT_JUMPS),
+    let small_tables_rows: &[(&str, &str, &str, u32)] = match profile {
+        Profile::Default => &[],
+        Profile::SmallTables => SMALL_TABLES_EXACT_JUMPS,
     };
-    let rows = zero.iter().filter(|(t, o, _)| *t == target && *o == opt);
+    let rows = ZERO_JUMPS
+        .iter()
+        .filter(|(t, o, _)| *t == target && *o == opt);
     for (_, _, spec) in rows {
         match row_jumps(arch, &functions, spec) {
             Ok(0) => {}
@@ -489,8 +492,9 @@ fn check_cell(asm: &str, target: &str, arch: Arch, opt: &str, profile: Profile) 
             Err(e) => failures.push(e),
         }
     }
-    let exact = exact_rows
+    let exact = EXACT_JUMPS
         .iter()
+        .chain(small_tables_rows)
         .filter(|(t, o, _, _)| *t == target && *o == opt);
     for (_, _, spec, expected) in exact {
         failures.extend(exact_jumps_failure(arch, &functions, spec, *expected));
@@ -1080,12 +1084,16 @@ mod tests {
     }
 
     #[test]
-    fn profiles_check_their_own_rows_only() {
-        // A small-tables build has no `fp256` symbols to match, so a default row applied to it
-        // would fail with "no symbol"; neither profile's rows may leak into the other.
+    fn small_tables_checks_the_default_rows_and_its_own() {
+        // The curve and field code is compiled in both profiles, and the feature changes its
+        // inlining context (`verify_combine`), so its rows apply to both; the `gf_mul` rows only
+        // to the build where `gf_mul` is production code.
         let asm = "\t.type\tf,@function\nf:\n\tret\n.Lfunc_end0:\n";
         let small = check_cell(asm, X86_64, Arch::X86_64, "3", Profile::SmallTables);
-        assert!(small.iter().all(|f| !f.contains("fp256")), "{small:?}");
+        assert!(small.iter().any(|f| f.contains("fp256")), "{small:?}");
+        assert!(small
+            .iter()
+            .any(|f| f.contains("gf2m163::FieldElement::multiply")));
         assert!(small.iter().any(|f| f.contains("apply_matrix_via_gf_mul")));
         let default = check_cell(asm, X86_64, Arch::X86_64, "3", Profile::Default);
         assert!(default.iter().all(|f| !f.contains("gf_mul")), "{default:?}");

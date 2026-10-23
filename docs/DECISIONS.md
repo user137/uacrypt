@@ -16258,6 +16258,22 @@ To name one generic instantiation, a spec's last ident takes its mangled v0 argu
 LLVM making the same choice for the same body. Real-silicon timing of IT-predicated instructions
 is still unclaimed (D-256).
 
+**Addendum (2026-10-23, independent read-only review of `cfde093`, owner's yes):**
+- **The default rows now run in the `small-tables` build too.** These are the curve and field
+  rows plus `gf2m` `multiply`. That code is compiled in both profiles, and the feature changes
+  its inlining context (`curve163::verify_combine` switches to `scalar_multiply`), so a secret
+  branch could come back in that build alone. The rows hold there as they are (160 zero-jump +
+  16 exact).
+- **No `black_box` barrier in `gf_mul`**, unlike D-225's 17 sites. A barrier on both masks cost
+  5x of the profile's throughput (release `kupyna-digest`, Kupyna-256, 8 MiB: 3.6-4.0 -> 0.71-0.74
+  MB/s). `docs/SECURITY.md` names this as the one exception, with the exact counts as its guard.
+- **Known false-negative window, the same class D-230 accepted.** On riscv32 O3 most of each
+  round symbol's 108-117 jumps branch on public `y` bits. If LLVM turned one of those into a
+  select and added one secret branch on `x`, the count would not change.
+- **Audit version.** The rows were audited at rustc 1.99.0, and CI passed them at 1.99.1.
+  `AUDITED_RUSTC` still names 1.97.1 for the older rows, so a failure's version hint is about
+  those rows.
+
 ## D-260: T-313 - D-249's three leftover key-derived copies (2026-10-23)
 
 T-249 (D-256) found three copies of key-derived data that D-249 left behind. All three are wiped
