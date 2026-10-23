@@ -58,11 +58,17 @@ fuzz_target!(|data: &[u8]| {
         plaintext.resize(data.len() + usize::from(first) * 64, first);
     }
     let file = encrypt_all(&key, &plaintext);
-    assert_eq!(decrypt_all(&key, &file).expect("own output decrypts"), plaintext);
+    assert_eq!(
+        decrypt_all(&key, &file).expect("own output decrypts"),
+        plaintext
+    );
     if !data.is_empty() {
         let mut tampered = file.clone();
         let at = (usize::from(data[data.len() - 1]) * 131 + data.len()) % tampered.len();
         tampered[at] ^= 0x01;
-        assert!(decrypt_all(&key, &tampered).is_err(), "a flipped byte at {at} was accepted");
+        assert!(
+            decrypt_all(&key, &tampered).is_err(),
+            "a flipped byte at {at} was accepted"
+        );
     }
 });
