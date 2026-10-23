@@ -16176,7 +16176,10 @@ offer flags the command refuses.
 PowerShell (`TabExpansion2`), fish (`complete -C`), `zsh -n`; `mandoc -Tlint`/`groff -z -ww` on the
 man page. Ten shared cases (command prefix, subcommand slot, a visible and a hidden `--iterations`,
 `--passphrase` vs `--passphrase-file`, `--kind`/`--variant` values, `help <command>`, `completions
-<shell>`, a file name). A missing shell prints `SKIPPED` on stderr. Misuse (`completions`, `completions
+<shell>`, a file name). A missing shell is skipped (a `SKIPPED` line, seen only with `--nocapture`);
+an installed one that fails or hangs fails the test. Actually run so far: bash (Git Bash, the Pi;
+CI Linux/macOS) and PowerShell (Windows; `pwsh` on CI); zsh only parsed (`zsh -n`, macOS CI); the fish
+script has not run anywhere yet (no fish on the dev machine, the Pi or CI). Misuse (`completions`, `completions
 tcsh`, `completions bash extra`, `man extra`) exits 2 with nothing on stdout; a failing stdout is a
 `CliError::Io`, not a panic.
 

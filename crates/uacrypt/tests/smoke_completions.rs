@@ -1,7 +1,7 @@
 //! `uacrypt completions` and `uacrypt man` (T-264, `docs/DECISIONS.md` D-257) against real shells:
-//! each script is loaded and its completer actually run, not only parsed. A shell that is not
-//! installed (or, on Windows, a `bash` that is not Git Bash) is skipped with a visible line on
-//! stderr, never passed silently.
+//! each script is loaded and its completer actually run (zsh: parsed only). A shell that is not
+//! installed (or, on Windows, a `bash` that is not Git Bash) is skipped with a `SKIPPED` line on
+//! stderr (shown with `--nocapture`); an installed shell that fails or hangs fails the test.
 
 mod support;
 use std::path::{Path, PathBuf};
@@ -9,33 +9,57 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use support::{uacrypt, write_bytes, TempDir};
 
-/// Runs `cmd` with a deadline; `None` if it cannot start, fails or hangs.
-fn run_with_deadline(mut cmd: Command, cwd: &Path) -> Option<String> {
+/// Runs a shell that is known to be installed, with a deadline. It failing or hanging fails the
+/// test (only a missing shell is a skip). Output is drained on threads, so a large one cannot fill
+/// the pipe and stall the child.
+fn run_shell(mut cmd: Command, cwd: &Path, what: &str) -> String {
+    use std::io::Read;
+
     let mut child = cmd
         .current_dir(cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .ok()?;
+        .unwrap_or_else(|e| panic!("{what}: cannot start: {e}"));
+    let drain = |mut pipe: Box<dyn Read + Send>| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = pipe.read_to_end(&mut buf);
+            buf
+        })
+    };
+    let stdout = drain(Box::new(child.stdout.take().expect("piped stdout")));
+    let stderr = drain(Box::new(child.stderr.take().expect("piped stderr")));
     let deadline = Instant::now() + Duration::from_secs(60);
-    loop {
-        match child.try_wait().ok()? {
-            Some(_) => break,
-            None if Instant::now() > deadline => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return None;
-            }
-            None => std::thread::sleep(Duration::from_millis(50)),
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("poll the shell") {
+            break status;
         }
-    }
-    let out = child.wait_with_output().ok()?;
-    if !out.status.success() {
-        eprintln!("shell failed: {}", String::from_utf8_lossy(&out.stderr));
-        return None;
-    }
-    Some(String::from_utf8_lossy(&out.stdout).replace('\r', ""))
+        if Instant::now() > deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("{what}: still running after 60 s");
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    let stdout = stdout.join().expect("stdout reader");
+    let stderr = stderr.join().expect("stderr reader");
+    assert!(
+        status.success(),
+        "{what}: {status}: {}",
+        String::from_utf8_lossy(&stderr)
+    );
+    String::from_utf8_lossy(&stdout).replace('\r', "")
+}
+
+/// `true` if `exe args` starts and exits 0 - only then is that shell tested.
+fn installed(exe: &Path, args: &[&str]) -> bool {
+    Command::new(exe)
+        .args(args)
+        .stdin(Stdio::null())
+        .output()
+        .is_ok_and(|o| o.status.success())
 }
 
 fn skip(what: &str) {
@@ -138,8 +162,8 @@ fn workdir(label: &str) -> TempDir {
 #[test]
 #[cfg_attr(miri, ignore = "spawns shells and the real uacrypt binary")]
 fn bash_completion_runs_and_offers_the_table() {
-    let Some(bash) = bash_path() else {
-        return skip("Git Bash");
+    let Some(bash) = bash_path().filter(|b| installed(b, &["--version"])) else {
+        return skip("bash (Git Bash on Windows)");
     };
     let dir = workdir("compl_bash");
     let script = write_script(&dir, "bash", "bash");
@@ -162,21 +186,15 @@ fn bash_completion_runs_and_offers_the_table() {
     cmd.arg("--noprofile")
         .arg("--norc")
         .arg(slash(&driver_path));
-    let Some(out) = run_with_deadline(cmd, &dir.0) else {
-        return skip("bash (did not run)");
-    };
-    check("bash", &split_cases(&out));
+    check("bash", &split_cases(&run_shell(cmd, &dir.0, "bash")));
 }
 
 #[test]
 #[cfg_attr(miri, ignore = "spawns shells and the real uacrypt binary")]
 fn powershell_completion_runs_and_offers_the_table() {
-    let exe = ["pwsh", "powershell"].into_iter().find(|exe| {
-        Command::new(exe)
-            .args(["-NoProfile", "-Command", "exit 0"])
-            .output()
-            .is_ok_and(|o| o.status.success())
-    });
+    let exe = ["pwsh", "powershell"]
+        .into_iter()
+        .find(|exe| installed(Path::new(exe), &["-NoProfile", "-Command", "exit 0"]));
     let Some(exe) = exe else {
         return skip("PowerShell");
     };
@@ -200,15 +218,18 @@ fn powershell_completion_runs_and_offers_the_table() {
         "-File",
     ])
     .arg(&driver_path);
-    let Some(out) = run_with_deadline(cmd, &dir.0) else {
-        return skip("PowerShell (did not run)");
-    };
-    // PowerShell prefixes a path completion with `.\`; the file name is what matters.
+    let out = run_shell(cmd, &dir.0, exe);
+    // A path completion comes back as `.\x` on Windows and `./x` elsewhere; the name matters.
     let results: Vec<Vec<String>> = split_cases(&out)
         .into_iter()
         .map(|v| {
             v.into_iter()
-                .map(|w| w.trim_start_matches(".\\").to_string())
+                .map(|w| {
+                    w.strip_prefix(".\\")
+                        .or_else(|| w.strip_prefix("./"))
+                        .unwrap_or(&w)
+                        .to_string()
+                })
                 .collect()
         })
         .collect();
@@ -218,7 +239,7 @@ fn powershell_completion_runs_and_offers_the_table() {
 #[test]
 #[cfg_attr(miri, ignore = "spawns shells and the real uacrypt binary")]
 fn fish_completion_runs_and_offers_the_table() {
-    if Command::new("fish").arg("--version").output().is_err() {
+    if !installed(Path::new("fish"), &["--version"]) {
         return skip("fish");
     }
     let dir = workdir("compl_fish");
@@ -231,26 +252,20 @@ fn fish_completion_runs_and_offers_the_table() {
     write_bytes(&driver_path, driver.as_bytes());
     let mut cmd = Command::new("fish");
     cmd.arg("--no-config").arg(&driver_path);
-    let Some(out) = run_with_deadline(cmd, &dir.0) else {
-        return skip("fish (did not run)");
-    };
-    check("fish", &split_cases(&out));
+    check("fish", &split_cases(&run_shell(cmd, &dir.0, "fish")));
 }
 
 #[test]
 #[cfg_attr(miri, ignore = "spawns shells and the real uacrypt binary")]
 fn zsh_completion_parses() {
-    if Command::new("zsh").arg("--version").output().is_err() {
+    if !installed(Path::new("zsh"), &["--version"]) {
         return skip("zsh");
     }
     let dir = TempDir::new("compl_zsh");
     let script = write_script(&dir, "zsh", "zsh");
     let mut cmd = Command::new("zsh");
     cmd.arg("-n").arg(&script);
-    assert!(
-        run_with_deadline(cmd, &dir.0).is_some(),
-        "zsh -n rejected the script"
-    );
+    run_shell(cmd, &dir.0, "zsh -n");
 }
 
 #[test]
