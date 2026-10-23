@@ -15864,7 +15864,8 @@ or `ZeroizeOnDrop`):
 `Scalar`, ladder accumulators) and function-return temporaries can still leave register/stack
 copies the compiler places; Rust cannot guarantee their erasure. Per-block `compress_block` column
 buffers in Kupyna are left (they hold message bytes, overwritten by the next block; wiping them
-would cost every hash). No test: zeroization is not observable through the public API (a
+would cost every hash). *Corrected by D-260: under KMAC the last block holds `~K` and nothing
+overwrites it; `finalize`'s blocks are wiped now.* No test: zeroization is not observable through the public API (a
 type-signature-level gap, recorded here per the project's misuse-category rule).
 
 ## D-250: owner-only output files on Windows (T-300, 2026-10-22)
@@ -16256,3 +16257,33 @@ To name one generic instantiation, a spec's last ident takes its mangled v0 argu
 `kalyna_ccm` `seal_in_place`'s count, in the other direction, through an inlining change) rely on
 LLVM making the same choice for the same body. Real-silicon timing of IT-predicated instructions
 is still unclaimed (D-256).
+
+## D-260: T-313 - D-249's three leftover key-derived copies (2026-10-23)
+
+T-249 (D-256) found three copies of key-derived data that D-249 left behind. All three are wiped
+now, best effort as in D-249: Rust cannot guarantee erasure of compiler-placed copies.
+- **(a) Kupyna's last compression under KMAC.** D-249 kept the per-block buffers
+  (`compress_block`'s `columns_buf`, `compress_n`'s `t_input`/`q_input`) because the next block
+  overwrites them. Under `kupyna_kmac` the final block is `~K || padding`: after `PAD(M)` the buffer
+  is empty, and `~K` is shorter than a block, so it is compressed only in `finalize` and no later
+  block follows. `compress_n`/`compress_block` take a `wipe` flag, and only `finalize`'s tail blocks
+  (one or two per message) pass `true`.
+
+  Measured first, as T-313 asked, with release `uacrypt kupyna-digest --iterations 5` on 64 MiB,
+  base and variant runs interleaved (D-34):
+  - Wiping every block cost 16% of Kupyna-256's throughput (137.6 -> 116.0 MB/s) and 8.5% of
+    Kupyna-512's (96.2 -> 88.0 MB/s).
+  - The finalize-only flag measured 1-2% below a fresh build of HEAD (130-132 vs 134-137 MB/s, in
+    a 131-137 MB/s noise band on this machine). That is more than two compressions per 64 MiB can
+    cost, so it is code-layout sensitivity: a `const WIPE: bool` variant, whose hot path is in
+    principle unchanged, measured lower still (128-130 MB/s) and was dropped.
+
+  The proptest `compress_n_matches_dyn_*` now checks both flag values against the runtime
+  `compress`. The annex Б state-by-state test runs its last block through the wiping path.
+- **(b) `kalyna::rotate_bytes_left`'s `rotated` scratch.** Its only caller rotates round keys
+  (`key_expand_odd`). It is now `Zeroizing`.
+- **(c) `strumok::Core::new`.** The local state `s` (key words XOR IV, then the state after
+  initialisation) and the FSM registers `r0`/`r1` are `Zeroizing`. `Self` receives copies, so
+  the stack locals are wiped when `new` returns.
+
+No new test of erasure itself: it is not observable through the API (D-249's recorded gap).

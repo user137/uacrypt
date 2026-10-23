@@ -295,10 +295,11 @@ fn rotate_words_left(buf: &mut [Column], count: usize) {
 }
 
 /// Rotates a byte buffer left by `shift` positions (mirrors the oracle's `RotateLeft`: the first
-/// `shift` bytes move to the end, everything else shifts down).
+/// `shift` bytes move to the end, everything else shifts down). Its only caller rotates round
+/// keys, so the scratch copy is wiped (T-313).
 fn rotate_bytes_left(buf: &mut [u8], shift: usize) {
     let len = buf.len();
-    let mut rotated = [0u8; MAX_NB * ROWS];
+    let mut rotated = zeroize::Zeroizing::new([0u8; MAX_NB * ROWS]);
     for (i, slot) in rotated[..len].iter_mut().enumerate() {
         *slot = buf[(i + shift) % len];
     }

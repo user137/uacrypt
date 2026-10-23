@@ -27,6 +27,9 @@ All notable changes to this project are documented in this file. Format follows
   now reduces with masks instead of an `if` on the state byte's top bit. Shipped builds were
   already branchless there by the compiler's choice; `cargo xtask asm-check` now checks the
   `small-tables` build too, so a compiler change that brings the branch back fails CI.
+- **`dstu-core`: three more key-derived copies wiped** (T-313, `docs/DECISIONS.md` D-260):
+  Kupyna-KMAC's last compression block (`~K`), the Kalyna round-key rotation scratch, and
+  Strumok's initial state and registers in `new`.
 
 ## [0.7.0] - 2026-10-23
 

@@ -13,6 +13,7 @@
 //! field in `crates/dstu-core/tests/vectors/kupyna/*.json`).
 
 use super::tables::{apply_forward_matrix, forward_sbox_mds, ROWS, SBOXES};
+use zeroize::Zeroize;
 
 const MAX_COLUMNS: usize = 16;
 const MAX_BLOCK_BYTES: usize = MAX_COLUMNS * ROWS;
@@ -239,10 +240,15 @@ fn compress(h: &mut [[u8; ROWS]], block: &[[u8; ROWS]], rounds: usize, last_row_
 /// `COLUMNS` wide here (not `MAX_COLUMNS`), which is the actual "2x wasted zeroing" T-134 names for
 /// Kupyna-256 (`COLUMNS=8` against a 16-wide scratch buffer) - the round-loop trip count above is
 /// only half of the fix.
+///
+/// `wipe` clears `t_input`/`q_input` before returning (T-313): `finalize`'s tail blocks hold `~K`
+/// under `kupyna_kmac` and no later block overwrites them. Not every block: that cost 16% of
+/// Kupyna-256's throughput (D-260).
 fn compress_n<const COLUMNS: usize, const ROUNDS: usize>(
     h: &mut [[u8; ROWS]; COLUMNS],
     block: &[[u8; ROWS]; COLUMNS],
     last_row_shift: usize,
+    wipe: bool,
 ) {
     let mut t_input = [[0u8; ROWS]; COLUMNS];
     let mut q_input = [[0u8; ROWS]; COLUMNS];
@@ -258,6 +264,10 @@ fn compress_n<const COLUMNS: usize, const ROUNDS: usize>(
         for row in 0..ROWS {
             h[col][row] ^= t_input[col][row] ^ q_input[col][row];
         }
+    }
+    if wipe {
+        t_input.zeroize();
+        q_input.zeroize();
     }
 }
 
@@ -398,18 +408,25 @@ impl KupynaCore {
     /// `digest_generic`/`kmac_generic` for Kupyna256/Kupyna384/Kupyna512), so this match is a
     /// one-time-per-block branch on a value that's constant for the lifetime of a given `self`, not
     /// a per-round cost - see this task's `advisor()`-reviewed plan for why `KupynaCore` itself
-    /// stays runtime-parameterized rather than becoming const-generic end-to-end.
-    fn compress_block(&mut self, block: &[u8]) {
+    /// stays runtime-parameterized rather than becoming const-generic end-to-end. `wipe`: see
+    /// `compress_n`.
+    fn compress_block(&mut self, block: &[u8], wipe: bool) {
         match self.columns {
             8 => {
-                let columns_buf = bytes_to_columns_n::<8>(block);
+                let mut columns_buf = bytes_to_columns_n::<8>(block);
                 let h = state_array_mut_kupyna::<8>(&mut self.h);
-                compress_n::<8, 10>(h, &columns_buf, self.last_row_shift);
+                compress_n::<8, 10>(h, &columns_buf, self.last_row_shift, wipe);
+                if wipe {
+                    columns_buf.zeroize();
+                }
             }
             16 => {
-                let columns_buf = bytes_to_columns_n::<16>(block);
+                let mut columns_buf = bytes_to_columns_n::<16>(block);
                 let h = state_array_mut_kupyna::<16>(&mut self.h);
-                compress_n::<16, 14>(h, &columns_buf, self.last_row_shift);
+                compress_n::<16, 14>(h, &columns_buf, self.last_row_shift, wipe);
+                if wipe {
+                    columns_buf.zeroize();
+                }
             }
             _ => unreachable!("KupynaCore::new only ever constructed with columns=8 or 16"),
         }
@@ -435,13 +452,13 @@ impl KupynaCore {
                 return;
             }
             let block = zeroize::Zeroizing::new(self.buffer);
-            self.compress_block(&block[..block_bytes]);
+            self.compress_block(&block[..block_bytes], false);
             self.buffer_len = 0;
         }
 
         let mut full_blocks = data.chunks_exact(block_bytes);
         for block in &mut full_blocks {
-            self.compress_block(block);
+            self.compress_block(block, false);
         }
         let remainder = full_blocks.remainder();
         self.buffer[..remainder.len()].copy_from_slice(remainder);
@@ -463,7 +480,7 @@ impl KupynaCore {
 
         let tail_blocks = pos / block_bytes;
         for i in 0..tail_blocks {
-            self.compress_block(&tail[i * block_bytes..(i + 1) * block_bytes]);
+            self.compress_block(&tail[i * block_bytes..(i + 1) * block_bytes], true);
         }
 
         self.output(output_bytes)
@@ -741,9 +758,12 @@ mod const_shift_mix_tests {
                 fn $compress_test(h in arb_state::<$columns>(), block in arb_state::<$columns>()) {
                     let mut dynamic = h;
                     let mut constant = h;
+                    let mut wiped = h;
                     compress(&mut dynamic[..], &block[..], $rounds, $last_row_shift);
-                    compress_n::<$columns, $rounds>(&mut constant, &block, $last_row_shift);
+                    compress_n::<$columns, $rounds>(&mut constant, &block, $last_row_shift, false);
+                    compress_n::<$columns, $rounds>(&mut wiped, &block, $last_row_shift, true);
                     prop_assert_eq!(dynamic, constant);
+                    prop_assert_eq!(dynamic, wiped);
                 }
 
                 #[test]
@@ -831,7 +851,8 @@ mod annex_bit_level_tests {
             let blocks: Vec<&[u8]> = padded.chunks(core.block_bytes()).collect();
             assert_eq!(blocks.len(), states.len());
             for (i, block) in blocks.iter().enumerate() {
-                core.compress_block(block);
+                // The last block takes `finalize`'s wiping path (T-313).
+                core.compress_block(block, i + 1 == blocks.len());
                 assert_eq!(
                     state_bytes(&core),
                     states[i],

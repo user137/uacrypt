@@ -56,7 +56,7 @@
 //! `tests/strumok.rs`'s `reusing_key_and_iv_leaks_plaintext_xor` for the property pinned directly,
 //! the same pattern `hazmat::kalyna_gcm`'s nonce-coverage warning uses (D-56/D-63).
 
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 /// `alpha` multiplication table, indexed by the byte shifted out of the top of the word.
 /// Source: `oracles/uapki/library/uapkic/src/dstu8845.c` `mul_T` (see module doc for the
@@ -974,18 +974,20 @@ struct Core {
 
 impl Core {
     fn new(key: &[u8], iv: &[u8; 32]) -> Self {
-        let mut s = init_state(key, iv);
+        // T-313: the locals are the cipher state; `Self` takes copies and these are wiped.
+        let mut s = Zeroizing::new(init_state(key, iv));
         let mut head = 0usize;
-        let (mut r0, mut r1) = (0u64, 0u64);
+        let mut r0 = Zeroizing::new(0u64);
+        let mut r1 = Zeroizing::new(0u64);
         for _ in 0..32 {
             next_step(&mut s, &mut head, &mut r0, &mut r1, true);
         }
         next_step(&mut s, &mut head, &mut r0, &mut r1, false);
         Self {
-            s,
+            s: *s,
             head,
-            r0,
-            r1,
+            r0: *r0,
+            r1: *r1,
             block: [0u8; 8],
             block_pos: 8,
         }
