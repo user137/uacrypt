@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2ad66b6f.js";
+            window.path_to_searchindex_js = "searchindex-07776eaf.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -10761,13 +10761,21 @@ created as a private draft.</li>
 <li>Tag <code>v0.7.0</code>, release.yml with env approvals; verify the live registry pages.</li>
 <li>Publish the GHSA; CHANGELOG gets its ID; gh-pages marker; winget 0.7.0 without VCRedist.
 Delegated to Claude (D-253): text as drafted, draft GHSA-6x5f-x3rf-6r48 created 2026-10-23;
-yank &lt; 0.7.0 / &lt;= 0.4.0 once 0.7.0 is live (D-253 revision: compat no longer a reason). Steps 1-2 done (<code>410ac8e</code>, gh-pages local <code>6268788</code>, not pushed).
+yank &lt; 0.7.0 / &lt;= 0.4.0 once 0.7.0 is live (D-253 revision: compat no longer a reason).
+<strong>Released 2026-10-23:</strong> tag <code>v0.7.0</code> on <code>895f82a</code>, run <code>39932872725</code>, all four registries live
+(npm <code>linux-arm64-gnu</code> showed up ~2 min late). GHSA-6x5f-x3rf-6r48 published. CodeQL #89-#101
+dismissed (D-254). Open: the yanks (owner runs them), winget 0.7.0 PR replacing #453396. Steps 1-2 done (<code>410ac8e</code>, gh-pages local <code>6268788</code>, not pushed).
 The pushed tree shows the fixes from the push until the release is live - push and tag the same
 day.</li>
 </ol>
 </li>
 <li>Step 4 (after 0.7.0): T-264 (the parser is hand-written, no <code>clap</code>; no new dependency without the owner).</li>
 <li>Step 5 (after 0.7.0): T-249 + the T-223/T-225 fuzz additions.</li>
+<li>Step 7 (after 0.7.0): T-311 - T-231’s awaited failure line came (2026-10-23, <code>895f82a</code>, docs-only,
+run <code>39915029014</code>): VmRSS +27.68 MB, managed committed +26.80 MB, at n/2 +26.85 / +26.67 MB -
+levels off and is all managed, native remainder 0.88 MB. Retention, not a leak. Fix: assert on
+the native remainder (VmRSS minus managed committed), threshold ~2 MiB, keep the n/2 log. Rerun
+of the job was the release-day workaround.</li>
 <li>Step 6 (after 0.7.0, owner 2026-10-23): T-310 - remove <code>crypto_box{,512}::open_v2_legacy</code> and
 <code>box-open</code>’s v2 path (compat is no reason to keep it, D-253 revision). A v2 blob becomes an
 unsupported version everywhere, as capi and the bindings already treat it (<code>legacy_v2.json</code>

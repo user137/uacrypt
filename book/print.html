@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2ad66b6f.js";
+            window.path_to_searchindex_js = "searchindex-07776eaf.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -11376,13 +11376,21 @@ created as a private draft.</li>
 <li>Tag <code>v0.7.0</code>, release.yml with env approvals; verify the live registry pages.</li>
 <li>Publish the GHSA; CHANGELOG gets its ID; gh-pages marker; winget 0.7.0 without VCRedist.
 Delegated to Claude (D-253): text as drafted, draft GHSA-6x5f-x3rf-6r48 created 2026-10-23;
-yank &lt; 0.7.0 / &lt;= 0.4.0 once 0.7.0 is live (D-253 revision: compat no longer a reason). Steps 1-2 done (<code>410ac8e</code>, gh-pages local <code>6268788</code>, not pushed).
+yank &lt; 0.7.0 / &lt;= 0.4.0 once 0.7.0 is live (D-253 revision: compat no longer a reason).
+<strong>Released 2026-10-23:</strong> tag <code>v0.7.0</code> on <code>895f82a</code>, run <code>39932872725</code>, all four registries live
+(npm <code>linux-arm64-gnu</code> showed up ~2 min late). GHSA-6x5f-x3rf-6r48 published. CodeQL #89-#101
+dismissed (D-254). Open: the yanks (owner runs them), winget 0.7.0 PR replacing #453396. Steps 1-2 done (<code>410ac8e</code>, gh-pages local <code>6268788</code>, not pushed).
 The pushed tree shows the fixes from the push until the release is live - push and tag the same
 day.</li>
 </ol>
 </li>
 <li>Step 4 (after 0.7.0): T-264 (the parser is hand-written, no <code>clap</code>; no new dependency without the owner).</li>
 <li>Step 5 (after 0.7.0): T-249 + the T-223/T-225 fuzz additions.</li>
+<li>Step 7 (after 0.7.0): T-311 - T-231’s awaited failure line came (2026-10-23, <code>895f82a</code>, docs-only,
+run <code>39915029014</code>): VmRSS +27.68 MB, managed committed +26.80 MB, at n/2 +26.85 / +26.67 MB -
+levels off and is all managed, native remainder 0.88 MB. Retention, not a leak. Fix: assert on
+the native remainder (VmRSS minus managed committed), threshold ~2 MiB, keep the n/2 log. Rerun
+of the job was the release-day workaround.</li>
 <li>Step 6 (after 0.7.0, owner 2026-10-23): T-310 - remove <code>crypto_box{,512}::open_v2_legacy</code> and
 <code>box-open</code>’s v2 path (compat is no reason to keep it, D-253 revision). A v2 blob becomes an
 unsupported version everywhere, as capi and the bindings already treat it (<code>legacy_v2.json</code>
@@ -33743,6 +33751,25 @@ then favours the yank (T-251/D-233 precedent): once 0.7.0/0.5.0 are live on ever
 yank <code>dstu-core</code>/<code>uacrypt</code> &lt; 0.7.0 on crates.io and the bindings &lt;= 0.4.0 on PyPI/RubyGems,
 <code>npm deprecate</code> on npm, each run with the owner’s approval.</li>
 </ul>
+<h2 id="d-254-the-12-open-codeql-alerts-89-101-are-false-positives-dismissed-2026-10-23"><a class="header" href="#d-254-the-12-open-codeql-alerts-89-101-are-false-positives-dismissed-2026-10-23">D-254: the 12 open CodeQL alerts (#89-#101) are false positives, dismissed (2026-10-23)</a></h2>
+<p><strong>Context.</strong> Owner surfaced the Code Scanning page after the 0.7.0 release: 12 open High alerts,
+first seen 2026-10-08..19, read against <code>895f82a</code> (the <code>v0.7.0</code> commit). Same two rules as D-210.</p>
+<ul>
+<li><strong><code>rust/access-invalid-pointer</code> #100, #101</strong> - <code>bindings/nodejs/src/secretstream.rs:147/239</code>,
+the <code>#[napi] pub struct SecretStreamFileEncryptor</code>/<code>SecretStreamFileDecryptor</code> (T-284). The same
+<code>napi-derive</code> ownership transfer D-210 expanded for #82-#85 (<code>Box::into_raw</code> handed to <code>napi_wrap</code>
+with the finalizer that frees it); the analyzer does not model the finalizer.</li>
+<li><strong><code>rust/cleartext-logging</code>, tests</strong> - <code>crates/uacrypt/src/lib.rs:9648/9653/9697</code> (<code>#[cfg(test)]</code>,
+source <code>secret_keygens()</code>): the sink is the assert message <code>{label}</code>, a <code>&amp;'static str</code> such as
+<code>"keygen"</code>. <code>crates/uacrypt/tests/smoke_stdio.rs:481-484</code>: the message prints the argument list
+and the run’s stderr of a command that must refuse to print a secret. <code>crates/dstu-core/tests/ crypto_pwhash.rs:62</code>: the PHC hash of the literal test password <code>"password"</code>.</li>
+<li><strong><code>rust/cleartext-logging</code>, production</strong> - <code>crates/uacrypt/src/lib.rs:3039/4703</code>: the bench
+summary <code>eprintln!</code> of the <code>kupyna-digest</code>/<code>strumok-crypt</code> <code>--iterations</code> path, printing only
+<code>args.iterations</code>, nanoseconds and MB/s. The flagged source <code>secretstream_args(...)</code> builds
+<code>SecretstreamArgs</code>, whose <code>Credential</code> holds only a key-file path, a passphrase-file path or the
+terminal marker - never a key or a passphrase - and does not reach these lines at all.</li>
+</ul>
+<p>Nothing to change. Dismissed as false positives with a pointer to this entry.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows

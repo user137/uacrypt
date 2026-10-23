@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2ad66b6f.js";
+            window.path_to_searchindex_js = "searchindex-07776eaf.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -14713,6 +14713,25 @@ then favours the yank (T-251/D-233 precedent): once 0.7.0/0.5.0 are live on ever
 yank <code>dstu-core</code>/<code>uacrypt</code> &lt; 0.7.0 on crates.io and the bindings &lt;= 0.4.0 on PyPI/RubyGems,
 <code>npm deprecate</code> on npm, each run with the owner’s approval.</li>
 </ul>
+<h2 id="d-254-the-12-open-codeql-alerts-89-101-are-false-positives-dismissed-2026-10-23"><a class="header" href="#d-254-the-12-open-codeql-alerts-89-101-are-false-positives-dismissed-2026-10-23">D-254: the 12 open CodeQL alerts (#89-#101) are false positives, dismissed (2026-10-23)</a></h2>
+<p><strong>Context.</strong> Owner surfaced the Code Scanning page after the 0.7.0 release: 12 open High alerts,
+first seen 2026-10-08..19, read against <code>895f82a</code> (the <code>v0.7.0</code> commit). Same two rules as D-210.</p>
+<ul>
+<li><strong><code>rust/access-invalid-pointer</code> #100, #101</strong> - <code>bindings/nodejs/src/secretstream.rs:147/239</code>,
+the <code>#[napi] pub struct SecretStreamFileEncryptor</code>/<code>SecretStreamFileDecryptor</code> (T-284). The same
+<code>napi-derive</code> ownership transfer D-210 expanded for #82-#85 (<code>Box::into_raw</code> handed to <code>napi_wrap</code>
+with the finalizer that frees it); the analyzer does not model the finalizer.</li>
+<li><strong><code>rust/cleartext-logging</code>, tests</strong> - <code>crates/uacrypt/src/lib.rs:9648/9653/9697</code> (<code>#[cfg(test)]</code>,
+source <code>secret_keygens()</code>): the sink is the assert message <code>{label}</code>, a <code>&amp;'static str</code> such as
+<code>"keygen"</code>. <code>crates/uacrypt/tests/smoke_stdio.rs:481-484</code>: the message prints the argument list
+and the run’s stderr of a command that must refuse to print a secret. <code>crates/dstu-core/tests/ crypto_pwhash.rs:62</code>: the PHC hash of the literal test password <code>"password"</code>.</li>
+<li><strong><code>rust/cleartext-logging</code>, production</strong> - <code>crates/uacrypt/src/lib.rs:3039/4703</code>: the bench
+summary <code>eprintln!</code> of the <code>kupyna-digest</code>/<code>strumok-crypt</code> <code>--iterations</code> path, printing only
+<code>args.iterations</code>, nanoseconds and MB/s. The flagged source <code>secretstream_args(...)</code> builds
+<code>SecretstreamArgs</code>, whose <code>Credential</code> holds only a key-file path, a passphrase-file path or the
+terminal marker - never a key or a passphrase - and does not reach these lines at all.</li>
+</ul>
+<p>Nothing to change. Dismissed as false positives with a pointer to this entry.</p>
 
                     </main>
 
