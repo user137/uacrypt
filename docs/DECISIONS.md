@@ -16327,6 +16327,14 @@ byte-identical to `argon2`'s own `PasswordHasher` for the same salt and preset; 
 allocation failure itself is not tested: forcing it needs an allocator hook this crate does not
 have, the same untested gap `derive_key` and `verify_password` already carry.
 
+Independent review (2026-10-23, read-only subagent): no defect. Follow-ups applied: the
+`OutOfMemory` wording is qualified (only where the allocator reports failure; an overcommitting OS
+can still kill the process on first touch, as for `derive_key`); a raw Argon2 error from
+`hash_password` is `PwHashError::Hash` again (via `argon2`'s own `From`, as before T-315; only
+reachable for a password over `u32::MAX` bytes, so untested), not `Derive`'s "key derivation"
+message. Left as is: no `Drop` guard on the block zeroize (no panicking path for these inputs;
+same shape as `derive_key`).
+
 ## D-262: T-314 - C++ and PHP stream readers report a read error (2026-10-23)
 
 T-249 (D-256) found that two readers took a failed read for end of input: C++

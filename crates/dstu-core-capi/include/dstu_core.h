@@ -1199,8 +1199,9 @@ void dstu_kdf_derive_subkey(const DstuKdfMasterKey *key,
 /**
  * Hashes `password` into a NUL-terminated PHC string written to `out` (a caller-owned buffer of
  * at least `DSTU_PWHASH_STRBYTES` bytes). Returns `DSTU_ERR_RANDOM` if the OS CSPRNG fails,
- * `DSTU_ERR_OUT_OF_MEMORY` if the preset's memory cannot be allocated, `DSTU_ERR_HASH_ERROR` on an internal Argon2/PHC-encoding failure (not expected in practice for
- * this module's own fixed-length salt), or `DSTU_ERR_NULL_POINTER`. `strength` must be one of the
+ * `DSTU_ERR_OUT_OF_MEMORY` if the preset's memory cannot be allocated, `DSTU_ERR_HASH_ERROR` on
+ * an internal Argon2/PHC-encoding failure (not expected in practice for this module's own
+ * fixed-length salt), or `DSTU_ERR_NULL_POINTER`. `strength` must be one of the
  * `DSTU_PWHASH_*` values - `DSTU_ERR_INVALID_ARGUMENT` otherwise, checked before any hashing.
  *
  * # Safety

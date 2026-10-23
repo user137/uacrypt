@@ -123,10 +123,11 @@ pub enum PwHashError {
     /// fallible, not because a known failure mode exists here.
     Hash(argon2::password_hash::Error),
     /// [`hash_password`] or [`derive_key`] could not allocate the preset's Argon2 memory (256 MiB
-    /// for [`Strength::Moderate`]) - reported instead of aborting the process.
+    /// for [`Strength::Moderate`]) - reported instead of aborting the process, where the allocator
+    /// reports the failure (an overcommitting OS may instead kill the process later).
     OutOfMemory,
-    /// The raw Argon2 call of [`hash_password`] or [`derive_key`] failed. Not expected for the
-    /// fixed presets, salt and output length used here.
+    /// The raw Argon2 call of [`derive_key`] failed. Not expected for the fixed presets, salt and
+    /// output length used here.
     Derive(argon2::Error),
 }
 
@@ -167,8 +168,8 @@ impl From<argon2::password_hash::Error> for PwHashError {
 /// # Errors
 ///
 /// Returns [`PwHashError::Random`] if the OS CSPRNG fails and [`PwHashError::OutOfMemory`] if the
-/// preset's memory cannot be allocated. [`PwHashError::Hash`] and [`PwHashError::Derive`] are not
-/// expected for the fixed 16-byte salt and parameters used here.
+/// preset's memory cannot be allocated. [`PwHashError::Hash`] (also for a raw Argon2 failure) is
+/// not expected for the fixed 16-byte salt and parameters used here.
 pub fn hash_password(password: &[u8], strength: Strength) -> Result<String, PwHashError> {
     let mut salt_bytes = [0u8; SALT_BYTES];
     randombytes_buf(&mut salt_bytes)?;
@@ -182,7 +183,12 @@ fn hash_with_salt(
 ) -> Result<String, PwHashError> {
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, strength.params());
     let mut tag = zeroize::Zeroizing::new([0u8; Params::DEFAULT_OUTPUT_LEN]);
-    hash_into_reserved_memory(&argon2, password, salt_bytes, tag.as_mut_slice())?;
+    hash_into_reserved_memory(&argon2, password, salt_bytes, tag.as_mut_slice()).map_err(|e| {
+        match e {
+            PwHashError::Derive(e) => PwHashError::Hash(e.into()),
+            e => e,
+        }
+    })?;
     let salt = SaltString::encode_b64(salt_bytes)?;
     let hash = PasswordHash {
         algorithm: Algorithm::Argon2id.ident(),
@@ -194,8 +200,9 @@ fn hash_with_salt(
     Ok(hash.to_string())
 }
 
-/// Runs `argon2` over blocks reserved with `try_reserve_exact` (allocation failure is
-/// [`PwHashError::OutOfMemory`], not an abort) and zeroized before they are freed.
+/// Runs `argon2` over blocks reserved with `try_reserve_exact` (an allocation failure the
+/// allocator reports is [`PwHashError::OutOfMemory`], not an abort) and zeroized before they are
+/// freed.
 fn hash_into_reserved_memory(
     argon2: &Argon2<'_>,
     password: &[u8],

@@ -33,7 +33,8 @@ All notable changes to this project are documented in this file. Format follows
 - **`dstu-core` `crypto_pwhash::hash_password`: out of memory is an error, not an abort**
   (T-315, `docs/DECISIONS.md` D-261): it reserves the Argon2 memory itself, as `derive_key`
   already did, and returns `PwHashError::OutOfMemory` (capi: `DSTU_ERR_OUT_OF_MEMORY`) when the
-  preset's memory (1 GiB at `Sensitive`) cannot be allocated.
+  preset's memory (1 GiB at `Sensitive`) cannot be allocated - where the allocator reports the
+  failure; an overcommitting OS (Linux by default) may still kill the process later.
 - The C++ and PHP stream readers reported a failed read of the input as a truncated stream,
   losing the I/O error (T-314, `docs/DECISIONS.md` D-262). They now throw "read from the input
   stream failed"; both already failed closed.
