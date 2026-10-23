@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-cdcd6347.js";
+            window.path_to_searchindex_js = "searchindex-706607d1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -184,6 +184,14 @@
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
+<h3 id="removed"><a class="header" href="#removed">Removed</a></h3>
+<ul>
+<li><strong>Breaking - reading the 0.4-0.6 <code>crypto_box</code> format</strong> (T-310, <code>docs/DECISIONS.md</code> D-239
+addendum): <code>dstu-core</code>’s <code>crypto_box::open_v2_legacy</code>, <code>crypto_box512::open_v2_legacy</code> and
+both <code>LEGACY_FORMAT_VERSION</code> constants are gone, and <code>uacrypt box-open</code> refuses a format-2 file
+as an unsupported version, like every other <code>open</code> already did. To keep such data, open it
+with uacrypt 0.7.x (<code>box-open</code>) or dstu-core 0.7.x (<code>open_v2_legacy</code>) and seal it again.</li>
+</ul>
 <h2 id="070---2026-10-23"><a class="header" href="#070---2026-10-23">[0.7.0] - 2026-10-23</a></h2>
 <h3 id="added"><a class="header" href="#added">Added</a></h3>
 <ul>

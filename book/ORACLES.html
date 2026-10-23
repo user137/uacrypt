@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-cdcd6347.js";
+            window.path_to_searchindex_js = "searchindex-706607d1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -708,7 +708,7 @@ the Rust implementation — black-box, per <code>docs/rust_ai_ruleset.md</code> 
 for the stream-file format, which has no external reference. <code>uacrypt</code> and all 8 bindings’
 readers run it; its <code>source</code> field says so. Same status for <code>box/v3.json</code> (the <code>crypto_box</code>
 format v3, D-239, read by every <code>open</code>) and <code>box/legacy_v2.json</code> (0.4-0.6 blobs, one from the
-real 0.6.0 binary, read only by <code>open_v2_legacy</code>/<code>uacrypt box-open</code>).</li>
+real 0.6.0 binary, refused by every <code>open</code> since T-310).</li>
 <li><strong>Same files, consumed cross-language too:</strong> <code>tests/oracle-harness/{java,dotnet}/</code> run these
 vectors against real Bouncy Castle directly (not the Rust port), via the published Maven/NuGet
 packages — one vector format, multiple independent consumers. Both actually run and pass (all

@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-cdcd6347.js";
+            window.path_to_searchindex_js = "searchindex-706607d1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -10797,7 +10797,7 @@ per phase (<code>rust.yml</code>/<code>miri.yml</code> are <code>cancel-in-progr
 GHSA published, yanks done, CodeQL clean, winget PR #460150 waiting on a moderator). <code>master</code> =
 <code>1b13b68</code> (PHP <code>ctutils</code> RUSTSEC fix): every workflow green, <code>rust</code> still running at save time -
 check it first. Unpushed, docs only: <code>8397cf6</code>, <code>2a9c0c0</code>, <code>25060fd</code> (push after <code>rust</code> is done).
-Owner confirmed the order below. <strong>T-311 done 2026-10-23 (D-255); next: T-310.</strong> Pi: packages up to date (PHP 8.2.35
+Owner confirmed the order below. <strong>T-311 done 2026-10-23 (D-255), T-310 done (D-239 addendum); next: T-223/T-225 fuzz.</strong> Pi: packages up to date (PHP 8.2.35
 by unattended-upgrades, Docker 29.9.2), Docker stays disabled. Nothing uncommitted.</p>
 <p><strong>Code chain:</strong></p>
 <ol>
@@ -10806,7 +10806,7 @@ normal 0.62-0.70 MB, leak control 7.9 MB) .NET leak test on the native remainder
 ~2 MiB. Committed GC memory need not be resident, so the new metric needs a deliberate-leak
 control first, as D-234 had for Java: a test-only P/Invoke allocation through capi that is never
 freed, shown to fail the new threshold (“never Dispose” is no control in .NET, T-231).</li>
-<li><strong>T-310</strong> drop <code>open_v2_legacy</code> (<code>crypto_box</code>, <code>crypto_box512</code>) and <code>run_box_open_legacy</code>. Sweep:
+<li><input disabled="" type="checkbox" checked=""> <strong>T-310</strong> (done 2026-10-23, D-239 addendum; CHANGELOG Removed) drop <code>open_v2_legacy</code> (<code>crypto_box</code>, <code>crypto_box512</code>) and <code>run_box_open_legacy</code>. Sweep:
 <code>crypto_box384.rs</code> doc line, <code>gen_box_vectors.rs</code>, <code>tests/crypto_box{,512}.rs</code>, <code>lib.rs</code>
 (<code>box-open</code> byte-0 dispatch -&gt; unsupported version), <code>docs/CLI.md</code> (~136-139, ~408),
 CLAUDE.md “Project status” (pair the edit), D-239 addendum, ORACLES, <code>dstu-crypto-project.md</code>,

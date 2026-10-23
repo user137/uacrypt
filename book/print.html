@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-cdcd6347.js";
+            window.path_to_searchindex_js = "searchindex-706607d1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -372,8 +372,7 @@ is known to end right after it, so a file with extra bytes appended never prints
 written to stdout is INCOMPLETE - discard it”, and the exit status is non-zero (1 for a bad
 file, 3 if stdout itself failed). Check it: in a shell pipeline such as <code>... --out - | tar x</code>
 the pipeline’s status is <code>tar</code>’s unless you <code>set -o pipefail</code>. With <code>--out &lt;file&gt;</code> nothing is
-written unless the whole file verifies. <code>box-open</code> (0.7.0, T-265) behaves the same way; a file
-from 0.4-0.6 is decrypted whole before anything is printed.</li>
+written unless the whole file verifies. <code>box-open</code> (0.7.0, T-265) behaves the same way.</li>
 <li>Windows (measured 2026-09-24): cmd and PowerShell 7.6 passed a 100 kB <code>encrypt --out -</code> through
 <code>&gt;</code> and through <code>| uacrypt decrypt --in -</code> byte for byte. Windows PowerShell 5.1 re-encodes a
 native command’s output as text, which corrupts binary data: its <code>&gt;</code> turned a 310-byte output
@@ -384,7 +383,7 @@ byte-order mark). <code>decrypt</code> names this cause when it sees such a star
 <code>decrypt</code> exit 3 with the INCOMPLETE message once <code>head</code> exits, which fails a <code>set -o pipefail</code>
 pipeline.</li>
 <li><code>encrypt</code>/<code>decrypt</code>/<code>box-seal</code>/<code>box-open</code>/<code>hash</code>/<code>sign</code>/<code>verify</code> read stdin in the same
-fixed-size chunks as a file (<code>box-open</code> of a 0.4-0.6 file reads it whole).</li>
+fixed-size chunks as a file.</li>
 </ul>
 <p><strong>Progress (0.5.0, T-261, <code>docs/DECISIONS.md</code> D-218).</strong> When stderr is a terminal and <code>--in</code> is
 a file of 64 MiB or more, <code>encrypt</code>, <code>decrypt</code>, <code>hash</code>, <code>sign</code> and <code>verify</code> show one line on
@@ -512,17 +511,14 @@ uacrypt box-open --key box.key --in message.bin.box --out opened.bin
 curve point’s <code>x</code>-coordinate only) from it, safe to share or publish. Both are typed key files
 (<a href="#key-files">Key files</a>), so <code>box-seal</code> refuses a secret key by name instead of sealing to it.
 <code>box-seal</code>/<code>box-open</code> stream <code>--in</code> in bounded memory like <code>encrypt</code>/<code>decrypt</code> (0.7.0, T-265,
-<code>docs/DECISIONS.md</code> D-239). <code>box-open</code> still opens files sealed by 0.4-0.6, but reads those whole
-into memory - and any <code>--in</code> starting with byte <code>02</code> (for instance an <code>encrypt</code> output passed by
-mistake) takes that path, so it is read whole before it fails. That path reads only a regular
-file, at most its own size: a version-2 input on stdin (<code>--in -</code>) or from a device is refused
-(T-304) - open such a file by its path. 0.6 cannot open 0.7 output.</p>
+<code>docs/DECISIONS.md</code> D-239). Since 0.8.0 (T-310) a file sealed by 0.4-0.6 (format 2) is refused
+as an unsupported version: open it with uacrypt 0.7.x, and re-seal it if you still need it.
+0.6 cannot open 0.7 output.</p>
 <p>For DSTU 9041’s <code>l(p)=384</code> or <code>l(p)=512</code> curve (E384/1, T-297, <code>docs/DECISIONS.md</code> D-245; E512/1,
 T-193, D-182), generate the key with <code>box-keygen384</code> or <code>box-keygen512</code> instead; <code>box-pubkey</code>,
 <code>box-seal</code> and <code>box-open</code> read the curve from the key (T-257, D-213). Keys are 48 or 64 bytes
 instead of 32, and a sealed file under 8 KiB has 231 or 311 bytes of overhead instead of 183. A
-file sealed to one curve’s key is refused by another curve’s key like any other wrong key. There
-are no 0.4-0.6 files at <code>l(p)=384</code>: a version-2 file with a 384 key is an unsupported version.</p>
+file sealed to one curve’s key is refused by another curve’s key like any other wrong key.</p>
 <pre><code>uacrypt box-keygen512 --out box512.key
 uacrypt box-pubkey --key box512.key --out box512.pub
 uacrypt box-seal --key box512.pub --in message.bin --out message.bin.box512
@@ -643,7 +639,7 @@ was not yet so.</p>
 <tr><td><code>encrypt</code></td><td>encrypted file</td><td><code>version (1) || header (32)</code>, then one or more records, each <code>chunk tag (1) || ciphertext length (4) || ciphertext || auth tag (16)</code></td></tr>
 <tr><td><code>encrypt --passphrase</code> / <code>--passphrase-file</code></td><td>encrypted file</td><td><code>0x50 || 0x01 || 0x01 || m_cost KiB (4) || t_cost (4) || p_cost (1) || salt (16)</code>, then the <code>encrypt</code> layout above</td></tr>
 <tr><td><code>box-keygen</code> / <code>box-keygen384</code> / <code>box-keygen512</code> / <code>box-pubkey</code></td><td>secret / public key</td><td>a key line each (the public key is the curve point’s <code>x</code>-coordinate)</td></tr>
-<tr><td><code>box-seal</code></td><td>sealed file</td><td><code>version (1, = 3) || KEM ciphertext (128, or 176/256 for an l(p)=384/512 key) || &lt;the encrypt stream format&gt;</code>: 183, 231 or 311 bytes for an input under 8 KiB, plus 21 per further started 8 KiB (D-239; 0.4-0.6 wrote version 2, one chunk, at 256/512 only, still read by <code>box-open</code>)</td></tr>
+<tr><td><code>box-seal</code></td><td>sealed file</td><td><code>version (1, = 3) || KEM ciphertext (128, or 176/256 for an l(p)=384/512 key) || &lt;the encrypt stream format&gt;</code>: 183, 231 or 311 bytes for an input under 8 KiB, plus 21 per further started 8 KiB (D-239; 0.4-0.6 wrote version 2, one chunk, at 256/512 only, refused since 0.8.0 - uacrypt 0.7.x opens it)</td></tr>
 <tr><td><code>sign-keygen</code> / <code>sign-keygen257</code></td><td>signing key</td><td>a key line (the scalar <code>d</code>, big-endian)</td></tr>
 <tr><td><code>sign-pubkey</code></td><td>verifying key</td><td>a key line (<code>x || y</code>) of the signing key’s curve</td></tr>
 <tr><td><code>sign</code></td><td>signature</td><td>42 raw bytes for an m=163 key, 66 for m=257; <code>verify</code> picks the curve from the verifying key’s kind</td></tr>
@@ -11412,7 +11408,7 @@ per phase (<code>rust.yml</code>/<code>miri.yml</code> are <code>cancel-in-progr
 GHSA published, yanks done, CodeQL clean, winget PR #460150 waiting on a moderator). <code>master</code> =
 <code>1b13b68</code> (PHP <code>ctutils</code> RUSTSEC fix): every workflow green, <code>rust</code> still running at save time -
 check it first. Unpushed, docs only: <code>8397cf6</code>, <code>2a9c0c0</code>, <code>25060fd</code> (push after <code>rust</code> is done).
-Owner confirmed the order below. <strong>T-311 done 2026-10-23 (D-255); next: T-310.</strong> Pi: packages up to date (PHP 8.2.35
+Owner confirmed the order below. <strong>T-311 done 2026-10-23 (D-255), T-310 done (D-239 addendum); next: T-223/T-225 fuzz.</strong> Pi: packages up to date (PHP 8.2.35
 by unattended-upgrades, Docker 29.9.2), Docker stays disabled. Nothing uncommitted.</p>
 <p><strong>Code chain:</strong></p>
 <ol>
@@ -11421,7 +11417,7 @@ normal 0.62-0.70 MB, leak control 7.9 MB) .NET leak test on the native remainder
 ~2 MiB. Committed GC memory need not be resident, so the new metric needs a deliberate-leak
 control first, as D-234 had for Java: a test-only P/Invoke allocation through capi that is never
 freed, shown to fail the new threshold (“never Dispose” is no control in .NET, T-231).</li>
-<li><strong>T-310</strong> drop <code>open_v2_legacy</code> (<code>crypto_box</code>, <code>crypto_box512</code>) and <code>run_box_open_legacy</code>. Sweep:
+<li><input disabled="" type="checkbox" checked=""> <strong>T-310</strong> (done 2026-10-23, D-239 addendum; CHANGELOG Removed) drop <code>open_v2_legacy</code> (<code>crypto_box</code>, <code>crypto_box512</code>) and <code>run_box_open_legacy</code>. Sweep:
 <code>crypto_box384.rs</code> doc line, <code>gen_box_vectors.rs</code>, <code>tests/crypto_box{,512}.rs</code>, <code>lib.rs</code>
 (<code>box-open</code> byte-0 dispatch -&gt; unsupported version), <code>docs/CLI.md</code> (~136-139, ~408),
 CLAUDE.md “Project status” (pair the edit), D-239 addendum, ORACLES, <code>dstu-crypto-project.md</code>,
@@ -12015,7 +12011,7 @@ need <code>std</code> unconditionally, same reason <code>crypto_secretbox</code>
 <tr><td>shape — the curve real Diia-issued qualified signatures use in production. Both <code>crypto_sign</code> and</td><td></td><td></td></tr>
 <tr><td><code>crypto_sign257</code> are wired into <code>dstu-core-capi</code> plus all eight language bindings (<code>docs/TASKS.md</code></td><td></td><td></td></tr>
 <tr><td>T-204, 2026-08-09/10). The other 8 named curve sizes aren’t wired up.</td><td></td><td></td></tr>
-<tr><td><code>crypto_box</code></td><td><code>hazmat::dstu9041</code></td><td><strong>Done</strong> (<code>docs/TASKS.md</code> T-178, D-169) — <code>dstu_core::crypto_box::{seal,open,SecretKey,PublicKey}</code> plus the bounded <code>seal_stream</code>/<code>open_stream</code>/<code>sealed_len</code> over the stream-file codec (format v3, T-265/D-239; <code>open_v2_legacy</code> reads the 0.4-0.6 format for <code>uacrypt</code> only), hybrid via KDF (since T-248/D-201 a <code>Kupyna256Kmac</code> derivation binding `kem_ct</td></tr>
+<tr><td><code>crypto_box</code></td><td><code>hazmat::dstu9041</code></td><td><strong>Done</strong> (<code>docs/TASKS.md</code> T-178, D-169) — <code>dstu_core::crypto_box::{seal,open,SecretKey,PublicKey}</code> plus the bounded <code>seal_stream</code>/<code>open_stream</code>/<code>sealed_len</code> over the stream-file codec (format v3, T-265/D-239; the 0.4-0.6 format is refused since T-310), hybrid via KDF (since T-248/D-201 a <code>Kupyna256Kmac</code> derivation binding `kem_ct</td></tr>
 <tr><td>bindings (<code>docs/TASKS.md</code> T-204, 2026-08-09/10). <code>l(p)=384</code>/E384/1 is <code>dstu_core::crypto_box384</code> (T-297, D-245; key wrap per DSTU 7624 KW-p, D-241), <code>box-keygen384</code> in the CLI, in capi and all eight bindings. <code>l(p)=768</code> not done (no worked example, D-168).</td><td></td><td></td></tr>
 <tr><td><code>crypto_secretbox</code></td><td><code>dstu_core::crypto_secretbox</code> (<code>seal</code>/<code>open</code>/<code>SecretKey</code>), over <code>hazmat::kalyna_gcm::Kalyna256_256Gcm</code></td><td><strong>Implemented, provisional</strong> — single fixed Kalyna-GCM variant (not all five), internal nonce, combined <code>nonce||ciphertext||tag</code> output, no caller-facing AAD (the nonce is passed as <code>kalyna_gcm</code>’s AAD internally, to bind it into the tag — D-63). Migrated 2026-07-25 from an earlier Kalyna-CCM construction, removing its 255-byte message cap entirely. Still not primary-text-confirmed (inherits D-56). See D-51/D-63 in <code>docs/DECISIONS.md</code>.</td></tr>
 <tr><td><code>crypto_auth</code>/<code>crypto_onetimeauth</code></td><td><code>dstu_core::crypto_auth</code> (<code>auth</code>/<code>verify</code>/<code>Key</code>, over <code>hazmat::kupyna_kmac::Kupyna256Kmac</code> only) + <code>hazmat::kupyna_kmac</code> (<code>Kupyna256Kmac</code>/<code>Kupyna384Kmac</code>/<code>Kupyna512Kmac</code>, all three sizes)</td><td><strong>Implemented, provisional</strong> — Kupyna-based KMAC, both UAPKI’s and Bouncy Castle’s constructions read and cross-checked byte-for-byte on all three sizes, not confirmed against the primary DSTU 7564:2014 text. High-level wrapper added <code>docs/TASKS.md</code> T-105/<code>docs/DECISIONS.md</code> D-66: only the 256-bit size is exposed (D-47’s “delete the knob”), key is an opaque <code>Zeroize</code>-on-drop <code>Key</code> type, which also forecloses <code>WrongKeyLength</code> at this layer. See D-44/D-66 in <code>docs/DECISIONS.md</code>.</td></tr>
@@ -14798,7 +14794,7 @@ the Rust implementation — black-box, per <code>docs/rust_ai_ruleset.md</code> 
 for the stream-file format, which has no external reference. <code>uacrypt</code> and all 8 bindings’
 readers run it; its <code>source</code> field says so. Same status for <code>box/v3.json</code> (the <code>crypto_box</code>
 format v3, D-239, read by every <code>open</code>) and <code>box/legacy_v2.json</code> (0.4-0.6 blobs, one from the
-real 0.6.0 binary, read only by <code>open_v2_legacy</code>/<code>uacrypt box-open</code>).</li>
+real 0.6.0 binary, refused by every <code>open</code> since T-310).</li>
 <li><strong>Same files, consumed cross-language too:</strong> <code>tests/oracle-harness/{java,dotnet}/</code> run these
 vectors against real Bouncy Castle directly (not the Rust port), via the published Maven/NuGet
 packages — one vector format, multiple independent consumers. Both actually run and pass (all
@@ -33383,7 +33379,7 @@ returns the existing codec handles (<code>dstu_box{,512}_seal_stream</code>/<cod
 <li><strong>One written format.</strong> <code>seal</code>/<code>open</code> in the core, the C ABI and all 8 bindings write and read
 v3 only - a 0.4-0.6 blob does not open through them (<code>UnsupportedVersion</code>), and 0.6 cannot read
 0.7 blobs (rejected: keeping v2 as a second written format).</li>
-<li><strong><code>uacrypt box-open</code> still opens v2 files</strong> via <code>open_v2_legacy</code>, a separately named core
+<li><strong><code>uacrypt box-open</code> still opens v2 files</strong> (superseded 2026-10-23, T-310 - see the addendum below) via <code>open_v2_legacy</code>, a separately named core
 function kept out of the C ABI and every binding (rejected: v2 reading in every binding’s
 <code>open</code>; and a second copy of the T-248 KDF inside <code>uacrypt</code>). The legacy path reads the file
 whole; any input starting with <code>0x02</code> takes it.</li>
@@ -33395,6 +33391,15 @@ trimmed to the returned length). <code>box-open --out -</code> now behaves like 
 are printed, a later failure says INCOMPLETE. The <code>--iterations</code> benchmark paths stay in memory and
 serve as the boundedness test’s control case. Full streaming in the bindings (and <code>derive_key</code>)
 stays T-269.</p>
+<p><strong>Addendum 2026-10-23 (T-310, owner): the v2 read path is removed.</strong> Compatibility is no reason
+to keep it for this young project (owner, the same day as D-253): <code>crypto_box{,512}::open_v2_legacy</code>,
+<code>LEGACY_FORMAT_VERSION</code> and <code>uacrypt box-open</code>’s byte-0 branch to it are gone, and with them the
+one <code>box-open</code> input that was read whole (T-304’s regular-file bound has nothing left to bound).
+A v2 blob is now <code>UnsupportedVersion</code> everywhere; <code>legacy_v2.json</code> stays as the rejection vector
+(core, uacrypt, capi and all 8 bindings test it). The way to read old data is the 0.7.x release
+(<code>uacrypt box-open</code> or <code>dstu-core</code> <code>open_v2_legacy</code>), not the yanked 0.4-0.6 - the CLI message
+and CHANGELOG say so. <code>stream_key</code> keeps the version byte in the derivation (v3 and a future v4
+never share a key). Breaking: ships in 0.8.0.</p>
 <h2 id="d-240-the-passphrase-file-moves-into-the-core-t-269-2026-10-18"><a class="header" href="#d-240-the-passphrase-file-moves-into-the-core-t-269-2026-10-18">D-240: the passphrase file moves into the core (T-269, 2026-10-18)</a></h2>
 <p><strong>Owner decision (2026-10-18).</strong> The bindings read and write the D-219 passphrase file through the
 core, not each through its own copy of the header (rejected: <code>derive_key</code> only, leaving the format
@@ -33873,6 +33878,14 @@ retention and still cannot see a leak, D-234).</p>
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
+<h3 id="removed"><a class="header" href="#removed">Removed</a></h3>
+<ul>
+<li><strong>Breaking - reading the 0.4-0.6 <code>crypto_box</code> format</strong> (T-310, <code>docs/DECISIONS.md</code> D-239
+addendum): <code>dstu-core</code>’s <code>crypto_box::open_v2_legacy</code>, <code>crypto_box512::open_v2_legacy</code> and
+both <code>LEGACY_FORMAT_VERSION</code> constants are gone, and <code>uacrypt box-open</code> refuses a format-2 file
+as an unsupported version, like every other <code>open</code> already did. To keep such data, open it
+with uacrypt 0.7.x (<code>box-open</code>) or dstu-core 0.7.x (<code>open_v2_legacy</code>) and seal it again.</li>
+</ul>
 <h2 id="070---2026-10-23"><a class="header" href="#070---2026-10-23">[0.7.0] - 2026-10-23</a></h2>
 <h3 id="added"><a class="header" href="#added">Added</a></h3>
 <ul>

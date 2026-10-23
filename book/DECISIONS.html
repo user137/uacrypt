@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-cdcd6347.js";
+            window.path_to_searchindex_js = "searchindex-706607d1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -14281,7 +14281,7 @@ returns the existing codec handles (<code>dstu_box{,512}_seal_stream</code>/<cod
 <li><strong>One written format.</strong> <code>seal</code>/<code>open</code> in the core, the C ABI and all 8 bindings write and read
 v3 only - a 0.4-0.6 blob does not open through them (<code>UnsupportedVersion</code>), and 0.6 cannot read
 0.7 blobs (rejected: keeping v2 as a second written format).</li>
-<li><strong><code>uacrypt box-open</code> still opens v2 files</strong> via <code>open_v2_legacy</code>, a separately named core
+<li><strong><code>uacrypt box-open</code> still opens v2 files</strong> (superseded 2026-10-23, T-310 - see the addendum below) via <code>open_v2_legacy</code>, a separately named core
 function kept out of the C ABI and every binding (rejected: v2 reading in every binding’s
 <code>open</code>; and a second copy of the T-248 KDF inside <code>uacrypt</code>). The legacy path reads the file
 whole; any input starting with <code>0x02</code> takes it.</li>
@@ -14293,6 +14293,15 @@ trimmed to the returned length). <code>box-open --out -</code> now behaves like 
 are printed, a later failure says INCOMPLETE. The <code>--iterations</code> benchmark paths stay in memory and
 serve as the boundedness test’s control case. Full streaming in the bindings (and <code>derive_key</code>)
 stays T-269.</p>
+<p><strong>Addendum 2026-10-23 (T-310, owner): the v2 read path is removed.</strong> Compatibility is no reason
+to keep it for this young project (owner, the same day as D-253): <code>crypto_box{,512}::open_v2_legacy</code>,
+<code>LEGACY_FORMAT_VERSION</code> and <code>uacrypt box-open</code>’s byte-0 branch to it are gone, and with them the
+one <code>box-open</code> input that was read whole (T-304’s regular-file bound has nothing left to bound).
+A v2 blob is now <code>UnsupportedVersion</code> everywhere; <code>legacy_v2.json</code> stays as the rejection vector
+(core, uacrypt, capi and all 8 bindings test it). The way to read old data is the 0.7.x release
+(<code>uacrypt box-open</code> or <code>dstu-core</code> <code>open_v2_legacy</code>), not the yanked 0.4-0.6 - the CLI message
+and CHANGELOG say so. <code>stream_key</code> keeps the version byte in the derivation (v3 and a future v4
+never share a key). Breaking: ships in 0.8.0.</p>
 <h2 id="d-240-the-passphrase-file-moves-into-the-core-t-269-2026-10-18"><a class="header" href="#d-240-the-passphrase-file-moves-into-the-core-t-269-2026-10-18">D-240: the passphrase file moves into the core (T-269, 2026-10-18)</a></h2>
 <p><strong>Owner decision (2026-10-18).</strong> The bindings read and write the D-219 passphrase file through the
 core, not each through its own copy of the header (rejected: <code>derive_key</code> only, leaving the format
