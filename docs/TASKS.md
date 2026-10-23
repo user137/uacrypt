@@ -10291,7 +10291,8 @@ writer onto it. Superseded in detail by the plan below.
   yank < 0.7.0 / <= 0.4.0 once 0.7.0 is live (D-253 revision: compat no longer a reason).
   **Released 2026-10-23:** tag `v0.7.0` on `895f82a`, run `39932872725`, all four registries live
   (npm `linux-arm64-gnu` showed up ~2 min late). GHSA-6x5f-x3rf-6r48 published. CodeQL #89-#101
-  dismissed (D-254). Open: the yanks (owner runs them), winget 0.7.0 PR replacing #453396. Steps 1-2 done (`410ac8e`, gh-pages local `6268788`, not pushed).
+  dismissed (D-254). Open: the yanks (owner runs them), winget: microsoft/winget-pkgs#460150 (0.7.0, no VCRedist) opened, #453396 (0.6.0) closed as
+  superseded; waiting on validation and a moderator. Steps 1-2 done (`410ac8e`, gh-pages local `6268788`, not pushed).
   The pushed tree shows the fixes from the push until the release is live - push and tag the same
   day.
 - Step 4 (after 0.7.0): T-264 (the parser is hand-written, no `clap`; no new dependency without the owner).
