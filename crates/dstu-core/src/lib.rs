@@ -6,9 +6,8 @@
 //! UAPKI and Bouncy Castle differ (`docs/DECISIONS.md` D-204–D-206, `docs/COMPATIBILITY.md`); the
 //! final published editions have not been checked.
 //! Strumok's keystream generator is confirmed against the primary DSTU 8845:2019 text itself
-//! (`docs/DECISIONS.md` D-197); its `Tᵢ[a]`/`Mulα`/`Mulα⁻¹` constant tables are spot-checked
-//! against the same text too (D-198, zero mismatches on a ~100-entry sample), but not
-//! independently transcription-verified in full. This crate makes
+//! (`docs/DECISIONS.md` D-197); its `Tᵢ[a]`/`Mulα`/`Mulα⁻¹` constant tables are derived in full
+//! by unit tests (D-263). This crate makes
 //! **no claim of side-channel (SPA/DPA) resistance**. See
 //! `docs/SECURITY.md` and `docs/DECISIONS.md` in the project repository for the full threat model, citations,
 //! and per-construction status.

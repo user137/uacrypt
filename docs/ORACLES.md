@@ -349,15 +349,19 @@ comparable to all five other in-scope algorithms combined" framing, not just a p
   `official_annex_d_vectors` module, a new, permanent regression test - not a one-off script).
   **This is the point D-15's own closing paragraph named as the condition for a status change** -
   unlike D-104's "upgrade, not closure," this one genuinely is a closure for the vector-confirmation
-  claim specifically. Untouched by this: the Додаток Б/В/Г constant tables (S-box, Tᵢ[a], Mulα)
-  are corroborated only at the entries these 8 vectors happen to reach, not independently
-  transcription-verified in full - a real, stated open item, not an oversight.
+  claim specifically. Untouched by this: the Додаток Б/В/Г constant tables (S-box, Tᵢ[a], Mulα),
+  closed separately below (T-316).
 - **Spot-checked 2026-09-17** (`docs/DECISIONS.md` D-198): ~100 of the 2560 `Tᵢ[a]`/`Mulα`/
   `Mulα⁻¹` entries (first/last few of all 10 tables, spread across every table rather than
   clustered) read directly off the same genuine scan and compared to the compiled constants -
   zero mismatches. Deliberately not a full transcription (2560 hex words by hand is exactly
-  D-163's failure mode for a mechanical derivation of already-oracle-confirmed inputs) - raises
-  confidence, does not upgrade the "not independently transcription-verified in full" status above.
+  D-163's failure mode for a mechanical derivation of already-oracle-confirmed inputs).
+- **Derived in full 2026-10-23** (T-316, `docs/DECISIONS.md` D-256/D-263): unit tests in
+  `hazmat/strumok.rs` rebuild every `Tᵢ[a]` as the MDS column of the shared Kalyna/Kupyna S-box
+  (themselves matched to four independent sources, D-256) and every `Mulα[b]` from the
+  coefficients of `g(z)` in `docs/papers/Strumok.pdf` section 2 (the designers' paper, not the DSTU
+  scan), and prove `Mulα⁻¹` the inverse of `Mulα` on all 2^64 words (both tables XOR-linear, inverse
+  on the 64 unit words). No table rests on a transcription any more.
 
 ### DSTU 4145 (signature)
 - **Annex Г (checked 2026-09-23, T-234):** the `m = 163` and `m = 257` curve parameters (`A`, `B`,

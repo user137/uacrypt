@@ -16342,3 +16342,25 @@ into `badbit`; failure at 0, 10 and half of the stream, plus `ForBox`'s prefix r
 `testAFailingSourceIsAReadErrorNotTruncation` (a stream wrapper whose `stream_read` returns
 `false` after a prefix; the same positions plus `forBox`). The other six bindings already
 propagate a read error (D-256).
+
+## D-263: T-316 - Strumok's tables derived by unit tests (2026-10-23)
+
+D-256's throwaway table derivation is now three permanent unit tests in `hazmat/strumok.rs`:
+- `t_tables_are_the_mds_columns_of_the_shared_sboxes` (default profile, where `T0..T7` exist):
+  `Ti[b]` byte `j` = `gf_mul(SBOXES[i % 4][b], MDS_MATRIX[j][i])`, the formula `small-tables`'
+  `t_function` evaluates at run time.
+- `mul_alpha_table_is_g_z_coefficients_times_the_byte`: `MUL_ALPHA[b]` byte `j` = `b * g_j`,
+  `(g_0..g_7) = (γ^2, 0, 0, γ^70, γ^224, γ^2, γ^166, γ^170)`, γ = `0x02` (the root of Kalyna's
+  field polynomial `0x11D`, primitive, so `2` generates the field).
+- `mul_alpha_inv_inverts_mul_alpha_on_every_word`: both tables XOR-linear in the index (all 65 536
+  pairs), so `mul_alpha`/`mul_alpha_inv` are GF(2)-linear; inverse on the 64 unit words then
+  holds for every word. This replaces D-256's 100k random words with a proof.
+
+Negative control: one corrupted entry each in `T0`, `MUL_ALPHA` and `MUL_ALPHA_INV` failed all
+three tests and none of the other Strumok unit tests (the keystream tests share `t_function`, so
+they cannot see a table error).
+
+What this closes: "not independently transcription-verified in full" (D-15/D-198) is retired
+everywhere it was stated. What it rests on: the S-box/MDS (four sources, D-256), and `g(z)` as
+printed in the designers' paper (`docs/papers/Strumok.pdf` section 2), not the DSTU scan; the
+official vectors (D-197) tie both to the standard.

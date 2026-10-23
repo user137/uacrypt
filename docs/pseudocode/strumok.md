@@ -18,7 +18,8 @@ genuine library scan) and `hazmat::strumok`'s output verified directly against i
 examples, all 8 cases passing (`docs/DECISIONS.md` D-197, `crates/dstu-core/tests/strumok.rs`'s
 `official_annex_d_vectors` module). The UAPKI-attributed vectors above are now confirmed correct,
 not merely trusted on the library's word. Not lifted: Annex Б/В/Г's own constant tables (S-box,
-Tᵢ[a], Mulα) were read but not transcription-verified in full against `hazmat::tables`.
+Tᵢ[a], Mulα) were read but not transcription-verified in full against `hazmat::tables` (closed
+by T-316, below).
 
 **Update, 2026-09-17:** a ~100-entry spot check (first/last few entries of all 10 `Tᵢ[a]`/`Mulα`/
 `Mulα⁻¹` tables, read directly off Додаток В/Г of the genuine scan) found zero mismatches against
@@ -26,6 +27,11 @@ the compiled constants (`docs/DECISIONS.md` D-198). Still not a full transcripti
 roughly 96% of the 2560 entries were never read against the scan - but the specific concern that
 the transcription source (`oracles/uapki`'s `dstu8845.c`) might diverge from the primary text at
 either end of any table is now checked and found not to hold, for every table.
+
+**Update, 2026-10-23 (T-316, `docs/DECISIONS.md` D-263):** all 10 tables are now derived in full by
+unit tests in `hazmat/strumok.rs` - `Tᵢ[a]` from `hazmat::tables`' S-box and MDS, `Mulα` from
+`g(z)`'s coefficients (designers' paper, section 2), `Mulα⁻¹` proven the inverse of `Mulα` - so
+the transcription question above is closed.
 
 ## Parameters (Section 2)
 

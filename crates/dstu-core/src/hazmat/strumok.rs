@@ -24,6 +24,8 @@
 //! `oracles/uapki/.../dstu8845.c`'s `mul_T`/`invmul_T` (cross-checked byte-identical against
 //! `oracles/strumok-dstu8845/strumok.c`'s `strumok_alpha_mul`/`strumok_alphainv_mul` - same
 //! lineage per `docs/DECISIONS.md` D-15, so this confirms transcription accuracy, not independence).
+//! Since T-316 unit tests derive every table independently: `T0..T7` from the shared S-box/MDS,
+//! `MUL_ALPHA` from `g(z)`'s coefficients, `MUL_ALPHA_INV` as its proven inverse (D-263).
 //!
 //! The state-transition function (`Next`, Section 4) originally shifted the 16-word state
 //! register on every step (`s.copy_within(1..16, 0)`) - mechanically checkable against the spec
@@ -1237,5 +1239,79 @@ mod tests {
         scalar_reference_apply_keystream(&mut Core::new(&key, &iv), &mut old_out);
 
         assert_eq!(new_out, old_out);
+    }
+
+    /// T-316 (D-256): `Ti[b]` is the MDS column of `SBOXES[i % 4][b]` placed at input row `i`, so
+    /// the eight tables rest on the shared Kalyna/Kupyna S-boxes and MDS matrix (each checked
+    /// against four independent sources, D-256), not on `strumok-dstu8845`'s transcription alone.
+    #[cfg(not(feature = "small-tables"))]
+    #[test]
+    fn t_tables_are_the_mds_columns_of_the_shared_sboxes() {
+        use crate::hazmat::tables::{gf_mul, MDS_MATRIX, SBOXES};
+
+        let tables = [&T0, &T1, &T2, &T3, &T4, &T5, &T6, &T7];
+        for (in_row, table) in tables.into_iter().enumerate() {
+            for (b, &entry) in table.iter().enumerate() {
+                let s = SBOXES[in_row % 4][b];
+                let expected =
+                    MDS_MATRIX
+                        .iter()
+                        .enumerate()
+                        .fold(0u64, |acc, (out_row, coefficients)| {
+                            acc | u64::from(gf_mul(s, coefficients[in_row])) << (8 * out_row)
+                        });
+                assert_eq!(entry, expected, "T{in_row}[{b:#04x}]");
+            }
+        }
+    }
+
+    /// T-316 (D-256): byte `j` of `MUL_ALPHA[b]` is `b * g_j` over GF(2^8)/0x11D, with `g_j` the
+    /// coefficients of `docs/papers/Strumok.pdf` section 2's
+    /// `g(z) = z^8 + γ^170 z^7 + γ^166 z^6 + γ^2 z^5 + γ^224 z^4 + γ^70 z^3 + γ^2`, γ = 2.
+    #[test]
+    fn mul_alpha_table_is_g_z_coefficients_times_the_byte() {
+        use crate::hazmat::tables::gf_mul;
+
+        let gamma_pow = |k: u32| (0..k).fold(1u8, |acc, _| gf_mul(acc, 2));
+        let g = [
+            gamma_pow(2),
+            0,
+            0,
+            gamma_pow(70),
+            gamma_pow(224),
+            gamma_pow(2),
+            gamma_pow(166),
+            gamma_pow(170),
+        ];
+        for (b, &entry) in MUL_ALPHA.iter().enumerate() {
+            let b = u8::try_from(b).unwrap_or_else(|_| unreachable!("256 entries"));
+            let expected = g.iter().enumerate().fold(0u64, |acc, (j, &g_j)| {
+                acc | u64::from(gf_mul(b, g_j)) << (8 * j)
+            });
+            assert_eq!(entry, expected, "MUL_ALPHA[{b:#04x}]");
+        }
+    }
+
+    /// T-316 (D-256): both alpha tables are XOR-linear in their index (all 65 536 pairs), so
+    /// `mul_alpha`/`mul_alpha_inv` are GF(2)-linear maps, and being mutually inverse on the 64
+    /// unit words then proves it for every one of the 2^64 words.
+    #[test]
+    fn mul_alpha_inv_inverts_mul_alpha_on_every_word() {
+        for table in [&MUL_ALPHA, &MUL_ALPHA_INV] {
+            for a in 0..256 {
+                for b in 0..256 {
+                    assert_eq!(
+                        table[a ^ b],
+                        table[a] ^ table[b],
+                        "linearity at {a:#04x}, {b:#04x}"
+                    );
+                }
+            }
+        }
+        for bit in 0..64 {
+            let w = 1u64 << bit;
+            assert_eq!(mul_alpha_inv(mul_alpha(w)), w, "bit {bit}");
+            assert_eq!(mul_alpha(mul_alpha_inv(w)), w, "bit {bit}");
+        }
     }
 }

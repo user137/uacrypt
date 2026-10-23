@@ -38,6 +38,11 @@ All notable changes to this project are documented in this file. Format follows
   losing the I/O error (T-314, `docs/DECISIONS.md` D-262). They now throw "read from the input
   stream failed"; both already failed closed.
 
+### Internal
+
+- Strumok's ten constant tables are derived in full by unit tests (T-316, `docs/DECISIONS.md`
+  D-263), retiring the "not transcription-verified in full" caveat.
+
 ## [0.7.0] - 2026-10-23
 
 ### Added

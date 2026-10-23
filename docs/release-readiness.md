@@ -40,8 +40,7 @@ against this working hypothesis" situation:
   ДНДІ ТКЗІ — is now also confirmed against the primary DSTU 8845:2019 text itself (Додаток Д, a
   genuine library scan, all 8 official cases byte-for-byte). This specific gap (D-15/D-16) is
   closed, a separate, unrelated question from D-05 above. Its `Tᵢ[a]`/`Mulα`/`Mulα⁻¹` constant
-  tables are additionally spot-checked against the same text (D-198), not independently
-  transcription-verified in full.
+  tables are derived in full by unit tests (T-316, D-263).
 - **`crypto_secretbox` (T-37) is done, see `docs/DECISIONS.md` D-51** — a single fixed construction,
   internally-generated nonce, combined `version || nonce || ciphertext || tag` output (version
   byte and length-bound AAD since T-232, D-200/D-202), no caller-facing AAD parameter. **Migrated 2026-07-25 from Kalyna-CCM to Kalyna-GCM** (roadmap Step 3 item 1,
@@ -90,7 +89,7 @@ independent second-oracle cross-check (Bouncy Castle, Java and .NET):
 |---|---|---|
 | Kalyna | DSTU 7624:2014 | All 5 block/key-size variants, single-block encrypt/decrypt, `ExpandedKey` API. Vector-confirmed + dual-oracle. **Mode of operation: all 10/10 DSTU 7624 modes now implemented at `hazmat`**, updated 2026-07-25 (T-99) — ECB/CBC/OFB/CTR/CFB (Stage A), CMAC/KW/GCM/GMAC (Stage B-D, D-54-D-57), XTS (Stage E, T-96/D-58) all landed since this table's last real update. CCM/GCM/KW are the three combined (confidentiality+integrity) modes and the only ones eligible for a public `crypto_secretbox`-style entry point (D-47); ECB/CBC/OFB/CTR/CFB/XTS are confidentiality-only, bare CMAC/GMAC are integrity-only — none of those six may become a public `encrypt`/`decrypt` entry point on their own. All ten still share CCM's original caveat: dual-oracle-verified (UAPKI + Bouncy Castle where available), not primary-DSTU-7624:2014-text-confirmed. |
 | Kupyna | DSTU 7564:2014 | Both 256/512 variants, one-shot `digest()` and streaming `Hasher`. Vector-confirmed + dual-oracle. KMAC (`crypto_auth` equivalent) now implemented too — `hazmat::kupyna_kmac`, dual-oracle with both constructions read (`docs/TASKS.md` T-38, `docs/DECISIONS.md` D-44), same provisional-pending-primary-text caveat. KDF (`crypto_kdf` equivalent) built on top of that KMAC — `hazmat::kupyna_kdf` (T-39, D-45); no DSTU standard or reference implementation exists for this construction at all, so unlike the KMAC row there is no oracle vector, ever — verified by determinism/distinctness property tests only. |
-| Strumok | DSTU 8845:2019 | Both 256/512-bit key variants, keystream `apply_keystream`. UAPKI-attributed vectors, plus (D-104) two independently-sourced supplementary vectors from Держспецзв'язку/ДНДІ ТКЗІ, **and now (2026-09-16, D-197) confirmed against the primary standard text itself** (Додаток Д, all 8 official cases byte-for-byte) — the former provenance ceiling (D-15/D-16) is closed. Constant tables spot-checked, not fully transcription-verified (D-198). |
+| Strumok | DSTU 8845:2019 | Both 256/512-bit key variants, keystream `apply_keystream`. UAPKI-attributed vectors, plus (D-104) two independently-sourced supplementary vectors from Держспецзв'язку/ДНДІ ТКЗІ, **and now (2026-09-16, D-197) confirmed against the primary standard text itself** (Додаток Д, all 8 official cases byte-for-byte) — the former provenance ceiling (D-15/D-16) is closed. Constant tables derived in full by unit tests (T-316, D-263). |
 
 DSTU 4145-2002 (digital signatures): the m=163 curve's `GF(2^163)` field arithmetic, point
 add/double/constant-time scalar multiplication, and `sign`/`verify` are all implemented
@@ -488,8 +487,7 @@ In rough dependency order:
    byte-for-byte against `hazmat::strumok`'s own output - a new permanent test module, not a
    one-off script. This retroactively validates the earlier UAPKI attribution and the D-104
    state-sourced supplementary vectors, rather than replacing them. Constant tables (`Tᵢ[a]`/
-   `Mulα`/`Mulα⁻¹`) are additionally spot-checked (D-198), not independently transcription-verified
-   in full - the one remaining, much narrower caveat.
+   `Mulα`/`Mulα⁻¹`) are derived in full by unit tests (T-316, D-263), closing the last caveat.
 3. **Build the missing constructions**: `crypto_auth` (T-38, D-44), `crypto_kdf` (T-39, D-45), and
    `crypto_secretbox` (T-37, D-51) all done, none blocked on external material — the Kalyna-alone
    working hypothesis (only CCM/GCM/KW eligible, per D-47, see the headline finding) is what

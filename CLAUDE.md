@@ -73,10 +73,9 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
     **confirmed against the primary DSTU 8845:2019 text itself** (Додаток Д, a genuine library
     scan, all 8 cases byte-for-byte — D-197), retroactively validating the original UAPKI
     attribution; also independently confirmed against two state-sourced supplementary vectors from
-    Держспецзв'язку/ДНДІ ТКЗІ (D-104). Internal constant tables (S-box, Tᵢ[a], Mulα) remain
-    corroborated only at the entries these vectors reach, plus a ~100-entry spot check across all
-    10 `Tᵢ[a]`/`Mulα`/`Mulα⁻¹` tables against the genuine scan (zero mismatches, D-198) — not
-    independently transcription-verified in full.
+    Держспецзв'язку/ДНДІ ТКЗІ (D-104). All 10 constant tables are derived in full by unit tests
+    (T-316, D-263): `Tᵢ[a]` from the shared S-box/MDS, `Mulα` from `g(z)` of the designers' paper
+    (`docs/papers/Strumok.pdf` §2, not the DSTU scan), `Mulα⁻¹` proven its inverse on every word.
   - `dstu9041` (`message`/`fp256`/`curve256`/`encryption` for `l(p)=256`; `*384` for `l(p)=384`,
     T-297; `*512` for `l(p)=512`, T-192) — hybrid (ECIES-style) asymmetric encryption over a
     twisted Edwards curve, `l(p) ∈ {256, 384, 512}` (E256/1, E384/1, E512/1). Verified against the
@@ -158,9 +157,7 @@ for provenance/format) and run against real Bouncy Castle (Java/.NET packages) i
 `tests/oracle-harness/{java,dotnet}/` - for GCM/GMAC only on block-aligned input, where BC and
 the standard agree (T-237/T-246). Strumok's vectors are confirmed against the primary DSTU 8845:2019 text itself
 (Додаток Д, a genuine library scan) — D-15/D-16/D-104/D-197; its `Tᵢ[a]`/`Mulα`/`Mulα⁻¹` constant
-tables were spot-checked against the same scan (D-198, zero mismatches on ~100 sampled entries);
-the S-box was out of scope for that check (already cross-checked via Kalyna/Kupyna's own real
-Bouncy Castle oracle, D-10/D-13). None are independently transcription-verified in full.
+tables are derived in full by unit tests from the shared S-box/MDS and `g(z)` (T-316, D-263).
 No C/cryptonite harness — tried and dropped, see `docs/TASKS.md`/`docs/ORACLES.md` for why.
 
 The concrete module-by-module API surface lives in `docs/dstu-crypto-project.md` "Concrete API
@@ -515,7 +512,7 @@ check) is in `docs/dstu-crypto-project.md` "Resources found".
 
 - Official documentation PDFs live in `docs/papers/` (licensed scans/copies — all gitignored, never
   commit; 7624/7564 are draft editions, T-234). Render with PyMuPDF, not poppler (`.claude.local.md`).
-  Vector provenance per algorithm: `docs/ORACLES.md` (Strumok: D-197/D-198).
+  Vector provenance per algorithm: `docs/ORACLES.md` (Strumok: D-197/D-263).
 - **`hazmat::dstu9041` (`l(p)=256`/E256/1) is implemented (T-177)** — a partial primary-text
   scan (T-173) plus a targeted supplement (T-176/D-165) gave clause citations for every algorithm
   the primitive needed (6.5–6.12); `message.rs`/`fp256.rs`/`curve256.rs`/`encryption.rs` were then
