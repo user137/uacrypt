@@ -10313,6 +10313,60 @@ writer onto it. Superseded in detail by the plan below.
 - After 0.7.0 ("хвиля", Claude's reading, owner to correct): prepare the remaining T-164
   registries (Packagist, NuGet, Maven Central, pkg.go.dev, vcpkg) - each publish owner-gated.
 
+### 0.8.0 wave (planned 2026-10-23, owner: "one wave"; advisor-checked)
+
+Breaking minor: T-310 removes public `dstu-core` API and a `uacrypt` read path. Two tracks - the
+code chain in order, and T-164 in parallel (owner-gated, must not block the chain). Pushes batched
+per phase (`rust.yml`/`miri.yml` are `cancel-in-progress`; a docs push mid-run cost a full run on
+0.7.0 release day).
+
+**Code chain:**
+1. **T-311** .NET leak test on the native remainder (VmRSS minus managed committed), threshold
+   ~2 MiB. Committed GC memory need not be resident, so the new metric needs a deliberate-leak
+   control first, as D-234 had for Java: a test-only P/Invoke allocation through capi that is never
+   freed, shown to fail the new threshold ("never Dispose" is no control in .NET, T-231).
+2. **T-310** drop `open_v2_legacy` (`crypto_box`, `crypto_box512`) and `run_box_open_legacy`. Sweep:
+   `crypto_box384.rs` doc line, `gen_box_vectors.rs`, `tests/crypto_box{,512}.rs`, `lib.rs`
+   (`box-open` byte-0 dispatch -> unsupported version), `docs/CLI.md` (~136-139, ~408),
+   CLAUDE.md "Project status" (pair the edit), D-239 addendum, ORACLES, `dstu-crypto-project.md`,
+   CHANGELOG (breaking). The CLI's v2 test becomes an "unsupported version" test, not a deletion;
+   check `streaming-bounded` and smoke tests for v2 inputs.
+3. **T-223 + T-225 fuzz** (before T-249, which runs them). New targets: `crypto_secretbox_open`,
+   `crypto_box_open` / `crypto_box384_open` / `crypto_box512_open` (384 is newer than T-223),
+   `crypto_sign_verify` / `crypto_sign257_verify` + `VerifyingKey::from_uncompressed_bytes`, then
+   the hazmat ones without a target (`dstu4145`, `dstu9041`, `kalyna_cbc/ctr/ecb/ofb`,
+   `kupyna_kmac/kdf`). Negative property (T-249 attachment): a fixed seeded key and a fixed sealed
+   blob inside the target; `input != original => open fails`; also for `crypto_secretstream`.
+   Three-spot sync each (`fuzz/Cargo.toml`, `rust.yml` `fuzz-smoke`, `FUZZ_TARGETS` incl. its
+   `[&str; N]` count).
+4. **T-249** second-pass audit (read-only; findings become new tasks, not fixes in the same pass):
+   the `crypto_auth/kdf/generichash/pwhash/stream` wrappers, `hazmat::strumok`, the Kalyna key
+   schedule, `tables.rs`, `dstu9041` l=512 (and l=384) line by line against l=256, D-118's two
+   pitfalls read in full in Node.js/PHP/Java/.NET/Go/C++, and actually running Miri/Kani/longer
+   fuzz locally. Offer the independent reviewer subagent at the end (owner's yes).
+5. **T-264** completions (bash/zsh/fish/PowerShell) and a man page, hand-written generators, no
+   new dependency. Source: the existing `COMMANDS` table (`lib.rs`, help text per command, already
+   test-checked against `run`'s dispatch) - flags taken from each help text's `--flag` tokens, with
+   a test that every flag the parser accepts appears there. If that does not hold, a per-command
+   flag table first (its own plan step, plan mode).
+6. **Release 0.8.0**: version pins (7 places) + lockfiles, binding minors only if republished,
+   CHANGELOG, README marker, gh-pages marker pushed **before** the tag (CI `docs-check` reads it),
+   `release.yml` dry run, green Miri on the tag commit, winget 0.8.0, GHSA only if T-249 finds one.
+
+**T-164 track** (research first, each registry checked live against the runbook memory; CI lands
+dormant behind an environment gate with required reviewers, first publish rides the 0.8.0 tag):
+- NuGet (.NET): package `runtimes/<rid>/native` capi builds per platform; OIDC trusted publishing.
+- Maven Central (Java): JNI natives per platform in one jar; Central Portal namespace
+  verification and GPG signing on the owner's account.
+- pkg.go.dev (Go): a `bindings/go/vX.Y.Z` module tag; cgo needs the capi library on the user's
+  machine - decide how it is found (prebuilt release asset + `CGO_LDFLAGS` doc vs. vendored).
+- vcpkg (C++): a port that builds `dstu-core-capi` with cargo, PR to `microsoft/vcpkg`.
+- Packagist (PHP): D-144 still open - check whether PIE (PHP Installer for Extensions,
+  `type: php-ext` on Packagist) can ship a prebuilt `ext-php-rs` binary before proposing a route.
+
+**Owner-only, asked once:** order confirmed?; all five registries in this wave or a subset?;
+Packagist route after the PIE check; per-registry account/OIDC/namespace/GPG setup.
+
 **After 1.0 (owner 2026-10-09):** T-237 (BC harness), T-263 (text/armor output). **Closed:** T-250
 (no migration; the 0.3.x binaries stay available for decrypting old data).
 
