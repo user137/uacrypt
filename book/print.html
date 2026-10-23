@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-55721ac0.js";
+            window.path_to_searchindex_js = "searchindex-b7691db3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -34231,6 +34231,13 @@ byte-identical to <code>argon2</code>’s own <code>PasswordHasher</code> for th
 <code>hash_password</code> tests (round trip, salts differ, each preset’s PHC parameters) still pass. The
 allocation failure itself is not tested: forcing it needs an allocator hook this crate does not
 have, the same untested gap <code>derive_key</code> and <code>verify_password</code> already carry.</p>
+<p>Independent review (2026-10-23, read-only subagent): no defect. Follow-ups applied: the
+<code>OutOfMemory</code> wording is qualified (only where the allocator reports failure; an overcommitting OS
+can still kill the process on first touch, as for <code>derive_key</code>); a raw Argon2 error from
+<code>hash_password</code> is <code>PwHashError::Hash</code> again (via <code>argon2</code>’s own <code>From</code>, as before T-315; only
+reachable for a password over <code>u32::MAX</code> bytes, so untested), not <code>Derive</code>’s “key derivation”
+message. Left as is: no <code>Drop</code> guard on the block zeroize (no panicking path for these inputs;
+same shape as <code>derive_key</code>).</p>
 <h2 id="d-262-t-314---c-and-php-stream-readers-report-a-read-error-2026-10-23"><a class="header" href="#d-262-t-314---c-and-php-stream-readers-report-a-read-error-2026-10-23">D-262: T-314 - C++ and PHP stream readers report a read error (2026-10-23)</a></h2>
 <p>T-249 (D-256) found that two readers took a failed read for end of input: C++
 <code>SecretStreamDecryptor</code> (<code>ReadPrefix</code>/<code>Step</code> looked only at <code>gcount()</code>) and PHP
@@ -34306,7 +34313,8 @@ Strumok’s initial state and registers in <code>new</code>.</li>
 <li><strong><code>dstu-core</code> <code>crypto_pwhash::hash_password</code>: out of memory is an error, not an abort</strong>
 (T-315, <code>docs/DECISIONS.md</code> D-261): it reserves the Argon2 memory itself, as <code>derive_key</code>
 already did, and returns <code>PwHashError::OutOfMemory</code> (capi: <code>DSTU_ERR_OUT_OF_MEMORY</code>) when the
-preset’s memory (1 GiB at <code>Sensitive</code>) cannot be allocated.</li>
+preset’s memory (1 GiB at <code>Sensitive</code>) cannot be allocated - where the allocator reports the
+failure; an overcommitting OS (Linux by default) may still kill the process later.</li>
 <li>The C++ and PHP stream readers reported a failed read of the input as a truncated stream,
 losing the I/O error (T-314, <code>docs/DECISIONS.md</code> D-262). They now throw “read from the input
 stream failed”; both already failed closed.</li>

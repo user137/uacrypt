@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-55721ac0.js";
+            window.path_to_searchindex_js = "searchindex-b7691db3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -212,7 +212,8 @@ Strumok’s initial state and registers in <code>new</code>.</li>
 <li><strong><code>dstu-core</code> <code>crypto_pwhash::hash_password</code>: out of memory is an error, not an abort</strong>
 (T-315, <code>docs/DECISIONS.md</code> D-261): it reserves the Argon2 memory itself, as <code>derive_key</code>
 already did, and returns <code>PwHashError::OutOfMemory</code> (capi: <code>DSTU_ERR_OUT_OF_MEMORY</code>) when the
-preset’s memory (1 GiB at <code>Sensitive</code>) cannot be allocated.</li>
+preset’s memory (1 GiB at <code>Sensitive</code>) cannot be allocated - where the allocator reports the
+failure; an overcommitting OS (Linux by default) may still kill the process later.</li>
 <li>The C++ and PHP stream readers reported a failed read of the input as a truncated stream,
 losing the I/O error (T-314, <code>docs/DECISIONS.md</code> D-262). They now throw “read from the input
 stream failed”; both already failed closed.</li>
