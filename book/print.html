@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8aeff8c2.js";
+            window.path_to_searchindex_js = "searchindex-e5c2d428.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -11379,7 +11379,9 @@ Delegated to Claude (D-253): text as drafted, draft GHSA-6x5f-x3rf-6r48 created 
 yank &lt; 0.7.0 / &lt;= 0.4.0 once 0.7.0 is live (D-253 revision: compat no longer a reason).
 <strong>Released 2026-10-23:</strong> tag <code>v0.7.0</code> on <code>895f82a</code>, run <code>39932872725</code>, all four registries live
 (npm <code>linux-arm64-gnu</code> showed up ~2 min late). GHSA-6x5f-x3rf-6r48 published. CodeQL #89-#101
-dismissed (D-254). Open: the yanks (owner runs them), winget: microsoft/winget-pkgs#460150 (0.7.0, no VCRedist) opened, #453396 (0.6.0) closed as
+dismissed (D-254). Yanks done and checked live: crates.io <code>dstu-core</code>/<code>uacrypt</code> 0.5.0/0.6.0;
+PyPI 0.3.0/0.4.0; RubyGems 0.3.0/0.4.0 (4 platforms each); npm 0.3.0/0.4.0 deprecated (main + 3
+platform packages). winget: microsoft/winget-pkgs#460150 (0.7.0, no VCRedist) opened, #453396 (0.6.0) closed as
 superseded; waiting on validation and a moderator. Steps 1-2 done (<code>410ac8e</code>, gh-pages local <code>6268788</code>, not pushed).
 The pushed tree shows the fixes from the push until the release is live - push and tag the same
 day.</li>
@@ -11401,6 +11403,66 @@ stays as the rejection vector). Breaking: the next minor.</li>
 <li>After 0.7.0 (“хвиля”, Claude’s reading, owner to correct): prepare the remaining T-164
 registries (Packagist, NuGet, Maven Central, pkg.go.dev, vcpkg) - each publish owner-gated.</li>
 </ul>
+<h3 id="080-wave-planned-2026-10-23-owner-one-wave-advisor-checked"><a class="header" href="#080-wave-planned-2026-10-23-owner-one-wave-advisor-checked">0.8.0 wave (planned 2026-10-23, owner: “one wave”; advisor-checked)</a></h3>
+<p>Breaking minor: T-310 removes public <code>dstu-core</code> API and a <code>uacrypt</code> read path. The code chain
+runs in order (T-164 deferred, below). Pushes batched
+per phase (<code>rust.yml</code>/<code>miri.yml</code> are <code>cancel-in-progress</code>; a docs push mid-run cost a full run on
+0.7.0 release day).</p>
+<p><strong>RESUME HERE (state at /clear, 2026-10-23):</strong> 0.7.0 fully released and closed (registries live,
+GHSA published, yanks done, CodeQL clean, winget PR #460150 waiting on a moderator). <code>master</code> =
+<code>1b13b68</code> (PHP <code>ctutils</code> RUSTSEC fix): every workflow green, <code>rust</code> still running at save time -
+check it first. Unpushed, docs only: <code>8397cf6</code>, <code>2a9c0c0</code>, <code>25060fd</code> (push after <code>rust</code> is done).
+Owner confirmed the order below; <strong>next: T-311</strong>, then T-310. Pi: packages up to date (PHP 8.2.35
+by unattended-upgrades, Docker 29.9.2), Docker stays disabled. Nothing uncommitted.</p>
+<p><strong>Code chain:</strong></p>
+<ol>
+<li><strong>T-311</strong> .NET leak test on the native remainder (VmRSS minus managed committed), threshold
+~2 MiB. Committed GC memory need not be resident, so the new metric needs a deliberate-leak
+control first, as D-234 had for Java: a test-only P/Invoke allocation through capi that is never
+freed, shown to fail the new threshold (“never Dispose” is no control in .NET, T-231).</li>
+<li><strong>T-310</strong> drop <code>open_v2_legacy</code> (<code>crypto_box</code>, <code>crypto_box512</code>) and <code>run_box_open_legacy</code>. Sweep:
+<code>crypto_box384.rs</code> doc line, <code>gen_box_vectors.rs</code>, <code>tests/crypto_box{,512}.rs</code>, <code>lib.rs</code>
+(<code>box-open</code> byte-0 dispatch -&gt; unsupported version), <code>docs/CLI.md</code> (~136-139, ~408),
+CLAUDE.md “Project status” (pair the edit), D-239 addendum, ORACLES, <code>dstu-crypto-project.md</code>,
+CHANGELOG (breaking). The CLI’s v2 test becomes an “unsupported version” test, not a deletion;
+check <code>streaming-bounded</code> and smoke tests for v2 inputs.</li>
+<li><strong>T-223 + T-225 fuzz</strong> (before T-249, which runs them). New targets: <code>crypto_secretbox_open</code>,
+<code>crypto_box_open</code> / <code>crypto_box384_open</code> / <code>crypto_box512_open</code> (384 is newer than T-223),
+<code>crypto_sign_verify</code> / <code>crypto_sign257_verify</code> + <code>VerifyingKey::from_uncompressed_bytes</code>, then
+the hazmat ones without a target (<code>dstu4145</code>, <code>dstu9041</code>, <code>kalyna_cbc/ctr/ecb/ofb</code>,
+<code>kupyna_kmac/kdf</code>). Negative property (T-249 attachment): a fixed seeded key and a fixed sealed
+blob inside the target; <code>input != original =&gt; open fails</code>; also for <code>crypto_secretstream</code>.
+Three-spot sync each (<code>fuzz/Cargo.toml</code>, <code>rust.yml</code> <code>fuzz-smoke</code>, <code>FUZZ_TARGETS</code> incl. its
+<code>[&amp;str; N]</code> count).</li>
+<li><strong>T-249</strong> second-pass audit (read-only; findings become new tasks, not fixes in the same pass):
+the <code>crypto_auth/kdf/generichash/pwhash/stream</code> wrappers, <code>hazmat::strumok</code>, the Kalyna key
+schedule, <code>tables.rs</code>, <code>dstu9041</code> l=512 (and l=384) line by line against l=256, D-118’s two
+pitfalls read in full in Node.js/PHP/Java/.NET/Go/C++, and actually running Miri/Kani/longer
+fuzz locally. Offer the independent reviewer subagent at the end (owner’s yes).</li>
+<li><strong>T-264</strong> completions (bash/zsh/fish/PowerShell) and a man page, hand-written generators, no
+new dependency. Source: the existing <code>COMMANDS</code> table (<code>lib.rs</code>, help text per command, already
+test-checked against <code>run</code>’s dispatch) - flags taken from each help text’s <code>--flag</code> tokens, with
+a test that every flag the parser accepts appears there. If that does not hold, a per-command
+flag table first (its own plan step, plan mode).</li>
+<li><strong>Release 0.8.0</strong>: version pins (7 places) + lockfiles, binding minors only if republished,
+CHANGELOG, README marker, gh-pages marker pushed <strong>before</strong> the tag (CI <code>docs-check</code> reads it),
+<code>release.yml</code> dry run, green Miri on the tag commit, winget 0.8.0, GHSA only if T-249 finds one.</li>
+</ol>
+<p><strong>T-164 track - deferred out of this wave (owner 2026-10-23: “skip the other bindings for now”).</strong>
+Kept as the starting notes for when it is picked up (research first, each registry checked live against the runbook memory; CI lands
+dormant behind an environment gate with required reviewers, first publish rides the 0.8.0 tag):</p>
+<ul>
+<li>NuGet (.NET): package <code>runtimes/&lt;rid&gt;/native</code> capi builds per platform; OIDC trusted publishing.</li>
+<li>Maven Central (Java): JNI natives per platform in one jar; Central Portal namespace
+verification and GPG signing on the owner’s account.</li>
+<li>pkg.go.dev (Go): a <code>bindings/go/vX.Y.Z</code> module tag; cgo needs the capi library on the user’s
+machine - decide how it is found (prebuilt release asset + <code>CGO_LDFLAGS</code> doc vs. vendored).</li>
+<li>vcpkg (C++): a port that builds <code>dstu-core-capi</code> with cargo, PR to <code>microsoft/vcpkg</code>.</li>
+<li>Packagist (PHP): D-144 still open - check whether PIE (PHP Installer for Extensions,
+<code>type: php-ext</code> on Packagist) can ship a prebuilt <code>ext-php-rs</code> binary before proposing a route.</li>
+</ul>
+<p><strong>Owner-only, when T-164 returns:</strong> which registries; Packagist route after the PIE check;
+per-registry account/OIDC/namespace/GPG setup.</p>
 <p><strong>After 1.0 (owner 2026-10-09):</strong> T-237 (BC harness), T-263 (text/armor output). <strong>Closed:</strong> T-250
 (no migration; the 0.3.x binaries stay available for decrypting old data).</p>
 <p><strong>Owner, 2026-10-08: 0.5.0 ships as it stands</strong> (the day 0.4.0 shipped). Moved to 0.6.0, still
