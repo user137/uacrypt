@@ -10315,8 +10315,8 @@ writer onto it. Superseded in detail by the plan below.
 
 ### 0.8.0 wave (planned 2026-10-23, owner: "one wave"; advisor-checked)
 
-Breaking minor: T-310 removes public `dstu-core` API and a `uacrypt` read path. Two tracks - the
-code chain in order, and T-164 in parallel (owner-gated, must not block the chain). Pushes batched
+Breaking minor: T-310 removes public `dstu-core` API and a `uacrypt` read path. The code chain
+runs in order (T-164 deferred, below). Pushes batched
 per phase (`rust.yml`/`miri.yml` are `cancel-in-progress`; a docs push mid-run cost a full run on
 0.7.0 release day).
 
@@ -10353,7 +10353,8 @@ per phase (`rust.yml`/`miri.yml` are `cancel-in-progress`; a docs push mid-run c
    CHANGELOG, README marker, gh-pages marker pushed **before** the tag (CI `docs-check` reads it),
    `release.yml` dry run, green Miri on the tag commit, winget 0.8.0, GHSA only if T-249 finds one.
 
-**T-164 track** (research first, each registry checked live against the runbook memory; CI lands
+**T-164 track - deferred out of this wave (owner 2026-10-23: "skip the other bindings for now").**
+Kept as the starting notes for when it is picked up (research first, each registry checked live against the runbook memory; CI lands
 dormant behind an environment gate with required reviewers, first publish rides the 0.8.0 tag):
 - NuGet (.NET): package `runtimes/<rid>/native` capi builds per platform; OIDC trusted publishing.
 - Maven Central (Java): JNI natives per platform in one jar; Central Portal namespace
@@ -10364,8 +10365,8 @@ dormant behind an environment gate with required reviewers, first publish rides 
 - Packagist (PHP): D-144 still open - check whether PIE (PHP Installer for Extensions,
   `type: php-ext` on Packagist) can ship a prebuilt `ext-php-rs` binary before proposing a route.
 
-**Owner-only, asked once:** order confirmed?; all five registries in this wave or a subset?;
-Packagist route after the PIE check; per-registry account/OIDC/namespace/GPG setup.
+**Owner-only, when T-164 returns:** which registries; Packagist route after the PIE check;
+per-registry account/OIDC/namespace/GPG setup.
 
 **After 1.0 (owner 2026-10-09):** T-237 (BC harness), T-263 (text/armor output). **Closed:** T-250
 (no migration; the 0.3.x binaries stay available for decrypting old data).
