@@ -10333,9 +10333,8 @@ addendum; all CI green after one transient PHP rerun, `miri` on `5d32cc2` was st
 check it), **T-223/T-225 phase A** (`2563770`, **not pushed**: hold until `miri` on `5d32cc2` is
 done, `cancel-in-progress`). **Uncommitted: T-225 phase B** - 9 hazmat fuzz targets
 (`kalyna_cbc/ctr/ecb/ofb/xts`, `kupyna_kmac/kdf`, `dstu4145`, `dstu9041`) plus the 28-entry sync
-(`fuzz/Cargo.toml`, `rust.yml`, `FUZZ_TARGETS`); local 20 s runs: the first 8 clean, `dstu9041`
-was still running (log `%TEMP%uzz_dstu9041.log`; rerun it if missing). Next: confirm `dstu9041`,
-update CLAUDE.md's "grown to 19" -> 28 and T-225's entry, commit phase B, push both, read
+(`fuzz/Cargo.toml`, `rust.yml`, `FUZZ_TARGETS`); local 20 s runs: all 9 clean (`dstu9041` 33934
+runs). Next: update CLAUDE.md's "grown to 19" -> 28 and T-225's entry, commit phase B, push both, read
 `fuzz-smoke` (28 jobs) with `gh run view`, closing `advisor`; then T-249. Local fuzz on Windows:
 `call vcvars64.bat && cargo +nightly-x86_64-pc-windows-msvc fuzz run --target
 x86_64-pc-windows-msvc <t>` from `crates/dstu-core` (as `xtask fuzz`). Open with the owner: the
