@@ -626,9 +626,8 @@ fn hash_check_reads_its_list_from_stdin_but_never_a_dash_entry() {
     assert!(r.stderr.contains("1 of 2"), "{}", r.stderr);
 }
 
-/// T-304: a leading `0x02` selects the legacy (uacrypt 0.4-0.6) box format, which is read whole.
-/// From stdin that read would have no bound, so it is refused before anything is read past the
-/// version byte; from a regular file the file's own size bounds it.
+/// T-304/T-310: a leading `0x02` (the uacrypt 0.4-0.6 box format) on stdin is refused from the
+/// version byte as an unsupported version, and the message points at the release that reads it.
 #[test]
 #[cfg_attr(
     miri,
@@ -644,7 +643,7 @@ fn box_open_refuses_a_legacy_box_on_stdin() {
     );
     assert_ne!(r.code, Some(0));
     assert!(
-        r.stderr.contains("opens only from a regular file"),
+        r.stderr.contains("different format version") && r.stderr.contains("uacrypt 0.7.x"),
         "{}",
         r.stderr
     );

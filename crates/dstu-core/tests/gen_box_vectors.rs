@@ -81,7 +81,7 @@ fn generate() {
     }));
 
     let mut out = String::new();
-    out.push_str("{\n  \"source\": \"Self-generated interop pin, not an oracle (D-68, D-239). Written by crates/dstu-core/tests/gen_box_vectors.rs over crypto_box{,384,512}::seal (format v3, T-265; 384 added T-297). Secret keys are the counting bytes 01 02 ..; plaintext of a valid case is (i*31+7) mod 256 of plaintext_len bytes. expect: ok | invalid_ciphertext | truncated | unsupported_version. The 0.4-0.6 format is in legacy_v2.json, read only by open_v2_legacy / uacrypt box-open; a binding's open refuses it as unsupported_version. There is no 384 legacy file.\",\n");
+    out.push_str("{\n  \"source\": \"Self-generated interop pin, not an oracle (D-68, D-239). Written by crates/dstu-core/tests/gen_box_vectors.rs over crypto_box{,384,512}::seal (format v3, T-265; 384 added T-297). Secret keys are the counting bytes 01 02 ..; plaintext of a valid case is (i*31+7) mod 256 of plaintext_len bytes. expect: ok | invalid_ciphertext | truncated | unsupported_version. The 0.4-0.6 format is in legacy_v2.json, refused by every open (core, uacrypt, C ABI, bindings) as unsupported_version since T-310. There is no 384 legacy file.\",\n");
     let _ = writeln!(out, "  \"format_version\": 3,");
     let _ = writeln!(
         out,

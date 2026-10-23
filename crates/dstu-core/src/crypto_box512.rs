@@ -37,7 +37,8 @@
 //! and [`OpenError::UnsupportedVersion`] stay separate. Wire format (version 3, T-265/D-239):
 //! `version (1 byte, 3) || dstu9041_ciphertext (256 bytes) || <D-208 stream file>`, written and
 //! read by [`seal_stream`]/[`open_stream`] (bounded memory) or [`seal`]/[`open`] (one call); the
-//! one-chunk version 2 of 0.4-0.6 is read only by [`open_v2_legacy`]. The stream key is
+//! one-chunk version 2 of 0.4-0.6 is an unsupported version since 0.8.0 (T-310; see
+//! [`crate::crypto_box`] for how to read one). The stream key is
 //! `Kupyna256Kmac(key = seed, message = b"cryptbx5" || version || kem_ciphertext ||
 //! recipient_public_key)` - the same
 //! RFC 9180 §4.1 `kem_context` binding as [`crate::crypto_box`] (T-248, `docs/DECISIONS.md`
@@ -56,7 +57,7 @@
 //! `hazmat::dstu9041::encryption512` itself remains verified against Додаток Г.3 (T-192).
 
 use crate::crypto_secretstream::{
-    open_all, seal_all, FileDecryptor, FileEncryptor, FileError, Key, PullState, Tag, CHUNK_BYTES,
+    open_all, seal_all, FileDecryptor, FileEncryptor, FileError, Key, CHUNK_BYTES,
     FILE_PREFIX_BYTES, RECORD_OVERHEAD_BYTES,
 };
 use crate::hazmat::dstu9041::curve512::{base_point, is_valid_scalar, point_from_x, Point};
@@ -76,13 +77,9 @@ const SEED_LEN: usize = 32;
 /// `SEED_LEN * 8`, deliberately far below `L_MAX_P` (424).
 const SEED_BITS: usize = SEED_LEN * 8;
 const KEM_CIPHERTEXT_LEN: usize = 256;
-const HEADER_LEN: usize = 32;
-const TAG_LEN: usize = 16;
 /// Wire-format version, the sealed blob's first byte (T-265, D-239: a D-208 stream file follows
 /// the KEM ciphertext).
 pub const FORMAT_VERSION: u8 = 3;
-/// The one-chunk format 0.4-0.6 wrote (T-232/T-248), read only by [`open_v2_legacy`].
-pub const LEGACY_FORMAT_VERSION: u8 = 2;
 /// `version || kem_ciphertext` - everything in front of the stream file.
 const PREFIX_LEN: usize = 1 + KEM_CIPHERTEXT_LEN;
 /// The bytes [`open_stream`] takes: the version byte and the KEM ciphertext.
@@ -149,8 +146,7 @@ impl From<RandomError> for SealError {
 /// `crypto_box512` can fail while opening for reasons beyond a wrong key.
 #[derive(Debug)]
 pub enum OpenError {
-    /// `sealed` is shorter than the prefix and one empty record (311 bytes; 305 for
-    /// [`open_v2_legacy`]), or its stream ends before a verified `Final` record - it was cut.
+    /// `sealed` is shorter than the prefix and one empty record (311 bytes), or its stream ends before a verified `Final` record - it was cut.
     Truncated,
     /// `sealed` starts with a format version byte this build does not read - a blob from an older
     /// or newer wire format. The byte is public, so this reveals nothing about the key.
@@ -412,7 +408,7 @@ pub fn seal(message: &[u8], recipient: &PublicKey) -> Result<Vec<u8>, SealError>
 /// # Errors
 ///
 /// Returns [`OpenError::UnsupportedVersion`] if `sealed`'s first byte is not this build's format
-/// version (a blob from 0.4-0.6 included - see [`open_v2_legacy`]), [`OpenError::Truncated`] if
+/// version (a blob from 0.4-0.6 included, T-310), [`OpenError::Truncated`] if
 /// it is shorter than the minimum possible length or its stream ends before a verified `Final`
 /// record, or [`OpenError::InvalidCiphertext`] for any other failure - see the module doc's
 /// "Error collapsing" section.
@@ -435,44 +431,6 @@ pub fn open(sealed: &[u8], secret: &SecretKey) -> Result<Vec<u8>, OpenError> {
         FileError::Truncated => OpenError::Truncated,
         _ => OpenError::InvalidCiphertext,
     })
-}
-
-/// Decrypts a blob in the one-chunk format 0.4-0.6 wrote (version byte 2: `version || kem
-/// ciphertext (256) || secretstream header (32) || ciphertext || tag (16)`). It exists for
-/// `uacrypt box-open`, which still opens files sealed before T-265 (owner decision 2026-10-15,
-/// D-239); it is not memory-bounded and not wired into the C ABI or any binding. [`seal`] never
-/// writes this format.
-///
-/// # Errors
-///
-/// Returns [`OpenError::Truncated`] if `sealed` is shorter than 305 bytes,
-/// [`OpenError::UnsupportedVersion`] if its first byte is not 2, or
-/// [`OpenError::InvalidCiphertext`] for any other failure.
-pub fn open_v2_legacy(sealed: &[u8], secret: &SecretKey) -> Result<Vec<u8>, OpenError> {
-    const MIN_LEN: usize = PREFIX_LEN + HEADER_LEN + TAG_LEN;
-    if sealed.len() < MIN_LEN {
-        return Err(OpenError::Truncated);
-    }
-    if sealed[0] != LEGACY_FORMAT_VERSION {
-        return Err(OpenError::UnsupportedVersion);
-    }
-
-    let mut kem_ciphertext = [0u8; KEM_CIPHERTEXT_LEN];
-    kem_ciphertext.copy_from_slice(&sealed[1..PREFIX_LEN]);
-    let mut header = [0u8; HEADER_LEN];
-    header.copy_from_slice(&sealed[PREFIX_LEN..PREFIX_LEN + HEADER_LEN]);
-    let ciphertext_len = sealed.len() - MIN_LEN;
-    let ciphertext_start = PREFIX_LEN + HEADER_LEN;
-    let ciphertext = &sealed[ciphertext_start..ciphertext_start + ciphertext_len];
-    let tag = &sealed[ciphertext_start + ciphertext_len..];
-
-    let key = decapsulate(&kem_ciphertext, secret, LEGACY_FORMAT_VERSION)?;
-    let mut pull = PullState::init(&key, &header);
-    let mut plaintext = vec![0u8; ciphertext_len];
-    pull.pull(Tag::Final.to_byte(), ciphertext, tag, &mut plaintext)
-        .map_err(|_| OpenError::InvalidCiphertext)?;
-
-    Ok(plaintext)
 }
 
 #[cfg(test)]
@@ -547,7 +505,7 @@ mod tests {
         let pk = [0x33u8; PUBLIC_KEY_LEN];
         assert_ne!(
             *stream_key(&seed, &kem, &pk, FORMAT_VERSION).as_bytes(),
-            *stream_key(&seed, &kem, &pk, LEGACY_FORMAT_VERSION).as_bytes()
+            *stream_key(&seed, &kem, &pk, 2).as_bytes()
         );
     }
 }

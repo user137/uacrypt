@@ -6,8 +6,8 @@
 #![cfg(feature = "std")]
 
 use dstu_core::crypto_box512::{
-    open, open_stream, open_v2_legacy, seal, seal_stream, sealed_len, OpenError, PublicKey,
-    SecretKey, OPEN_STREAM_PREFIX_BYTES, SEAL_STREAM_PREFIX_BYTES,
+    open, open_stream, seal, seal_stream, sealed_len, OpenError, PublicKey, SecretKey,
+    OPEN_STREAM_PREFIX_BYTES, SEAL_STREAM_PREFIX_BYTES,
 };
 use dstu_core::crypto_secretstream::{FileDecryptor, FileError, CHUNK_BYTES, MAX_RECORD_BYTES};
 use dstu_core::hazmat::dstu9041::curve512::order;
@@ -17,7 +17,7 @@ const KEM_CIPHERTEXT_LEN: usize = 256;
 const HEADER_LEN: usize = 32;
 const TAG_LEN: usize = 16;
 const VERSION: u8 = 3;
-/// The pre-T-265 one-chunk format (0.4-0.6), read only by `open_v2_legacy`.
+/// The pre-T-265 one-chunk format (0.4-0.6), refused by `open` as an unsupported version.
 const LEGACY_VERSION: u8 = 2;
 /// `version (1) || kem_ciphertext` - the box's own prefix; a D-208 stream file follows.
 const PREFIX_LEN: usize = 1 + KEM_CIPHERTEXT_LEN;
@@ -609,14 +609,14 @@ fn open_stream_rejects_a_wrong_version_and_a_forged_kem_ciphertext() {
     ));
 }
 
-/// Owner decision 2026-10-15 (D-239): `open` reads v3 only; the 0.4-0.6 format opens only through
-/// `open_v2_legacy`, which in turn refuses v3.
+/// T-310 (D-239 addendum): since 0.8.0 nothing reads the 0.4-0.6 format - each legacy blob is an
+/// unsupported version for `open`, and relabelling it as v3 does not open it either.
 #[test]
 #[cfg_attr(
     miri,
     ignore = "full seal/open scalar-multiply cost, see docs/TASKS.md T-206"
 )]
-fn legacy_v2_fixtures_open_only_through_open_v2_legacy() {
+fn legacy_v2_fixtures_are_unsupported_version() {
     let secret = SecretKey::from_bytes(
         &decode_hex(field(LEGACY_VECTORS, "box512_secret_key_hex"))
             .try_into()
@@ -628,61 +628,39 @@ fn legacy_v2_fixtures_open_only_through_open_v2_legacy() {
         .lines()
         .filter(|l| l.contains("\"curve\": 512"))
     {
-        let len: usize = line
-            .split("\"plaintext_len\": ")
-            .nth(1)
-            .unwrap()
-            .split(',')
-            .next()
-            .unwrap()
-            .parse()
-            .unwrap();
         let sealed = decode_hex(field(line, "sealed_hex"));
         assert_eq!(sealed[0], LEGACY_VERSION);
-        assert_eq!(
-            open_v2_legacy(&sealed, &secret).expect("legacy blob"),
-            pattern(len)
-        );
         assert!(matches!(
             open(&sealed, &secret),
             Err(OpenError::UnsupportedVersion)
         ));
         let mut relabelled = sealed.clone();
         relabelled[0] = VERSION;
-        assert!(open(&relabelled, &secret).is_err(), "len = {len}");
+        assert!(
+            open(&relabelled, &secret).is_err(),
+            "len = {}",
+            sealed.len()
+        );
         seen += 1;
     }
     assert_eq!(seen, 4);
 }
 
-/// The file the real `uacrypt` 0.6.0 release binary wrote (key file line, sealed bytes).
+/// The file the real `uacrypt` 0.6.0 release binary wrote (key file line, sealed bytes) is an
+/// unsupported version too (T-310).
 #[test]
 #[cfg_attr(
     miri,
     ignore = "full seal/open scalar-multiply cost, see docs/TASKS.md T-206"
 )]
-fn a_uacrypt_0_6_0_file_opens_through_open_v2_legacy() {
+fn a_uacrypt_0_6_0_file_is_unsupported_version() {
     let section = &LEGACY_VECTORS[LEGACY_VECTORS.find("\"uacrypt_0_6_0\"").unwrap()..];
     let key_line = field(section, "box512_secret_key_file");
     let key_hex = key_line.split(':').nth(1).unwrap();
     let secret = SecretKey::from_bytes(&decode_hex(key_hex).try_into().unwrap()).unwrap();
     let sealed = decode_hex(field(section, "box512_sealed_hex"));
-    assert_eq!(
-        open_v2_legacy(&sealed, &secret).expect("0.6.0 file"),
-        pattern(20000)
-    );
-}
-
-#[test]
-#[cfg_attr(
-    miri,
-    ignore = "full seal/open scalar-multiply cost, see docs/TASKS.md T-206"
-)]
-fn open_v2_legacy_refuses_the_current_format() {
-    let secret = fresh_key();
-    let sealed = seal(b"v3", &secret.public_key()).expect("OS CSPRNG available");
     assert!(matches!(
-        open_v2_legacy(&sealed, &secret),
+        open(&sealed, &secret),
         Err(OpenError::UnsupportedVersion)
     ));
 }

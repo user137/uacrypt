@@ -1,5 +1,5 @@
 {
-  "source": "Self-generated legacy pin, not an oracle (D-68, D-239). Format v2 blobs written by dstu-core 0.6.0's crypto_box::seal / crypto_box512::seal at commit 8dd830f, before T-265 replaced the written format with v3; the one-off generator was removed with it, since the code can no longer produce v2. Only dstu_core::crypto_box{,512}::open_v2_legacy (and uacrypt box-open) read these. Plaintext: (i*31+7) mod 256.",
+  "source": "Self-generated legacy pin, not an oracle (D-68, D-239). Format v2 blobs written by dstu-core 0.6.0's crypto_box::seal / crypto_box512::seal at commit 8dd830f, before T-265 replaced the written format with v3; the one-off generator was removed with it, since the code can no longer produce v2. Since 0.8.0 (T-310) nothing reads these: every open refuses them as unsupported_version. Plaintext: (i*31+7) mod 256.",
   "box256_secret_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
   "box512_secret_key_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40",
   "cases": [

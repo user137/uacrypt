@@ -82,8 +82,7 @@ cat report.pdf | uacrypt hash --in -          # prints "<hex>  -"
   written to stdout is INCOMPLETE - discard it", and the exit status is non-zero (1 for a bad
   file, 3 if stdout itself failed). Check it: in a shell pipeline such as `... --out - | tar x`
   the pipeline's status is `tar`'s unless you `set -o pipefail`. With `--out <file>` nothing is
-  written unless the whole file verifies. `box-open` (0.7.0, T-265) behaves the same way; a file
-  from 0.4-0.6 is decrypted whole before anything is printed.
+  written unless the whole file verifies. `box-open` (0.7.0, T-265) behaves the same way.
 - Windows (measured 2026-09-24): cmd and PowerShell 7.6 passed a 100 kB `encrypt --out -` through
   `>` and through `| uacrypt decrypt --in -` byte for byte. Windows PowerShell 5.1 re-encodes a
   native command's output as text, which corrupts binary data: its `>` turned a 310-byte output
@@ -94,7 +93,7 @@ cat report.pdf | uacrypt hash --in -          # prints "<hex>  -"
   `decrypt` exit 3 with the INCOMPLETE message once `head` exits, which fails a `set -o pipefail`
   pipeline.
 - `encrypt`/`decrypt`/`box-seal`/`box-open`/`hash`/`sign`/`verify` read stdin in the same
-  fixed-size chunks as a file (`box-open` of a 0.4-0.6 file reads it whole).
+  fixed-size chunks as a file.
 
 **Progress (0.5.0, T-261, `docs/DECISIONS.md` D-218).** When stderr is a terminal and `--in` is
 a file of 64 MiB or more, `encrypt`, `decrypt`, `hash`, `sign` and `verify` show one line on
@@ -244,18 +243,15 @@ uacrypt box-open --key box.key --in message.bin.box --out opened.bin
 curve point's `x`-coordinate only) from it, safe to share or publish. Both are typed key files
 ([Key files](#key-files)), so `box-seal` refuses a secret key by name instead of sealing to it.
 `box-seal`/`box-open` stream `--in` in bounded memory like `encrypt`/`decrypt` (0.7.0, T-265,
-`docs/DECISIONS.md` D-239). `box-open` still opens files sealed by 0.4-0.6, but reads those whole
-into memory - and any `--in` starting with byte `02` (for instance an `encrypt` output passed by
-mistake) takes that path, so it is read whole before it fails. That path reads only a regular
-file, at most its own size: a version-2 input on stdin (`--in -`) or from a device is refused
-(T-304) - open such a file by its path. 0.6 cannot open 0.7 output.
+`docs/DECISIONS.md` D-239). Since 0.8.0 (T-310) a file sealed by 0.4-0.6 (format 2) is refused
+as an unsupported version: open it with uacrypt 0.7.x, and re-seal it if you still need it.
+0.6 cannot open 0.7 output.
 
 For DSTU 9041's `l(p)=384` or `l(p)=512` curve (E384/1, T-297, `docs/DECISIONS.md` D-245; E512/1,
 T-193, D-182), generate the key with `box-keygen384` or `box-keygen512` instead; `box-pubkey`,
 `box-seal` and `box-open` read the curve from the key (T-257, D-213). Keys are 48 or 64 bytes
 instead of 32, and a sealed file under 8 KiB has 231 or 311 bytes of overhead instead of 183. A
-file sealed to one curve's key is refused by another curve's key like any other wrong key. There
-are no 0.4-0.6 files at `l(p)=384`: a version-2 file with a 384 key is an unsupported version.
+file sealed to one curve's key is refused by another curve's key like any other wrong key.
 
 ```
 uacrypt box-keygen512 --out box512.key
@@ -405,7 +401,7 @@ was not yet so.
 | `encrypt` | encrypted file | `version (1) \|\| header (32)`, then one or more records, each `chunk tag (1) \|\| ciphertext length (4) \|\| ciphertext \|\| auth tag (16)` |
 | `encrypt --passphrase` / `--passphrase-file` | encrypted file | `0x50 \|\| 0x01 \|\| 0x01 \|\| m_cost KiB (4) \|\| t_cost (4) \|\| p_cost (1) \|\| salt (16)`, then the `encrypt` layout above |
 | `box-keygen` / `box-keygen384` / `box-keygen512` / `box-pubkey` | secret / public key | a key line each (the public key is the curve point's `x`-coordinate) |
-| `box-seal` | sealed file | `version (1, = 3) \|\| KEM ciphertext (128, or 176/256 for an l(p)=384/512 key) \|\| <the encrypt stream format>`: 183, 231 or 311 bytes for an input under 8 KiB, plus 21 per further started 8 KiB (D-239; 0.4-0.6 wrote version 2, one chunk, at 256/512 only, still read by `box-open`) |
+| `box-seal` | sealed file | `version (1, = 3) \|\| KEM ciphertext (128, or 176/256 for an l(p)=384/512 key) \|\| <the encrypt stream format>`: 183, 231 or 311 bytes for an input under 8 KiB, plus 21 per further started 8 KiB (D-239; 0.4-0.6 wrote version 2, one chunk, at 256/512 only, refused since 0.8.0 - uacrypt 0.7.x opens it) |
 | `sign-keygen` / `sign-keygen257` | signing key | a key line (the scalar `d`, big-endian) |
 | `sign-pubkey` | verifying key | a key line (`x \|\| y`) of the signing key's curve |
 | `sign` | signature | 42 raw bytes for an m=163 key, 66 for m=257; `verify` picks the curve from the verifying key's kind |

@@ -123,9 +123,9 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
   - `crypto_box` (`seal`/`open`/`SecretKey`/`PublicKey`) — public-key encryption over
     `hazmat::dstu9041` (`l(p)=256`), hybrid via KDF (a random seed sealed asymmetrically,
     keyed into `Kupyna256Kmac` over `kem_ct||recipient_pk` (D-201), then a D-208 stream file -
-    format v3, `seal_stream`/`open_stream` bounded, v2 only via `open_v2_legacy`, T-265/D-239);
+    format v3, `seal_stream`/`open_stream` bounded, T-265/D-239; v2 refused, T-310);
     `PublicKey` is 32 bytes, the curve point's `x`-coordinate only (T-178/D-169). `crypto_box384`
-    (T-297, D-245, keys 48 bytes, v3 only - no `open_v2_legacy`) and `crypto_box512` (T-193, D-182,
+    (T-297, D-245, keys 48 bytes) and `crypto_box512` (T-193, D-182,
     keys 64 bytes) are the `l(p)=384`/`512` siblings, same shape, seed fixed at 32 bytes. Each is a
     distinct type in capi and every binding (512: T-204; 384: T-297).
   - `randombytes::randombytes_buf` — `std`-gated `getrandom` wrapper (T-72/D-48).

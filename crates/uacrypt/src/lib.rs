@@ -611,8 +611,8 @@ impl fmt::Display for CliError {
             ),
             CliError::BoxOpenUnsupportedVersion => write!(
                 f,
-                "box-open: --in was sealed in a different format version (e.g. by uacrypt 0.3.x) - \
-                 open it with the release that sealed it"
+                "box-open: --in was sealed in a different format version (e.g. by uacrypt 0.3.x, \
+                 or 0.4-0.6 - open those with uacrypt 0.7.x) - open it with a release that reads it"
             ),
             CliError::StdioNotAccepted(flag) => write!(
                 f,
@@ -3983,26 +3983,17 @@ impl AnyBoxSecret {
         }
     }
 
-    /// `open` (v3, the `--iterations` benchmark path) and `open_v2_legacy` (0.4-0.6 files; none
-    /// exist at l(p)=384, so a legacy file is an unsupported version there).
-    fn open(&self, sealed: &[u8], legacy: bool) -> Result<Vec<u8>, CliError> {
+    /// `open` in memory - the `--iterations` benchmark path.
+    fn open(&self, sealed: &[u8]) -> Result<Vec<u8>, CliError> {
         let curve = self.curve_label();
         match self {
-            AnyBoxSecret::L256(k) => if legacy {
-                dstu_core::crypto_box::open_v2_legacy(sealed, k)
-            } else {
-                dstu_core::crypto_box::open(sealed, k)
+            AnyBoxSecret::L256(k) => {
+                dstu_core::crypto_box::open(sealed, k).map_err(box_open_error!(crypto_box, curve))
             }
-            .map_err(box_open_error!(crypto_box, curve)),
-            AnyBoxSecret::L384(_) if legacy => Err(CliError::BoxOpenUnsupportedVersion),
             AnyBoxSecret::L384(k) => dstu_core::crypto_box384::open(sealed, k)
                 .map_err(box_open_error!(crypto_box384, curve)),
-            AnyBoxSecret::L512(k) => if legacy {
-                dstu_core::crypto_box512::open_v2_legacy(sealed, k)
-            } else {
-                dstu_core::crypto_box512::open(sealed, k)
-            }
-            .map_err(box_open_error!(crypto_box512, curve)),
+            AnyBoxSecret::L512(k) => dstu_core::crypto_box512::open(sealed, k)
+                .map_err(box_open_error!(crypto_box512, curve)),
         }
     }
 
@@ -4351,9 +4342,8 @@ pub fn parse_box_open_args(args: &[String]) -> Result<BoxOpenArgs, CliError> {
 /// Runs `box-open`: reads a secret key of either curve from `--key` and decrypts `--in`
 /// (`crypto_box` or `crypto_box512`, by the key's kind, T-257). `--in`'s first byte picks the
 /// format (T-265, D-239): 3 is streamed through `open_stream` and [`decrypt_stream_records`] -
-/// memory-bounded, each record written only once it verifies; 2 is a file from uacrypt 0.4-0.6,
-/// read whole and opened with `open_v2_legacy` (owner decision 2026-10-15); anything else is
-/// refused before the key is used.
+/// memory-bounded, each record written only once it verifies; anything else (2 included, a file
+/// from uacrypt 0.4-0.6, T-310) is refused before the key is used.
 ///
 /// `iterations > 1` is the D-34/T-179 benchmark path: `--in` (format 3) is read whole and `open`
 /// is timed in a loop - deterministic given the same input, key/ciphertext parsed once outside it
@@ -4381,12 +4371,6 @@ pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
     if got == 0 {
         return Err(CliError::BoxOpenTruncated(secret.curve_label()));
     }
-    if prefix[0] == dstu_core::crypto_box::LEGACY_FORMAT_VERSION {
-        if matches!(secret, AnyBoxSecret::L384(_)) {
-            return Err(CliError::BoxOpenUnsupportedVersion);
-        }
-        return run_box_open_legacy(&secret, prefix[0], raw, args);
-    }
     if prefix[0] != dstu_core::crypto_box::FORMAT_VERSION {
         return Err(CliError::BoxOpenUnsupportedVersion);
     }
@@ -4404,42 +4388,6 @@ pub fn run_box_open_command(args: &BoxOpenArgs) -> Result<(), CliError> {
     out.finish(result)
 }
 
-/// `box-open` of a file from uacrypt 0.4-0.6 (format 2, one chunk): read whole, then
-/// `open_v2_legacy` - not memory-bounded, kept only so those files still open (D-239).
-fn run_box_open_legacy(
-    secret: &AnyBoxSecret,
-    version: u8,
-    mut raw: Box<dyn std::io::Read>,
-    args: &BoxOpenArgs,
-) -> Result<(), CliError> {
-    use std::io::Read;
-    // T-304: format 2 has no streaming reader, so it is read whole - only from a regular file,
-    // and no further than the size that file had here. From stdin or a device a leading `0x02`
-    // would otherwise make the read unbounded.
-    let file_len = match &args.in_path {
-        Source::File(path) => std::fs::metadata(path)
-            .ok()
-            .filter(std::fs::Metadata::is_file)
-            .map(|meta| meta.len()),
-        Source::Stdin => None,
-    };
-    let Some(file_len) = file_len else {
-        return Err(args.in_path.io_error(&std::io::Error::other(
-            "a format-2 box (uacrypt 0.4-0.6) is read whole, so it opens only from a regular file, \
-             not stdin or a device",
-        )));
-    };
-    let mut sealed = vec![version];
-    (&mut raw)
-        .take(file_len)
-        .read_to_end(&mut sealed)
-        .map_err(|e| args.in_path.io_error(&e))?;
-    let opened = zeroize::Zeroizing::new(secret.open(&sealed, true)?);
-    let mut out = Output::create(&args.out_path, &args.in_path, args.force)?;
-    let written = out.write_all(&opened);
-    out.finish(written)
-}
-
 /// `box-open --iterations N`: `open` timed N times over `--in` read whole (see
 /// [`run_box_open_command`]).
 fn run_box_open_benchmark(secret: &AnyBoxSecret, args: &BoxOpenArgs) -> Result<(), CliError> {
@@ -4447,9 +4395,9 @@ fn run_box_open_benchmark(secret: &AnyBoxSecret, args: &BoxOpenArgs) -> Result<(
     let sealed = args.in_path.read_all()?;
 
     let start = Instant::now();
-    let mut opened = secret.open(&sealed, false)?;
+    let mut opened = secret.open(&sealed)?;
     for _ in 1..args.iterations {
-        opened = secret.open(&sealed, false)?;
+        opened = secret.open(&sealed)?;
     }
     let elapsed = start.elapsed();
 
@@ -5135,8 +5083,8 @@ uacrypt box-open - decrypt a file produced by `box-seal`, using the matching sec
 
 Streamed in bounded memory chunks and authenticated: a wrong key (including one of the other
 curve) or a tampered/truncated file is rejected with an error before anything is written to an
---out file, rather than producing wrong plaintext. Files sealed by uacrypt 0.4-0.6 still open, but
-are read whole into memory (l(p)=256/512 only - those versions had no l(p)=384).
+--out file, rather than producing wrong plaintext. Files sealed by uacrypt 0.4-0.6 are refused as
+an unsupported version; uacrypt 0.7.x opens them.
 
 USAGE:
     uacrypt box-open --key <path> --in <path> --out <path> [--force]
@@ -9099,14 +9047,14 @@ mod tests {
         assert!(!dir.file("msg.out").exists());
     }
 
-    /// T-265 (D-239): a file the real uacrypt 0.6.0 binary sealed (format 2) still opens, through
-    /// the legacy path; the shared fixture also pins the key-file line.
+    /// T-310 (D-239 addendum): a file the real uacrypt 0.6.0 binary sealed (format 2) is an
+    /// unsupported version and leaves no output; the shared fixture also pins the key-file line.
     #[cfg_attr(
         miri,
         ignore = "dstu9041's 256-iteration scalar-multiply ladders are too slow to interpret under Miri - see docs/TASKS.md T-100/T-177"
     )]
     #[test]
-    fn box_open_reads_a_uacrypt_0_6_0_file() {
+    fn box_open_refuses_a_uacrypt_0_6_0_file() {
         const LEGACY: &str = include_str!("../../dstu-core/tests/vectors/box/legacy_v2.json");
         let field = |key: &str| {
             let pattern = format!("\"{key}\": \"");
@@ -9135,18 +9083,17 @@ mod tests {
             .expect("write key");
             std::fs::write(dir.file("msg.box"), hex(field(sealed_field))).expect("write sealed");
             let _ = std::fs::remove_file(dir.file("msg.out"));
-            run_box_open_command(&BoxOpenArgs {
-                key_path: dir.file("box.key"),
-                in_path: Source::File(dir.file("msg.box")),
-                out_path: Sink::File(dir.file("msg.out")),
-                iterations: 1,
-                force: false,
-            })
-            .expect("a uacrypt 0.6.0 file opens");
-            let expected: Vec<u8> = (0..20000usize)
-                .map(|i| u8::try_from((i * 31 + 7) % 256).expect("byte"))
-                .collect();
-            assert_eq!(std::fs::read(dir.file("msg.out")).expect("read"), expected);
+            assert_eq!(
+                run_box_open_command(&BoxOpenArgs {
+                    key_path: dir.file("box.key"),
+                    in_path: Source::File(dir.file("msg.box")),
+                    out_path: Sink::File(dir.file("msg.out")),
+                    iterations: 1,
+                    force: false,
+                }),
+                Err(CliError::BoxOpenUnsupportedVersion)
+            );
+            assert!(!dir.file("msg.out").exists(), "no output");
         }
     }
 
@@ -9446,33 +9393,40 @@ mod tests {
         assert_eq!(opened, b"dispatch me 384");
     }
 
-    /// T-297: no 0.4-0.6 file exists at l(p)=384, so a format-2 byte with a 384 key is an
-    /// unsupported version - refused from the first byte, not read whole first.
+    /// T-310: a format-2 byte (uacrypt 0.4-0.6) is an unsupported version with a key of every
+    /// curve - refused from the first byte, not read whole first.
     #[cfg_attr(
         miri,
-        ignore = "box-keygen384 and the key load cost a full scalar multiplication since T-287"
+        ignore = "the box keygens and the key load cost a full scalar multiplication since T-287"
     )]
     #[test]
-    fn box_open_of_a_format_2_file_with_a_384_key_is_unsupported() {
-        let dir = TempDir::new("box384_legacy_byte");
-        run_box384_keygen_command(&BoxKeygenArgs {
-            out_path: dir.file("box.key"),
-        })
-        .expect("box-keygen384");
-        let mut file = vec![dstu_core::crypto_box::LEGACY_FORMAT_VERSION];
+    fn box_open_of_a_format_2_file_is_unsupported() {
+        let dir = TempDir::new("box_format_2_byte");
+        let mut file = vec![2u8];
         file.extend_from_slice(&[0xAA; 400]);
         std::fs::write(dir.file("msg.box"), &file).expect("write");
-        assert_eq!(
-            run_box_open_command(&BoxOpenArgs {
-                key_path: dir.file("box.key"),
-                in_path: Source::File(dir.file("msg.box")),
-                out_path: Sink::File(dir.file("msg.out")),
-                iterations: 1,
-                force: false,
-            }),
-            Err(CliError::BoxOpenUnsupportedVersion)
-        );
-        assert!(!dir.file("msg.out").exists(), "no output");
+        for keygen in [
+            run_box_keygen_command,
+            run_box384_keygen_command,
+            run_box512_keygen_command,
+        ] {
+            let _ = std::fs::remove_file(dir.file("box.key"));
+            keygen(&BoxKeygenArgs {
+                out_path: dir.file("box.key"),
+            })
+            .expect("box keygen");
+            assert_eq!(
+                run_box_open_command(&BoxOpenArgs {
+                    key_path: dir.file("box.key"),
+                    in_path: Source::File(dir.file("msg.box")),
+                    out_path: Sink::File(dir.file("msg.out")),
+                    iterations: 1,
+                    force: false,
+                }),
+                Err(CliError::BoxOpenUnsupportedVersion)
+            );
+            assert!(!dir.file("msg.out").exists(), "no output");
+        }
     }
 
     #[cfg_attr(

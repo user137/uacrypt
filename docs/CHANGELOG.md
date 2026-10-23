@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+### Removed
+
+- **Breaking - reading the 0.4-0.6 `crypto_box` format** (T-310, `docs/DECISIONS.md` D-239
+  addendum): `dstu-core`'s `crypto_box::open_v2_legacy`, `crypto_box512::open_v2_legacy` and
+  both `LEGACY_FORMAT_VERSION` constants are gone, and `uacrypt box-open` refuses a format-2 file
+  as an unsupported version, like every other `open` already did. To keep such data, open it
+  with uacrypt 0.7.x (`box-open`) or dstu-core 0.7.x (`open_v2_legacy`) and seal it again.
+
 ## [0.7.0] - 2026-10-23
 
 ### Added

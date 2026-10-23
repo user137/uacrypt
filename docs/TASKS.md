@@ -10324,7 +10324,7 @@ per phase (`rust.yml`/`miri.yml` are `cancel-in-progress`; a docs push mid-run c
 GHSA published, yanks done, CodeQL clean, winget PR #460150 waiting on a moderator). `master` =
 `1b13b68` (PHP `ctutils` RUSTSEC fix): every workflow green, `rust` still running at save time -
 check it first. Unpushed, docs only: `8397cf6`, `2a9c0c0`, `25060fd` (push after `rust` is done).
-Owner confirmed the order below. **T-311 done 2026-10-23 (D-255); next: T-310.** Pi: packages up to date (PHP 8.2.35
+Owner confirmed the order below. **T-311 done 2026-10-23 (D-255), T-310 done (D-239 addendum); next: T-223/T-225 fuzz.** Pi: packages up to date (PHP 8.2.35
 by unattended-upgrades, Docker 29.9.2), Docker stays disabled. Nothing uncommitted.
 
 **Code chain:**
@@ -10333,7 +10333,7 @@ by unattended-upgrades, Docker 29.9.2), Docker stays disabled. Nothing uncommitt
    ~2 MiB. Committed GC memory need not be resident, so the new metric needs a deliberate-leak
    control first, as D-234 had for Java: a test-only P/Invoke allocation through capi that is never
    freed, shown to fail the new threshold ("never Dispose" is no control in .NET, T-231).
-2. **T-310** drop `open_v2_legacy` (`crypto_box`, `crypto_box512`) and `run_box_open_legacy`. Sweep:
+2. [x] **T-310** (done 2026-10-23, D-239 addendum; CHANGELOG Removed) drop `open_v2_legacy` (`crypto_box`, `crypto_box512`) and `run_box_open_legacy`. Sweep:
    `crypto_box384.rs` doc line, `gen_box_vectors.rs`, `tests/crypto_box{,512}.rs`, `lib.rs`
    (`box-open` byte-0 dispatch -> unsupported version), `docs/CLI.md` (~136-139, ~408),
    CLAUDE.md "Project status" (pair the edit), D-239 addendum, ORACLES, `dstu-crypto-project.md`,

@@ -15511,6 +15511,16 @@ are printed, a later failure says INCOMPLETE. The `--iterations` benchmark paths
 serve as the boundedness test's control case. Full streaming in the bindings (and `derive_key`)
 stays T-269.
 
+**Addendum 2026-10-23 (T-310, owner): the v2 read path is removed.** Compatibility is no reason
+to keep it for this young project (owner, the same day as D-253): `crypto_box{,512}::open_v2_legacy`,
+`LEGACY_FORMAT_VERSION` and `uacrypt box-open`'s byte-0 branch to it are gone, and with them the
+one `box-open` input that was read whole (T-304's regular-file bound has nothing left to bound).
+A v2 blob is now `UnsupportedVersion` everywhere; `legacy_v2.json` stays as the rejection vector
+(core, uacrypt, capi and all 8 bindings test it). The way to read old data is the 0.7.x release
+(`uacrypt box-open` or `dstu-core` `open_v2_legacy`), not the yanked 0.4-0.6 - the CLI message
+and CHANGELOG say so. `stream_key` keeps the version byte in the derivation (v3 and a future v4
+never share a key). Breaking: ships in 0.8.0.
+
 ## D-240: the passphrase file moves into the core (T-269, 2026-10-18)
 
 **Owner decision (2026-10-18).** The bindings read and write the D-219 passphrase file through the

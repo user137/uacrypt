@@ -23,7 +23,7 @@
 //! only [`OpenError::Truncated`] and [`OpenError::UnsupportedVersion`] stay separate. Wire format
 //! version 3 only (D-239): `version (1, = 3) || dstu9041_ciphertext (176) || <D-208 stream file>`,
 //! through [`seal_stream`]/[`open_stream`] or [`seal`]/[`open`]. There is no version 2 at this
-//! size and no `open_v2_legacy`: nothing was ever sealed with it. Stream key:
+//! size: nothing was ever sealed with it. Stream key:
 //! `Kupyna256Kmac(key = seed, message = b"cryptbx3" || version || kem_ciphertext ||
 //! recipient_public_key)` (D-201's binding, its own label).
 //!
