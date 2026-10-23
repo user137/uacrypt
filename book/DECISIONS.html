@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e5115dda.js";
+            window.path_to_searchindex_js = "searchindex-5f90025d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -14614,7 +14614,8 @@ key-hex copies behind (as <code>passphrase.rs</code> already did).</li>
 <code>Scalar</code>, ladder accumulators) and function-return temporaries can still leave register/stack
 copies the compiler places; Rust cannot guarantee their erasure. Per-block <code>compress_block</code> column
 buffers in Kupyna are left (they hold message bytes, overwritten by the next block; wiping them
-would cost every hash). No test: zeroization is not observable through the public API (a
+would cost every hash). <em>Corrected by D-260: under KMAC the last block holds <code>~K</code> and nothing
+overwrites it; <code>finalize</code>’s blocks are wiped now.</em> No test: zeroization is not observable through the public API (a
 type-signature-level gap, recorded here per the project’s misuse-category rule).</p>
 <h2 id="d-250-owner-only-output-files-on-windows-t-300-2026-10-22"><a class="header" href="#d-250-owner-only-output-files-on-windows-t-300-2026-10-22">D-250: owner-only output files on Windows (T-300, 2026-10-22)</a></h2>
 <p><strong>Finding</strong> (red-team wave). <code>create_private_new</code> gave Unix files mode <code>0600</code> but left Windows files
@@ -14974,6 +14975,58 @@ exact counts already catch any new branch in those symbols.</li>
 <code>kalyna_ccm</code> <code>seal_in_place</code>’s count, in the other direction, through an inlining change) rely on
 LLVM making the same choice for the same body. Real-silicon timing of IT-predicated instructions
 is still unclaimed (D-256).</p>
+<p><strong>Addendum (2026-10-23, independent read-only review of <code>cfde093</code>, owner’s yes):</strong></p>
+<ul>
+<li><strong>The default rows now run in the <code>small-tables</code> build too.</strong> These are the curve and field
+rows plus <code>gf2m</code> <code>multiply</code>. That code is compiled in both profiles, and the feature changes
+its inlining context (<code>curve163::verify_combine</code> switches to <code>scalar_multiply</code>), so a secret
+branch could come back in that build alone. The rows hold there as they are (160 zero-jump +
+16 exact).</li>
+<li><strong>No <code>black_box</code> barrier in <code>gf_mul</code></strong>, unlike D-225’s 17 sites. A barrier on both masks cost
+5x of the profile’s throughput (release <code>kupyna-digest</code>, Kupyna-256, 8 MiB: 3.6-4.0 -&gt; 0.71-0.74
+MB/s). <code>docs/SECURITY.md</code> names this as the one exception, with the exact counts as its guard.</li>
+<li><strong>Known false-negative window, the same class D-230 accepted.</strong> On riscv32 O3 most of each
+round symbol’s 108-117 jumps branch on public <code>y</code> bits. If LLVM turned one of those into a
+select and added one secret branch on <code>x</code>, the count would not change.</li>
+<li><strong>Audit version.</strong> The rows were audited at rustc 1.99.0, and CI passed them at 1.99.1.
+<code>AUDITED_RUSTC</code> still names 1.97.1 for the older rows, so a failure’s version hint is about
+those rows.</li>
+</ul>
+<h2 id="d-260-t-313---d-249s-three-leftover-key-derived-copies-2026-10-23"><a class="header" href="#d-260-t-313---d-249s-three-leftover-key-derived-copies-2026-10-23">D-260: T-313 - D-249’s three leftover key-derived copies (2026-10-23)</a></h2>
+<p>T-249 (D-256) found three copies of key-derived data that D-249 left behind. All three are wiped
+now, best effort as in D-249: Rust cannot guarantee erasure of compiler-placed copies.</p>
+<ul>
+<li>
+<p><strong>(a) Kupyna’s last compression under KMAC.</strong> D-249 kept the per-block buffers
+(<code>compress_block</code>’s <code>columns_buf</code>, <code>compress_n</code>’s <code>t_input</code>/<code>q_input</code>) because the next block
+overwrites them. Under <code>kupyna_kmac</code> the final block is <code>~K || padding</code>: after <code>PAD(M)</code> the buffer
+is empty, and <code>~K</code> is shorter than a block, so it is compressed only in <code>finalize</code> and no later
+block follows. <code>compress_n</code>/<code>compress_block</code> take a <code>wipe</code> flag, and only <code>finalize</code>’s tail blocks
+(one or two per message) pass <code>true</code>.</p>
+<p>Measured first, as T-313 asked, with release <code>uacrypt kupyna-digest --iterations 5</code> on 64 MiB,
+base and variant runs interleaved (D-34):</p>
+<ul>
+<li>Wiping every block cost 16% of Kupyna-256’s throughput (137.6 -&gt; 116.0 MB/s) and 8.5% of
+Kupyna-512’s (96.2 -&gt; 88.0 MB/s).</li>
+<li>The finalize-only flag measured 1-2% below a fresh build of HEAD (130-132 vs 134-137 MB/s, in
+a 131-137 MB/s noise band on this machine). That is more than two compressions per 64 MiB can
+cost, so it is code-layout sensitivity: a <code>const WIPE: bool</code> variant, whose hot path is in
+principle unchanged, measured lower still (128-130 MB/s) and was dropped.</li>
+</ul>
+<p>The proptest <code>compress_n_matches_dyn_*</code> now checks both flag values against the runtime
+<code>compress</code>. The annex Б state-by-state test runs its last block through the wiping path.</p>
+</li>
+<li>
+<p><strong>(b) <code>kalyna::rotate_bytes_left</code>’s <code>rotated</code> scratch.</strong> Its only caller rotates round keys
+(<code>key_expand_odd</code>). It is now <code>Zeroizing</code>.</p>
+</li>
+<li>
+<p><strong>(c) <code>strumok::Core::new</code>.</strong> The local state <code>s</code> (key words XOR IV, then the state after
+initialisation) and the FSM registers <code>r0</code>/<code>r1</code> are <code>Zeroizing</code>. <code>Self</code> receives copies, so
+the stack locals are wiped when <code>new</code> returns.</p>
+</li>
+</ul>
+<p>No new test of erasure itself: it is not observable through the API (D-249’s recorded gap).</p>
 
                     </main>
 

@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e5115dda.js";
+            window.path_to_searchindex_js = "searchindex-5f90025d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -10812,7 +10812,7 @@ targets), T-249 (D-256, findings T-312..T-316), T-264 (completions + <code>uacry
 (incl. 28 <code>fuzz-smoke</code> jobs, macOS bash 3.2 + <code>zsh -n</code>, Linux <code>pwsh</code> completion tests) and <code>miri</code>
 still queued - <strong>first: <code>gh run list</code> / <code>gh run view</code> both for <code>3432912</code></strong>. D-258 and the CI-shells change were pushed together. Owner delegated the open forks (D-258): no reviewer subagent for
 T-249/T-310; <strong>T-312..T-316 join 0.8.0</strong> - next in order T-312, T-313, T-315, T-314, T-316, then
-step 6 (release 0.8.0). <strong>T-312 done 2026-10-23 (D-259); next T-313.</strong> <code>3432912</code>’s <code>rust</code>/<code>miri</code> were
+step 6 (release 0.8.0). <strong>T-312 done 2026-10-23 (D-259), T-313 done (D-260); next T-315.</strong> <code>3432912</code>’s <code>rust</code>/<code>miri</code> were
 cancelled by the next push (<code>cancel-in-progress</code>); the T-312 push carries everything since, so read its <code>rust</code>/<code>miri</code> runs (incl. <code>asm-check</code>’s 16 builds and <code>smoke_completions</code>). CI’s Linux <code>test</code> job now installs zsh/fish/mandoc/groff
 and requires them (<code>UACRYPT_REQUIRE_SHELLS=1</code>, D-257 addendum) - the fish completer’s first real
 run is there: check <code>smoke_completions</code> in the <code>rust</code> run of the push after <code>df62897</code>. <code>.git/worktrees/old_wt</code> is an
@@ -10853,7 +10853,7 @@ because LLVM chooses so; <code>asm-check</code> builds the default profile only.
 <code>gf_mul</code> (<code>0u8.wrapping_sub(x &gt;&gt; 7) &amp; 0x1D</code>, same for <code>y &amp; 1</code>), and <code>small-tables</code> cells in
 <code>asm-check</code> (a zero-jump row where <code>gf_mul</code>/<code>mds_column_via_gf_mul</code> is its own symbol, plus
 a crate scan for a conditional branch in front of a <code>0x1D</code> reduction).</li>
-<li><input disabled="" type="checkbox"> <strong>T-313</strong> (Low, zeroization) D-249 leftovers: (a) KMAC’s last <code>compress_block</code> (the tail
+<li><input disabled="" type="checkbox" checked=""> <strong>T-313</strong> (done 2026-10-23, D-260: finalize-only wipe flag, per-block wipe cost 16%) (Low, zeroization) D-249 leftovers: (a) KMAC’s last <code>compress_block</code> (the tail
 block holding <code>~K</code>) leaves <code>columns_buf</code>/<code>compress_n</code>’s <code>q_input</code>/<code>t_input</code> and nothing
 overwrites them - D-249’s “message bytes, overwritten by the next block” does not hold for
 KMAC; (b) <code>kalyna::rotate_bytes_left</code>’s <code>rotated</code> holds each odd round key; (c)

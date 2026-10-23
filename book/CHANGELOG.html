@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e5115dda.js";
+            window.path_to_searchindex_js = "searchindex-5f90025d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -202,10 +202,13 @@ with uacrypt 0.7.x (<code>box-open</code>) or dstu-core 0.7.x (<code>open_v2_leg
 <h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
 <ul>
 <li><strong><code>dstu-core</code> <code>small-tables</code>: no secret-dependent branch in the <code>GF(2^8)</code> multiply</strong> (T-312,
-<code>docs/DECISIONS.md</code> D-259): <code>gf_mul</code>, which every Kalyna/Kupyna round calls in that profile,
+<code>docs/DECISIONS.md</code> D-259): <code>gf_mul</code>, which every Kalyna/Kupyna round and Strumok’s <code>T</code> call in that profile,
 now reduces with masks instead of an <code>if</code> on the state byte’s top bit. Shipped builds were
 already branchless there by the compiler’s choice; <code>cargo xtask asm-check</code> now checks the
 <code>small-tables</code> build too, so a compiler change that brings the branch back fails CI.</li>
+<li><strong><code>dstu-core</code>: three more key-derived copies wiped</strong> (T-313, <code>docs/DECISIONS.md</code> D-260):
+Kupyna-KMAC’s last compression block (<code>~K</code>), the Kalyna round-key rotation scratch, and
+Strumok’s initial state and registers in <code>new</code>.</li>
 </ul>
 <h2 id="070---2026-10-23"><a class="header" href="#070---2026-10-23">[0.7.0] - 2026-10-23</a></h2>
 <h3 id="added-1"><a class="header" href="#added-1">Added</a></h3>
