@@ -8168,7 +8168,10 @@ codes, and memory lifecycle) stays intact and doesn't need its own task.
   either doesn't exist or is the pre-existing file untouched, and no stray temp file survives.
   Windows-vs-Unix signal-delivery differences apply here - confirm the test's mechanism works on
   this project's actual CI runners, not just locally.
-- [ ] **T-223** Core: fuzz targets for the high-value `crypto_*` wrappers that currently have none -
+- [x] **T-223** (done 2026-10-23, 0.8.0 wave step 3: `crypto_secretbox_open`, `crypto_box_open`,
+  `crypto_box384_open`, `crypto_box512_open` over pinned blobs with the negative property in
+  `fuzz/common/negative.rs`; 20 s each locally, zero findings; control - an `open` that ignores
+  the last tag byte - crashed at once) Core: fuzz targets for the high-value `crypto_*` wrappers that currently have none -
   `crypto_secretbox`, `crypto_box`, `crypto_box512`. These parse untrusted wire-format bytes
   directly from CLI/binding callers (`nonce||ciphertext||tag`, the sealed KEM blob), unlike the
   hazmat-level primitives which already get fuzzed indirectly through their AEAD/MAC/KW callers.
@@ -8192,6 +8195,10 @@ codes, and memory lifecycle) stays intact and doesn't need its own task.
   hazmat-level and already exercised indirectly. Do after Batch 3c unless a T-223 finding points
   straight at one of them.
   - **Done 2026-09-26:** `crypto_pwhash_verify` (T-272's attachment, D-222) - the 11th target.
+  - **Done 2026-10-23 (0.8.0 wave step 3, phase A):** `crypto_sign_verify`/`crypto_sign257_verify`
+    (input `key || sig || msg`, `from_uncompressed_bytes` included; spare key bits checked by hand
+    first - they fail `is_on_curve`) and the negative property in `crypto_secretstream` (the pinned
+    `secretstream-file/v2.json` record through `pull`). Zero findings. Phase B (hazmat) next.
   **2026-09-22 scope addition**: negative-property fuzz check - see "Security audit remediation" ("Attached to existing tasks").
 
 ### RESUME HERE (state as of 2026-08-31, saved for a memory-clear/new-session handoff)

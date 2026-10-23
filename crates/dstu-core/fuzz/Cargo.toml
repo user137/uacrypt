@@ -106,4 +106,46 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "crypto_secretbox_open"
+path = "fuzz_targets/crypto_secretbox_open.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "crypto_box_open"
+path = "fuzz_targets/crypto_box_open.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "crypto_box384_open"
+path = "fuzz_targets/crypto_box384_open.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "crypto_box512_open"
+path = "fuzz_targets/crypto_box512_open.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "crypto_sign_verify"
+path = "fuzz_targets/crypto_sign_verify.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "crypto_sign257_verify"
+path = "fuzz_targets/crypto_sign257_verify.rs"
+test = false
+doc = false
+bench = false
+
 [workspace]

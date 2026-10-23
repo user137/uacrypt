@@ -1,7 +1,59 @@
 #![no_main]
 
+#[path = "../common/negative.rs"]
+mod negative;
+
 use dstu_core::crypto_secretstream::{Key, PullState, PushState, Tag};
 use libfuzzer_sys::fuzz_target;
+use std::sync::OnceLock;
+
+const VECTORS: &str = include_str!("../../tests/vectors/secretstream-file/v2.json");
+const AUTH_TAG_LEN: usize = 16;
+
+/// `secretstream-file/v2.json`'s `valid` file: its key, header and first record as
+/// `tag || ciphertext || auth tag` (the length field is the file codec's, not `pull`'s).
+struct Fixture {
+    key: [u8; 32],
+    header: [u8; 32],
+    record: Vec<u8>,
+}
+
+fn fixture() -> &'static Fixture {
+    static FIXTURE: OnceLock<Fixture> = OnceLock::new();
+    FIXTURE.get_or_init(|| {
+        let key = negative::decode_hex(negative::field(VECTORS, "key_hex"));
+        let line = VECTORS
+            .lines()
+            .find(|l| l.contains("\"name\": \"valid\""))
+            .expect("valid case");
+        let file = negative::decode_hex(negative::field(line, "file_hex"));
+        let len = u32::from_le_bytes(file[34..38].try_into().expect("length field")) as usize;
+        let mut record = vec![file[33]];
+        record.extend_from_slice(&file[38..38 + len + AUTH_TAG_LEN]);
+        Fixture {
+            key: key.try_into().expect("32-byte key"),
+            header: file[1..33].try_into().expect("32-byte header"),
+            record,
+        }
+    })
+}
+
+/// T-225: `pull` on a fresh state accepts the pinned record and nothing derived from it.
+fn check_record(candidate: &[u8]) {
+    let f = fixture();
+    let accepted = candidate.len() > AUTH_TAG_LEN && {
+        let mut pull = PullState::init(&Key::from_bytes(f.key), &f.header);
+        let (body, auth_tag) = candidate.split_at(candidate.len() - AUTH_TAG_LEN);
+        let mut out = vec![0u8; body.len() - 1];
+        pull.pull(body[0], &body[1..], auth_tag, &mut out).is_ok()
+    };
+    assert_eq!(
+        accepted,
+        candidate == f.record.as_slice(),
+        "pull = {accepted} for a {}-byte record",
+        candidate.len()
+    );
+}
 
 // Required by docs/SECURITY.md ("cargo fuzz is required ... not optional"). `PullState::pull` makes an
 // authentication decision on fully attacker-controlled input (tag byte, ciphertext, tag, and
@@ -9,6 +61,11 @@ use libfuzzer_sys::fuzz_target;
 // never panic/crash regardless of content or length, including tag bytes outside 0..=3 and
 // mismatched buffer lengths that must hit a typed `SecretstreamError` rather than panic.
 fuzz_target!(|data: &[u8]| {
+    check_record(data);
+    if let Some(candidate) = negative::mutate(&fixture().record, data) {
+        check_record(&candidate);
+    }
+
     if data.len() < 32 + 32 {
         return;
     }
