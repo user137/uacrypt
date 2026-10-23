@@ -34,6 +34,9 @@ All notable changes to this project are documented in this file. Format follows
   (T-315, `docs/DECISIONS.md` D-261): it reserves the Argon2 memory itself, as `derive_key`
   already did, and returns `PwHashError::OutOfMemory` (capi: `DSTU_ERR_OUT_OF_MEMORY`) when the
   preset's memory (1 GiB at `Sensitive`) cannot be allocated.
+- The C++ and PHP stream readers reported a failed read of the input as a truncated stream,
+  losing the I/O error (T-314, `docs/DECISIONS.md` D-262). They now throw "read from the input
+  stream failed"; both already failed closed.
 
 ## [0.7.0] - 2026-10-23
 

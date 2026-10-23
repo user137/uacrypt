@@ -428,6 +428,51 @@ void TestSecretstreamWritesAndTrailingFinal() {
   CHECK(got == dstu::kSecretstreamChunkBytes, "the Final chunk of a stream with trailing data should not be yielded");
 }
 
+// Serves the first `limit` bytes of `data`, then fails the read - std::istream turns the throw
+// into badbit, which a plain end of input never sets.
+class FailingBuf : public std::streambuf {
+ public:
+  FailingBuf(std::string data, std::size_t limit) : data_(std::move(data)) {
+    setg(data_.data(), data_.data(), data_.data() + std::min(limit, data_.size()));
+  }
+
+ protected:
+  int_type underflow() override { throw std::runtime_error("simulated read failure"); }
+
+ private:
+  std::string data_;
+};
+
+// T-314: a read error is reported as an I/O failure, not as truncation.
+void TestSecretstreamReadError() {
+  auto key = dstu::SecretstreamKey::Generate();
+  const std::string wire = EncryptPieces(key, {std::vector<std::uint8_t>(3 * dstu::kSecretstreamChunkBytes, 0x41)});
+  const auto readError = [](auto &&open) {
+    try {
+      open();
+    } catch (const dstu::CryptoError &e) {
+      return std::string(e.what()).find("read from the input stream failed") != std::string::npos;
+    }
+    return false;
+  };
+  for (const std::size_t limit : {std::size_t{0}, std::size_t{10}, wire.size() / 2}) {
+    CHECK(readError([&] {
+            FailingBuf buf(wire, limit);
+            std::istream in(&buf);
+            dstu::SecretStreamDecryptor dec(in, key);
+            dec.ReadAll();
+          }),
+          "a failing input stream should be reported as a read error");
+  }
+  const auto boxSecret = dstu::BoxSecretKey::Generate();
+  CHECK(readError([&] {
+          FailingBuf buf(wire, 0);
+          std::istream in(&buf);
+          dstu::SecretStreamDecryptor::ForBox(in, boxSecret);
+        }),
+        "a failing input stream should be reported as a read error by the prefix read");
+}
+
 void TestSecretstreamSharedVectors() {
   std::ifstream file(DSTU_SECRETSTREAM_VECTORS);
   CHECK(file.good(), "the shared stream-file vectors should be readable");
@@ -1246,6 +1291,7 @@ int main() {
     TestSecretstreamOversizedDeclaredChunkLength();
     TestSecretstreamSharedVectors();
     TestSecretstreamWritesAndTrailingFinal();
+    TestSecretstreamReadError();
     TestMemoryLeak();
 #ifdef DSTU_UACRYPT_EXE
     TestUacryptInterop();

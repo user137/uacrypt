@@ -16321,3 +16321,24 @@ byte-identical to `argon2`'s own `PasswordHasher` for the same salt and preset; 
 `hash_password` tests (round trip, salts differ, each preset's PHC parameters) still pass. The
 allocation failure itself is not tested: forcing it needs an allocator hook this crate does not
 have, the same untested gap `derive_key` and `verify_password` already carry.
+
+## D-262: T-314 - C++ and PHP stream readers report a read error (2026-10-23)
+
+T-249 (D-256) found that two readers took a failed read for end of input: C++
+`SecretStreamDecryptor` (`ReadPrefix`/`Step` looked only at `gcount()`) and PHP
+`DstuCoreSecretStreamReader` (`readPrefix`/`step` treated `fread() === false` like `''`). Both
+still failed closed, but as "truncated"/"input too short", with the I/O cause lost.
+- **C++**: after each `read`, `badbit` (set by the stream on a read error, never by end of input,
+  which sets only `eofbit`/`failbit`) throws `CryptoError("secretstream: read from the input
+  stream failed")`. `CryptoError` and that wording mirror the writer's existing check
+  (`WriteToStream`); no new exception class.
+- **PHP**: both loops go through one `readSome`: `@fread`, `false` throws `DstuCoreException`
+  with the same message, `''` stays end of input. The notice is suppressed because the exception
+  replaces it, as in the writer's `writeAll` (T-274).
+
+Tests, written first and seen failing with the truncation message: C++ `TestSecretstreamReadError`
+(a `streambuf` that serves a prefix and then throws from `underflow`, which `std::istream` turns
+into `badbit`; failure at 0, 10 and half of the stream, plus `ForBox`'s prefix read); PHP
+`testAFailingSourceIsAReadErrorNotTruncation` (a stream wrapper whose `stream_read` returns
+`false` after a prefix; the same positions plus `forBox`). The other six bindings already
+propagate a read error (D-256).

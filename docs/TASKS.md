@@ -10339,7 +10339,7 @@ targets), T-249 (D-256, findings T-312..T-316), T-264 (completions + `uacrypt ma
 (incl. 28 `fuzz-smoke` jobs, macOS bash 3.2 + `zsh -n`, Linux `pwsh` completion tests) and `miri`
 still queued - **first: `gh run list` / `gh run view` both for `3432912`**. D-258 and the CI-shells change were pushed together. Owner delegated the open forks (D-258): no reviewer subagent for
 T-249/T-310; **T-312..T-316 join 0.8.0** - next in order T-312, T-313, T-315, T-314, T-316, then
-step 6 (release 0.8.0). **T-312 done 2026-10-23 (D-259), T-313 done (D-260), T-315 done (D-261); next T-314.** `3432912`'s `rust`/`miri` were
+step 6 (release 0.8.0). **T-312 done 2026-10-23 (D-259), T-313 done (D-260), T-315 done (D-261), T-314 done (D-262); next T-316.** `3432912`'s `rust`/`miri` were
 cancelled by the next push (`cancel-in-progress`); the T-312 push carries everything since, so read its `rust`/`miri` runs (incl. `asm-check`'s 16 builds and `smoke_completions`). CI's Linux `test` job now installs zsh/fish/mandoc/groff
 and requires them (`UACRYPT_REQUIRE_SHELLS=1`, D-257 addendum) - the fish completer's first real
 run is there: check `smoke_completions` in the `rust` run of the push after `df62897`. `.git/worktrees/old_wt` is an
@@ -10387,7 +10387,7 @@ from `crates/dstu-core`. Pi: Kani per harness under `ulimit -v`, never `gf2m512`
      `strumok::Core::new`'s `init_state` result (key words XOR IV). Fix: `Zeroizing` for (b)/(c);
      for (a) measure a per-block wipe first (every hash pays it), else wipe on the KMAC path only;
      correct D-249's text either way.
-   - [ ] **T-314** (Low, error path) C++ `SecretStreamDecryptor` (`ReadPrefix`/`Step` ignore
+   - [x] **T-314** (done 2026-10-23, D-262: C++ `badbit` and PHP `fread() === false` throw "read from the input stream failed") (Low, error path) C++ `SecretStreamDecryptor` (`ReadPrefix`/`Step` ignore
      `badbit`) and PHP `DstuCoreSecretStreamReader` (`readPrefix`/`step` treat `fread() === false`
      as EOF): a read error is reported as truncation/"too short", the I/O cause lost (still
      fail-closed). Fix: check `in.bad()` / `false` and raise an I/O error; a test with a failing

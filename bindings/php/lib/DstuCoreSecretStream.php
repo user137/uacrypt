@@ -286,14 +286,30 @@ final class DstuCoreSecretStreamReader implements Iterator
     {
         $prefix = '';
         while (strlen($prefix) < $size) {
-            $piece = fread($inp, $size - strlen($prefix));
-            if ($piece === false || $piece === '') {
+            $piece = self::readSome($inp, $size - strlen($prefix));
+            if ($piece === '') {
                 dstu_core_throw_error("input too short to contain a {$what}");
             }
             $prefix .= $piece;
         }
 
         return $prefix;
+    }
+
+    /**
+     * T-314: fread() returns '' at end of input and false on a read error; the error throws
+     * instead of passing for truncation. Its notice is suppressed: this exception replaces it.
+     *
+     * @param resource $inp
+     */
+    private static function readSome($inp, int $length): string
+    {
+        $piece = @fread($inp, $length);
+        if ($piece === false) {
+            dstu_core_throw_error('secretstream: read from the input stream failed');
+        }
+
+        return $piece;
     }
 
     /** @param resource $inp */
@@ -371,8 +387,8 @@ final class DstuCoreSecretStreamReader implements Iterator
         $want = $this->dec->next_len();
         $data = '';
         while (strlen($data) < $want) {
-            $piece = fread($this->inp, $want - strlen($data));
-            if ($piece === false || $piece === '') {
+            $piece = self::readSome($this->inp, $want - strlen($data));
+            if ($piece === '') {
                 break;
             }
             $data .= $piece;

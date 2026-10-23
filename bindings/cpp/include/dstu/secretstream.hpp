@@ -325,10 +325,19 @@ class SecretStreamDecryptor {
   static std::vector<std::uint8_t> ReadPrefix(std::istream &in, std::size_t size, const char *what) {
     std::vector<std::uint8_t> prefix(size);
     in.read(reinterpret_cast<char *>(prefix.data()), static_cast<std::streamsize>(size));
+    ThrowIfReadFailed(in);
     if (static_cast<std::size_t>(in.gcount()) < size) {
       throw CryptoError(std::string("input too short to contain a ") + what);
     }
     return prefix;
+  }
+
+  /// End of input sets only eofbit/failbit; badbit is a read error, whose cause would otherwise be
+  /// reported as truncation.
+  static void ThrowIfReadFailed(const std::istream &in) {
+    if (in.bad()) {
+      throw CryptoError("secretstream: read from the input stream failed");
+    }
   }
 
   /// Feeds the codec one next_len read; returns how many plaintext bytes that released into
@@ -339,6 +348,7 @@ class SecretStreamDecryptor {
     std::size_t got = 0;
     if (want > 0) {
       in_->read(reinterpret_cast<char *>(data.data()), static_cast<std::streamsize>(want));
+      ThrowIfReadFailed(*in_);
       got = static_cast<std::size_t>(in_->gcount());
     }
     std::size_t len = 0;

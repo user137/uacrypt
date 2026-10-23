@@ -383,7 +383,7 @@ retroactively the same day it was added, see that entry.)
          `dstu_secretstream_file_*` for .NET/Go/C++), which owns all these checks. A binding reads
          exactly `next_len()` bytes per `feed`, calls `finish()` at end of input, and seals full
          chunks from the caller's buffer by offset (T-276); its errors are the core's messages.
-         Every sink write is checked (T-274). Java's sink follows `java.io`'s filter-stream
+         Every sink write is checked (T-274), and a source read error is an error, never end of input (T-314). Java's sink follows `java.io`'s filter-stream
          convention: `complete()` flushes, `close()` closes the sink without finalizing (T-275).
        - **The `uacrypt` interop test must convert its raw key first** (since 0.5.0, T-256/D-212):
          `uacrypt encrypt`/`decrypt --key` read typed key files only, so the test writes the

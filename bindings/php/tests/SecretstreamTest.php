@@ -332,6 +332,35 @@ final class SecretstreamTest extends TestCase
         }
     }
 
+    /** T-314: a read error is reported as one, not as truncation, at the prefix and mid-stream. */
+    public function testAFailingSourceIsAReadErrorNotTruncation(): void
+    {
+        $key = dstu_core_secretstream_keygen();
+        $out = self::memoryStream();
+        DstuCoreSecretStreamWriter::withStream($key, $out, fn ($w) => $w->write(str_repeat('A', 3 * DstuCoreSecretStreamWriter::CHUNK_BYTES)));
+        rewind($out);
+        DstuCoreFailingReadStream::$data = stream_get_contents($out);
+        if (!in_array('dstufailread', stream_get_wrappers(), true)) {
+            stream_wrapper_register('dstufailread', DstuCoreFailingReadStream::class);
+        }
+        $opens = [
+            fn ($in) => DstuCoreSecretStreamReader::withStream($key, $in, fn ($r) => $r->readAll()),
+            fn ($in) => DstuCoreSecretStreamReader::forBox(dstu_core_box_keygen(), $in),
+        ];
+        foreach ([[0, 0], [0, 10], [0, intdiv(strlen(DstuCoreFailingReadStream::$data), 2)], [1, 0]] as [$open, $limit]) {
+            DstuCoreFailingReadStream::$limit = $limit;
+            $in = fopen('dstufailread://source', 'rb');
+            try {
+                $opens[$open]($in);
+                $this->fail('a failing source must throw');
+            } catch (DstuCoreException $e) {
+                $this->assertStringContainsString('read from the input stream failed', $e->getMessage());
+            } finally {
+                fclose($in);
+            }
+        }
+    }
+
     /** T-284: a stream with trailing data never yields its Final chunk. */
     public function testTrailingDataNeverYieldsTheFinalChunk(): void
     {
@@ -377,5 +406,37 @@ final class DstuCoreShortWriteStream
         self::$accepted .= $taken;
 
         return strlen($taken);
+    }
+}
+
+/** A stream wrapper that serves the first $limit bytes of $data, then fails every read (T-314). */
+final class DstuCoreFailingReadStream
+{
+    public static string $data = '';
+    public static int $limit = 0;
+    /** @var resource|null */
+    public $context;
+    private int $pos = 0;
+
+    public function stream_open(string $path, string $mode, int $options, ?string &$openedPath): bool
+    {
+        return true;
+    }
+
+    public function stream_read(int $count): string|false
+    {
+        $room = self::$limit - $this->pos;
+        if ($room <= 0) {
+            return false;
+        }
+        $piece = substr(self::$data, $this->pos, min($count, $room));
+        $this->pos += strlen($piece);
+
+        return $piece;
+    }
+
+    public function stream_eof(): bool
+    {
+        return false;
     }
 }
