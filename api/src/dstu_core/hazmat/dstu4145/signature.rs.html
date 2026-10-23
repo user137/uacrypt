@@ -111,26 +111,28 @@
 <a href=#111 id=111 data-nosnippet>111</a>        h = FieldElement::ONE;
 <a href=#112 id=112 data-nosnippet>112</a>    }
 <a href=#113 id=113 data-nosnippet>113</a>
-<a href=#114 id=114 data-nosnippet>114</a>    <span class="kw">let </span>(fe_x, <span class="kw">_</span>) = <span class="kw">match </span>g.scalar_multiply(<span class="kw-2">&amp;</span>e.to_be_bytes()) {
-<a href=#115 id=115 data-nosnippet>115</a>        Point::Affine(x, y) =&gt; (x, y),
-<a href=#116 id=116 data-nosnippet>116</a>        Point::Infinity =&gt; <span class="kw">return </span><span class="prelude-val">None</span>,
-<a href=#117 id=117 data-nosnippet>117</a>    };
-<a href=#118 id=118 data-nosnippet>118</a>    <span class="kw">if </span>fe_x == FieldElement::ZERO {
-<a href=#119 id=119 data-nosnippet>119</a>        <span class="kw">return </span><span class="prelude-val">None</span>;
-<a href=#120 id=120 data-nosnippet>120</a>    }
-<a href=#121 id=121 data-nosnippet>121</a>
-<a href=#122 id=122 data-nosnippet>122</a>    <span class="kw">let </span>y = h.multiply(fe_x);
-<a href=#123 id=123 data-nosnippet>123</a>    <span class="kw">let </span>r_bytes = truncate_162(y);
-<a href=#124 id=124 data-nosnippet>124</a>    <span class="kw">if </span>is_zero(<span class="kw-2">&amp;</span>r_bytes) {
-<a href=#125 id=125 data-nosnippet>125</a>        <span class="kw">return </span><span class="prelude-val">None</span>;
-<a href=#126 id=126 data-nosnippet>126</a>    }
-<a href=#127 id=127 data-nosnippet>127</a>
-<a href=#128 id=128 data-nosnippet>128</a>    <span class="kw">let </span>r = Scalar::from_be_bytes(<span class="kw-2">&amp;</span>r_bytes);
-<a href=#129 id=129 data-nosnippet>129</a>    <span class="kw">let </span>s = r.multiply(d) + e;
-<a href=#130 id=130 data-nosnippet>130</a>    <span class="kw">if </span>s.is_zero() {
-<a href=#131 id=131 data-nosnippet>131</a>        <span class="kw">return </span><span class="prelude-val">None</span>;
-<a href=#132 id=132 data-nosnippet>132</a>    }
-<a href=#133 id=133 data-nosnippet>133</a>
-<a href=#134 id=134 data-nosnippet>134</a>    <span class="prelude-val">Some</span>((r_bytes, s.to_be_bytes()))
-<a href=#135 id=135 data-nosnippet>135</a>}
+<a href=#114 id=114 data-nosnippet>114</a>    <span class="comment">// T-302: the byte copy of the nonce is wiped on drop.
+<a href=#115 id=115 data-nosnippet>115</a>    </span><span class="kw">let </span>e_bytes = zeroize::Zeroizing::new(e.to_be_bytes());
+<a href=#116 id=116 data-nosnippet>116</a>    <span class="kw">let </span>(fe_x, <span class="kw">_</span>) = <span class="kw">match </span>g.scalar_multiply(<span class="kw-2">&amp;</span>e_bytes) {
+<a href=#117 id=117 data-nosnippet>117</a>        Point::Affine(x, y) =&gt; (x, y),
+<a href=#118 id=118 data-nosnippet>118</a>        Point::Infinity =&gt; <span class="kw">return </span><span class="prelude-val">None</span>,
+<a href=#119 id=119 data-nosnippet>119</a>    };
+<a href=#120 id=120 data-nosnippet>120</a>    <span class="kw">if </span>fe_x == FieldElement::ZERO {
+<a href=#121 id=121 data-nosnippet>121</a>        <span class="kw">return </span><span class="prelude-val">None</span>;
+<a href=#122 id=122 data-nosnippet>122</a>    }
+<a href=#123 id=123 data-nosnippet>123</a>
+<a href=#124 id=124 data-nosnippet>124</a>    <span class="kw">let </span>y = h.multiply(fe_x);
+<a href=#125 id=125 data-nosnippet>125</a>    <span class="kw">let </span>r_bytes = truncate_162(y);
+<a href=#126 id=126 data-nosnippet>126</a>    <span class="kw">if </span>is_zero(<span class="kw-2">&amp;</span>r_bytes) {
+<a href=#127 id=127 data-nosnippet>127</a>        <span class="kw">return </span><span class="prelude-val">None</span>;
+<a href=#128 id=128 data-nosnippet>128</a>    }
+<a href=#129 id=129 data-nosnippet>129</a>
+<a href=#130 id=130 data-nosnippet>130</a>    <span class="kw">let </span>r = Scalar::from_be_bytes(<span class="kw-2">&amp;</span>r_bytes);
+<a href=#131 id=131 data-nosnippet>131</a>    <span class="kw">let </span>s = r.multiply(d) + e;
+<a href=#132 id=132 data-nosnippet>132</a>    <span class="kw">if </span>s.is_zero() {
+<a href=#133 id=133 data-nosnippet>133</a>        <span class="kw">return </span><span class="prelude-val">None</span>;
+<a href=#134 id=134 data-nosnippet>134</a>    }
+<a href=#135 id=135 data-nosnippet>135</a>
+<a href=#136 id=136 data-nosnippet>136</a>    <span class="prelude-val">Some</span>((r_bytes, s.to_be_bytes()))
+<a href=#137 id=137 data-nosnippet>137</a>}
 </code></pre></div></section></main></body></html>

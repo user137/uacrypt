@@ -117,41 +117,41 @@
 <a href=#117 id=117 data-nosnippet>117</a>                <span class="kw">let </span>n = <span class="number">2 </span>* (r + <span class="number">1</span>);
 <a href=#118 id=118 data-nosnippet>118</a>                <span class="kw">let </span>v = (n - <span class="number">1</span>) * <span class="number">6</span>;
 <a href=#119 id=119 data-nosnippet>119</a>
-<a href=#120 id=120 data-nosnippet>120</a>                <span class="kw">let </span><span class="kw-2">mut </span>big_b = [<span class="number">0u8</span>; <span class="macro-nonterminal">$half_bytes</span>];
-<a href=#121 id=121 data-nosnippet>121</a>                big_b.copy_from_slice(<span class="kw-2">&amp;</span>plaintext[..<span class="macro-nonterminal">$half_bytes</span>]);
-<a href=#122 id=122 data-nosnippet>122</a>
-<a href=#123 id=123 data-nosnippet>123</a>                <span class="comment">// T-242: holds key-wrapped secret material; wiped on every return path.
-<a href=#124 id=124 data-nosnippet>124</a>                </span><span class="kw">let </span><span class="kw-2">mut </span>b = zeroize::Zeroizing::new([[<span class="number">0u8</span>; <span class="macro-nonterminal">$half_bytes</span>]; MAX_B_SLOTS]);
-<a href=#125 id=125 data-nosnippet>125</a>                <span class="kw">let </span><span class="kw-2">mut </span>off = <span class="macro-nonterminal">$half_bytes</span>;
-<a href=#126 id=126 data-nosnippet>126</a>                <span class="kw">let </span><span class="kw-2">mut </span>idx = <span class="number">0</span>;
-<a href=#127 id=127 data-nosnippet>127</a>                <span class="kw">while </span>off &lt; plaintext.len() {
-<a href=#128 id=128 data-nosnippet>128</a>                    b[idx].copy_from_slice(<span class="kw-2">&amp;</span>plaintext[off..off + <span class="macro-nonterminal">$half_bytes</span>]);
-<a href=#129 id=129 data-nosnippet>129</a>                    idx += <span class="number">1</span>;
-<a href=#130 id=130 data-nosnippet>130</a>                    off += <span class="macro-nonterminal">$half_bytes</span>;
-<a href=#131 id=131 data-nosnippet>131</a>                }
-<a href=#132 id=132 data-nosnippet>132</a>                <span class="comment">// Remaining slots up to index n - 2 stay zero - the appended checksum block.
-<a href=#133 id=133 data-nosnippet>133</a>
-<a href=#134 id=134 data-nosnippet>134</a>                </span><span class="kw">for </span>i <span class="kw">in </span><span class="number">1</span>..=v {
-<a href=#135 id=135 data-nosnippet>135</a>                    <span class="kw">let </span><span class="kw-2">mut </span>block = [<span class="number">0u8</span>; <span class="macro-nonterminal">$block_bytes</span>];
-<a href=#136 id=136 data-nosnippet>136</a>                    block[..<span class="macro-nonterminal">$half_bytes</span>].copy_from_slice(<span class="kw-2">&amp;</span>big_b);
-<a href=#137 id=137 data-nosnippet>137</a>                    block[<span class="macro-nonterminal">$half_bytes</span>..].copy_from_slice(<span class="kw-2">&amp;</span>b[<span class="number">0</span>]);
-<a href=#138 id=138 data-nosnippet>138</a>                    <span class="kw">let </span>r_block = cipher.encrypt_block(<span class="kw-2">&amp;</span>block);
-<a href=#139 id=139 data-nosnippet>139</a>
-<a href=#140 id=140 data-nosnippet>140</a>                    <span class="kw">let </span><span class="kw-2">mut </span>tweaked = r_block;
-<a href=#141 id=141 data-nosnippet>141</a>                    <span class="attr">#[allow(clippy::cast_possible_truncation)] </span><span class="comment">// i &lt;= v &lt;= 246, fits u32 trivially
-<a href=#142 id=142 data-nosnippet>142</a>                    </span><span class="kw">let </span>tweak = (i <span class="kw">as </span>u32).to_le_bytes();
-<a href=#143 id=143 data-nosnippet>143</a>                    <span class="kw">for </span>k <span class="kw">in </span><span class="number">0</span>..<span class="number">4 </span>{
-<a href=#144 id=144 data-nosnippet>144</a>                        tweaked[<span class="macro-nonterminal">$half_bytes </span>+ k] ^= tweak[k];
-<a href=#145 id=145 data-nosnippet>145</a>                    }
-<a href=#146 id=146 data-nosnippet>146</a>                    big_b.copy_from_slice(<span class="kw-2">&amp;</span>tweaked[<span class="macro-nonterminal">$half_bytes</span>..]);
-<a href=#147 id=147 data-nosnippet>147</a>
-<a href=#148 id=148 data-nosnippet>148</a>                    <span class="kw">for </span>j <span class="kw">in </span><span class="number">0</span>..(n - <span class="number">2</span>) {
-<a href=#149 id=149 data-nosnippet>149</a>                        b[j] = b[j + <span class="number">1</span>];
-<a href=#150 id=150 data-nosnippet>150</a>                    }
-<a href=#151 id=151 data-nosnippet>151</a>                    b[n - <span class="number">2</span>].copy_from_slice(<span class="kw-2">&amp;</span>r_block[..<span class="macro-nonterminal">$half_bytes</span>]);
+<a href=#120 id=120 data-nosnippet>120</a>                <span class="comment">// T-302: `big_b` and the per-step blocks below carry wrapped plaintext.
+<a href=#121 id=121 data-nosnippet>121</a>                </span><span class="kw">let </span><span class="kw-2">mut </span>big_b = zeroize::Zeroizing::new([<span class="number">0u8</span>; <span class="macro-nonterminal">$half_bytes</span>]);
+<a href=#122 id=122 data-nosnippet>122</a>                big_b.copy_from_slice(<span class="kw-2">&amp;</span>plaintext[..<span class="macro-nonterminal">$half_bytes</span>]);
+<a href=#123 id=123 data-nosnippet>123</a>
+<a href=#124 id=124 data-nosnippet>124</a>                <span class="comment">// T-242: holds key-wrapped secret material; wiped on every return path.
+<a href=#125 id=125 data-nosnippet>125</a>                </span><span class="kw">let </span><span class="kw-2">mut </span>b = zeroize::Zeroizing::new([[<span class="number">0u8</span>; <span class="macro-nonterminal">$half_bytes</span>]; MAX_B_SLOTS]);
+<a href=#126 id=126 data-nosnippet>126</a>                <span class="kw">let </span><span class="kw-2">mut </span>off = <span class="macro-nonterminal">$half_bytes</span>;
+<a href=#127 id=127 data-nosnippet>127</a>                <span class="kw">let </span><span class="kw-2">mut </span>idx = <span class="number">0</span>;
+<a href=#128 id=128 data-nosnippet>128</a>                <span class="kw">while </span>off &lt; plaintext.len() {
+<a href=#129 id=129 data-nosnippet>129</a>                    b[idx].copy_from_slice(<span class="kw-2">&amp;</span>plaintext[off..off + <span class="macro-nonterminal">$half_bytes</span>]);
+<a href=#130 id=130 data-nosnippet>130</a>                    idx += <span class="number">1</span>;
+<a href=#131 id=131 data-nosnippet>131</a>                    off += <span class="macro-nonterminal">$half_bytes</span>;
+<a href=#132 id=132 data-nosnippet>132</a>                }
+<a href=#133 id=133 data-nosnippet>133</a>                <span class="comment">// Remaining slots up to index n - 2 stay zero - the appended checksum block.
+<a href=#134 id=134 data-nosnippet>134</a>
+<a href=#135 id=135 data-nosnippet>135</a>                </span><span class="kw">for </span>i <span class="kw">in </span><span class="number">1</span>..=v {
+<a href=#136 id=136 data-nosnippet>136</a>                    <span class="kw">let </span><span class="kw-2">mut </span>block = zeroize::Zeroizing::new([<span class="number">0u8</span>; <span class="macro-nonterminal">$block_bytes</span>]);
+<a href=#137 id=137 data-nosnippet>137</a>                    block[..<span class="macro-nonterminal">$half_bytes</span>].copy_from_slice(<span class="kw-2">&amp;*</span>big_b);
+<a href=#138 id=138 data-nosnippet>138</a>                    block[<span class="macro-nonterminal">$half_bytes</span>..].copy_from_slice(<span class="kw-2">&amp;</span>b[<span class="number">0</span>]);
+<a href=#139 id=139 data-nosnippet>139</a>                    <span class="kw">let </span><span class="kw-2">mut </span>tweaked = zeroize::Zeroizing::new(cipher.encrypt_block(<span class="kw-2">&amp;</span>block));
+<a href=#140 id=140 data-nosnippet>140</a>                    <span class="attr">#[allow(clippy::cast_possible_truncation)] </span><span class="comment">// i &lt;= v &lt;= 246, fits u32 trivially
+<a href=#141 id=141 data-nosnippet>141</a>                    </span><span class="kw">let </span>tweak = (i <span class="kw">as </span>u32).to_le_bytes();
+<a href=#142 id=142 data-nosnippet>142</a>                    <span class="kw">for </span>k <span class="kw">in </span><span class="number">0</span>..<span class="number">4 </span>{
+<a href=#143 id=143 data-nosnippet>143</a>                        tweaked[<span class="macro-nonterminal">$half_bytes </span>+ k] ^= tweak[k];
+<a href=#144 id=144 data-nosnippet>144</a>                    }
+<a href=#145 id=145 data-nosnippet>145</a>                    big_b.copy_from_slice(<span class="kw-2">&amp;</span>tweaked[<span class="macro-nonterminal">$half_bytes</span>..]);
+<a href=#146 id=146 data-nosnippet>146</a>
+<a href=#147 id=147 data-nosnippet>147</a>                    <span class="kw">for </span>j <span class="kw">in </span><span class="number">0</span>..(n - <span class="number">2</span>) {
+<a href=#148 id=148 data-nosnippet>148</a>                        b[j] = b[j + <span class="number">1</span>];
+<a href=#149 id=149 data-nosnippet>149</a>                    }
+<a href=#150 id=150 data-nosnippet>150</a>                    <span class="comment">// The tweak touched only the upper half, so this is `E(block)`'s lower half.
+<a href=#151 id=151 data-nosnippet>151</a>                    </span>b[n - <span class="number">2</span>].copy_from_slice(<span class="kw-2">&amp;</span>tweaked[..<span class="macro-nonterminal">$half_bytes</span>]);
 <a href=#152 id=152 data-nosnippet>152</a>                }
 <a href=#153 id=153 data-nosnippet>153</a>
-<a href=#154 id=154 data-nosnippet>154</a>                out[..<span class="macro-nonterminal">$half_bytes</span>].copy_from_slice(<span class="kw-2">&amp;</span>big_b);
+<a href=#154 id=154 data-nosnippet>154</a>                out[..<span class="macro-nonterminal">$half_bytes</span>].copy_from_slice(<span class="kw-2">&amp;*</span>big_b);
 <a href=#155 id=155 data-nosnippet>155</a>                <span class="kw">let </span><span class="kw-2">mut </span>off = <span class="macro-nonterminal">$half_bytes</span>;
 <a href=#156 id=156 data-nosnippet>156</a>                <span class="kw">for </span>j <span class="kw">in </span><span class="number">0</span>..(n - <span class="number">1</span>) {
 <a href=#157 id=157 data-nosnippet>157</a>                    out[off..off + <span class="macro-nonterminal">$half_bytes</span>].copy_from_slice(<span class="kw-2">&amp;</span>b[j]);
@@ -203,62 +203,63 @@
 <a href=#203 id=203 data-nosnippet>203</a>                <span class="kw">let </span>n = <span class="number">2 </span>* (r + <span class="number">1</span>);
 <a href=#204 id=204 data-nosnippet>204</a>                <span class="kw">let </span>v = (n - <span class="number">1</span>) * <span class="number">6</span>;
 <a href=#205 id=205 data-nosnippet>205</a>
-<a href=#206 id=206 data-nosnippet>206</a>                <span class="kw">let </span><span class="kw-2">mut </span>big_b = [<span class="number">0u8</span>; <span class="macro-nonterminal">$half_bytes</span>];
-<a href=#207 id=207 data-nosnippet>207</a>                big_b.copy_from_slice(<span class="kw-2">&amp;</span>ciphertext[..<span class="macro-nonterminal">$half_bytes</span>]);
-<a href=#208 id=208 data-nosnippet>208</a>
-<a href=#209 id=209 data-nosnippet>209</a>                <span class="comment">// T-242: holds key-wrapped secret material; wiped on every return path.
-<a href=#210 id=210 data-nosnippet>210</a>                </span><span class="kw">let </span><span class="kw-2">mut </span>b = zeroize::Zeroizing::new([[<span class="number">0u8</span>; <span class="macro-nonterminal">$half_bytes</span>]; MAX_B_SLOTS]);
-<a href=#211 id=211 data-nosnippet>211</a>                <span class="kw">let </span><span class="kw-2">mut </span>off = <span class="macro-nonterminal">$half_bytes</span>;
-<a href=#212 id=212 data-nosnippet>212</a>                <span class="kw">for </span>idx <span class="kw">in </span><span class="number">0</span>..(n - <span class="number">1</span>) {
-<a href=#213 id=213 data-nosnippet>213</a>                    b[idx].copy_from_slice(<span class="kw-2">&amp;</span>ciphertext[off..off + <span class="macro-nonterminal">$half_bytes</span>]);
-<a href=#214 id=214 data-nosnippet>214</a>                    off += <span class="macro-nonterminal">$half_bytes</span>;
-<a href=#215 id=215 data-nosnippet>215</a>                }
-<a href=#216 id=216 data-nosnippet>216</a>
-<a href=#217 id=217 data-nosnippet>217</a>                <span class="kw">for </span>i <span class="kw">in </span>(<span class="number">1</span>..=v).rev() {
-<a href=#218 id=218 data-nosnippet>218</a>                    <span class="kw">let </span>last = b[n - <span class="number">2</span>];
-<a href=#219 id=219 data-nosnippet>219</a>                    <span class="kw">let </span><span class="kw-2">mut </span>block = [<span class="number">0u8</span>; <span class="macro-nonterminal">$block_bytes</span>];
-<a href=#220 id=220 data-nosnippet>220</a>                    block[..<span class="macro-nonterminal">$half_bytes</span>].copy_from_slice(<span class="kw-2">&amp;</span>last);
-<a href=#221 id=221 data-nosnippet>221</a>
-<a href=#222 id=222 data-nosnippet>222</a>                    <span class="kw">let </span><span class="kw-2">mut </span>tweaked_b = big_b;
-<a href=#223 id=223 data-nosnippet>223</a>                    <span class="attr">#[allow(clippy::cast_possible_truncation)] </span><span class="comment">// i &lt;= v &lt;= 246, fits u32 trivially
-<a href=#224 id=224 data-nosnippet>224</a>                    </span><span class="kw">let </span>tweak = (i <span class="kw">as </span>u32).to_le_bytes();
-<a href=#225 id=225 data-nosnippet>225</a>                    <span class="kw">for </span>k <span class="kw">in </span><span class="number">0</span>..<span class="number">4 </span>{
-<a href=#226 id=226 data-nosnippet>226</a>                        tweaked_b[k] ^= tweak[k];
-<a href=#227 id=227 data-nosnippet>227</a>                    }
-<a href=#228 id=228 data-nosnippet>228</a>                    block[<span class="macro-nonterminal">$half_bytes</span>..].copy_from_slice(<span class="kw-2">&amp;</span>tweaked_b);
-<a href=#229 id=229 data-nosnippet>229</a>
-<a href=#230 id=230 data-nosnippet>230</a>                    <span class="kw">let </span>d = cipher.decrypt_block(<span class="kw-2">&amp;</span>block);
-<a href=#231 id=231 data-nosnippet>231</a>                    big_b.copy_from_slice(<span class="kw-2">&amp;</span>d[..<span class="macro-nonterminal">$half_bytes</span>]);
-<a href=#232 id=232 data-nosnippet>232</a>
-<a href=#233 id=233 data-nosnippet>233</a>                    <span class="kw">for </span>j <span class="kw">in </span>(<span class="number">1</span>..=(n - <span class="number">2</span>)).rev() {
-<a href=#234 id=234 data-nosnippet>234</a>                        b[j] = b[j - <span class="number">1</span>];
-<a href=#235 id=235 data-nosnippet>235</a>                    }
-<a href=#236 id=236 data-nosnippet>236</a>                    b[<span class="number">0</span>].copy_from_slice(<span class="kw-2">&amp;</span>d[<span class="macro-nonterminal">$half_bytes</span>..]);
-<a href=#237 id=237 data-nosnippet>237</a>                }
-<a href=#238 id=238 data-nosnippet>238</a>
-<a href=#239 id=239 data-nosnippet>239</a>                <span class="comment">// Last two slots are the appended checksum block - verify all-zero before
-<a href=#240 id=240 data-nosnippet>240</a>                // releasing anything into `out` (Deviation 2, module doc comment).
-<a href=#241 id=241 data-nosnippet>241</a>                </span><span class="kw">let </span>zero = [<span class="number">0u8</span>; <span class="macro-nonterminal">$half_bytes</span>];
-<a href=#242 id=242 data-nosnippet>242</a>                <span class="kw">let </span>checksum_ok = b[n - <span class="number">3</span>].ct_eq(<span class="kw-2">&amp;</span>zero) &amp; b[n - <span class="number">2</span>].ct_eq(<span class="kw-2">&amp;</span>zero);
-<a href=#243 id=243 data-nosnippet>243</a>                <span class="kw">if </span>!bool::from(checksum_ok) {
-<a href=#244 id=244 data-nosnippet>244</a>                    <span class="kw">return </span><span class="prelude-val">Err</span>(KwError::ChecksumMismatch);
-<a href=#245 id=245 data-nosnippet>245</a>                }
-<a href=#246 id=246 data-nosnippet>246</a>
-<a href=#247 id=247 data-nosnippet>247</a>                out[..<span class="macro-nonterminal">$half_bytes</span>].copy_from_slice(<span class="kw-2">&amp;</span>big_b);
-<a href=#248 id=248 data-nosnippet>248</a>                <span class="kw">let </span><span class="kw-2">mut </span>off = <span class="macro-nonterminal">$half_bytes</span>;
-<a href=#249 id=249 data-nosnippet>249</a>                <span class="kw">for </span>j <span class="kw">in </span><span class="number">0</span>..(n - <span class="number">3</span>) {
-<a href=#250 id=250 data-nosnippet>250</a>                    out[off..off + <span class="macro-nonterminal">$half_bytes</span>].copy_from_slice(<span class="kw-2">&amp;</span>b[j]);
-<a href=#251 id=251 data-nosnippet>251</a>                    off += <span class="macro-nonterminal">$half_bytes</span>;
-<a href=#252 id=252 data-nosnippet>252</a>                }
-<a href=#253 id=253 data-nosnippet>253</a>                <span class="prelude-val">Ok</span>(())
-<a href=#254 id=254 data-nosnippet>254</a>            }
-<a href=#255 id=255 data-nosnippet>255</a>        }
-<a href=#256 id=256 data-nosnippet>256</a>    };
-<a href=#257 id=257 data-nosnippet>257</a>}
-<a href=#258 id=258 data-nosnippet>258</a>
-<a href=#259 id=259 data-nosnippet>259</a><span class="macro">kalyna_kw_variant!</span>(Kalyna128_128Kw, Kalyna128_128ExpandedKey, <span class="number">16</span>, <span class="number">16</span>, <span class="number">8</span>);
-<a href=#260 id=260 data-nosnippet>260</a><span class="macro">kalyna_kw_variant!</span>(Kalyna128_256Kw, Kalyna128_256ExpandedKey, <span class="number">32</span>, <span class="number">16</span>, <span class="number">8</span>);
-<a href=#261 id=261 data-nosnippet>261</a><span class="macro">kalyna_kw_variant!</span>(Kalyna256_256Kw, Kalyna256_256ExpandedKey, <span class="number">32</span>, <span class="number">32</span>, <span class="number">16</span>);
-<a href=#262 id=262 data-nosnippet>262</a><span class="macro">kalyna_kw_variant!</span>(Kalyna256_512Kw, Kalyna256_512ExpandedKey, <span class="number">64</span>, <span class="number">32</span>, <span class="number">16</span>);
-<a href=#263 id=263 data-nosnippet>263</a><span class="macro">kalyna_kw_variant!</span>(Kalyna512_512Kw, Kalyna512_512ExpandedKey, <span class="number">64</span>, <span class="number">64</span>, <span class="number">32</span>);
+<a href=#206 id=206 data-nosnippet>206</a>                <span class="comment">// T-302: `big_b` and the per-step blocks below carry unwrapped plaintext.
+<a href=#207 id=207 data-nosnippet>207</a>                </span><span class="kw">let </span><span class="kw-2">mut </span>big_b = zeroize::Zeroizing::new([<span class="number">0u8</span>; <span class="macro-nonterminal">$half_bytes</span>]);
+<a href=#208 id=208 data-nosnippet>208</a>                big_b.copy_from_slice(<span class="kw-2">&amp;</span>ciphertext[..<span class="macro-nonterminal">$half_bytes</span>]);
+<a href=#209 id=209 data-nosnippet>209</a>
+<a href=#210 id=210 data-nosnippet>210</a>                <span class="comment">// T-242: holds key-wrapped secret material; wiped on every return path.
+<a href=#211 id=211 data-nosnippet>211</a>                </span><span class="kw">let </span><span class="kw-2">mut </span>b = zeroize::Zeroizing::new([[<span class="number">0u8</span>; <span class="macro-nonterminal">$half_bytes</span>]; MAX_B_SLOTS]);
+<a href=#212 id=212 data-nosnippet>212</a>                <span class="kw">let </span><span class="kw-2">mut </span>off = <span class="macro-nonterminal">$half_bytes</span>;
+<a href=#213 id=213 data-nosnippet>213</a>                <span class="kw">for </span>idx <span class="kw">in </span><span class="number">0</span>..(n - <span class="number">1</span>) {
+<a href=#214 id=214 data-nosnippet>214</a>                    b[idx].copy_from_slice(<span class="kw-2">&amp;</span>ciphertext[off..off + <span class="macro-nonterminal">$half_bytes</span>]);
+<a href=#215 id=215 data-nosnippet>215</a>                    off += <span class="macro-nonterminal">$half_bytes</span>;
+<a href=#216 id=216 data-nosnippet>216</a>                }
+<a href=#217 id=217 data-nosnippet>217</a>
+<a href=#218 id=218 data-nosnippet>218</a>                <span class="kw">for </span>i <span class="kw">in </span>(<span class="number">1</span>..=v).rev() {
+<a href=#219 id=219 data-nosnippet>219</a>                    <span class="kw">let </span>last = zeroize::Zeroizing::new(b[n - <span class="number">2</span>]);
+<a href=#220 id=220 data-nosnippet>220</a>                    <span class="kw">let </span><span class="kw-2">mut </span>block = zeroize::Zeroizing::new([<span class="number">0u8</span>; <span class="macro-nonterminal">$block_bytes</span>]);
+<a href=#221 id=221 data-nosnippet>221</a>                    block[..<span class="macro-nonterminal">$half_bytes</span>].copy_from_slice(<span class="kw-2">&amp;*</span>last);
+<a href=#222 id=222 data-nosnippet>222</a>
+<a href=#223 id=223 data-nosnippet>223</a>                    <span class="kw">let </span><span class="kw-2">mut </span>tweaked_b = zeroize::Zeroizing::new(<span class="kw-2">*</span>big_b);
+<a href=#224 id=224 data-nosnippet>224</a>                    <span class="attr">#[allow(clippy::cast_possible_truncation)] </span><span class="comment">// i &lt;= v &lt;= 246, fits u32 trivially
+<a href=#225 id=225 data-nosnippet>225</a>                    </span><span class="kw">let </span>tweak = (i <span class="kw">as </span>u32).to_le_bytes();
+<a href=#226 id=226 data-nosnippet>226</a>                    <span class="kw">for </span>k <span class="kw">in </span><span class="number">0</span>..<span class="number">4 </span>{
+<a href=#227 id=227 data-nosnippet>227</a>                        tweaked_b[k] ^= tweak[k];
+<a href=#228 id=228 data-nosnippet>228</a>                    }
+<a href=#229 id=229 data-nosnippet>229</a>                    block[<span class="macro-nonterminal">$half_bytes</span>..].copy_from_slice(<span class="kw-2">&amp;*</span>tweaked_b);
+<a href=#230 id=230 data-nosnippet>230</a>
+<a href=#231 id=231 data-nosnippet>231</a>                    <span class="kw">let </span>d = zeroize::Zeroizing::new(cipher.decrypt_block(<span class="kw-2">&amp;</span>block));
+<a href=#232 id=232 data-nosnippet>232</a>                    big_b.copy_from_slice(<span class="kw-2">&amp;</span>d[..<span class="macro-nonterminal">$half_bytes</span>]);
+<a href=#233 id=233 data-nosnippet>233</a>
+<a href=#234 id=234 data-nosnippet>234</a>                    <span class="kw">for </span>j <span class="kw">in </span>(<span class="number">1</span>..=(n - <span class="number">2</span>)).rev() {
+<a href=#235 id=235 data-nosnippet>235</a>                        b[j] = b[j - <span class="number">1</span>];
+<a href=#236 id=236 data-nosnippet>236</a>                    }
+<a href=#237 id=237 data-nosnippet>237</a>                    b[<span class="number">0</span>].copy_from_slice(<span class="kw-2">&amp;</span>d[<span class="macro-nonterminal">$half_bytes</span>..]);
+<a href=#238 id=238 data-nosnippet>238</a>                }
+<a href=#239 id=239 data-nosnippet>239</a>
+<a href=#240 id=240 data-nosnippet>240</a>                <span class="comment">// Last two slots are the appended checksum block - verify all-zero before
+<a href=#241 id=241 data-nosnippet>241</a>                // releasing anything into `out` (Deviation 2, module doc comment).
+<a href=#242 id=242 data-nosnippet>242</a>                </span><span class="kw">let </span>zero = [<span class="number">0u8</span>; <span class="macro-nonterminal">$half_bytes</span>];
+<a href=#243 id=243 data-nosnippet>243</a>                <span class="kw">let </span>checksum_ok = b[n - <span class="number">3</span>].ct_eq(<span class="kw-2">&amp;</span>zero) &amp; b[n - <span class="number">2</span>].ct_eq(<span class="kw-2">&amp;</span>zero);
+<a href=#244 id=244 data-nosnippet>244</a>                <span class="kw">if </span>!bool::from(checksum_ok) {
+<a href=#245 id=245 data-nosnippet>245</a>                    <span class="kw">return </span><span class="prelude-val">Err</span>(KwError::ChecksumMismatch);
+<a href=#246 id=246 data-nosnippet>246</a>                }
+<a href=#247 id=247 data-nosnippet>247</a>
+<a href=#248 id=248 data-nosnippet>248</a>                out[..<span class="macro-nonterminal">$half_bytes</span>].copy_from_slice(<span class="kw-2">&amp;*</span>big_b);
+<a href=#249 id=249 data-nosnippet>249</a>                <span class="kw">let </span><span class="kw-2">mut </span>off = <span class="macro-nonterminal">$half_bytes</span>;
+<a href=#250 id=250 data-nosnippet>250</a>                <span class="kw">for </span>j <span class="kw">in </span><span class="number">0</span>..(n - <span class="number">3</span>) {
+<a href=#251 id=251 data-nosnippet>251</a>                    out[off..off + <span class="macro-nonterminal">$half_bytes</span>].copy_from_slice(<span class="kw-2">&amp;</span>b[j]);
+<a href=#252 id=252 data-nosnippet>252</a>                    off += <span class="macro-nonterminal">$half_bytes</span>;
+<a href=#253 id=253 data-nosnippet>253</a>                }
+<a href=#254 id=254 data-nosnippet>254</a>                <span class="prelude-val">Ok</span>(())
+<a href=#255 id=255 data-nosnippet>255</a>            }
+<a href=#256 id=256 data-nosnippet>256</a>        }
+<a href=#257 id=257 data-nosnippet>257</a>    };
+<a href=#258 id=258 data-nosnippet>258</a>}
+<a href=#259 id=259 data-nosnippet>259</a>
+<a href=#260 id=260 data-nosnippet>260</a><span class="macro">kalyna_kw_variant!</span>(Kalyna128_128Kw, Kalyna128_128ExpandedKey, <span class="number">16</span>, <span class="number">16</span>, <span class="number">8</span>);
+<a href=#261 id=261 data-nosnippet>261</a><span class="macro">kalyna_kw_variant!</span>(Kalyna128_256Kw, Kalyna128_256ExpandedKey, <span class="number">32</span>, <span class="number">16</span>, <span class="number">8</span>);
+<a href=#262 id=262 data-nosnippet>262</a><span class="macro">kalyna_kw_variant!</span>(Kalyna256_256Kw, Kalyna256_256ExpandedKey, <span class="number">32</span>, <span class="number">32</span>, <span class="number">16</span>);
+<a href=#263 id=263 data-nosnippet>263</a><span class="macro">kalyna_kw_variant!</span>(Kalyna256_512Kw, Kalyna256_512ExpandedKey, <span class="number">64</span>, <span class="number">32</span>, <span class="number">16</span>);
+<a href=#264 id=264 data-nosnippet>264</a><span class="macro">kalyna_kw_variant!</span>(Kalyna512_512Kw, Kalyna512_512ExpandedKey, <span class="number">64</span>, <span class="number">64</span>, <span class="number">32</span>);
 </code></pre></div></section></main></body></html>
