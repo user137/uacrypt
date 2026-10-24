@@ -4302,7 +4302,7 @@ item they point to is later removed.
       (`crypto_secretstream` itself, D-68). **Not picked up for implementation this session** - this
       entry is the research/documentation half of the owner's own framing ("оформимо таску і
       дослідимо" - formalize a task and research it), explicitly not a build-now request.
-- [ ] **T-201** **Not started, owner-requested (2026-08-09) - PKCS#11 (Cryptoki) support, as a
+- [ ] **T-201** *(2026-10-24, D-265: parked - a soft token is not recommended; "the connection point needs no new work" below is wrong: capi passes only the 66-byte uncompressed BE key on a fixed curve, while UA PKI uses a 33-byte LE compressed point and explicit parameters.)* **Not started, owner-requested (2026-08-09) - PKCS#11 (Cryptoki) support, as a
       separate sibling project, not part of this repository.** `docs/DECISIONS.md` D-17 already
       excludes PKCS#11/12 from this project's own scope explicitly ("the layer above crypto
       primitives... not this project's job" - this repo is a libsodium-style primitives library,
@@ -10339,7 +10339,7 @@ targets), T-249 (D-256, findings T-312..T-316), T-264 (completions + `uacrypt ma
 (incl. 28 `fuzz-smoke` jobs, macOS bash 3.2 + `zsh -n`, Linux `pwsh` completion tests) and `miri`
 still queued - **first: `gh run list` / `gh run view` both for `3432912`**. D-258 and the CI-shells change were pushed together. Owner delegated the open forks (D-258): no reviewer subagent for
 T-249/T-310; **T-312..T-316 join 0.8.0** - next in order T-312, T-313, T-315, T-314, T-316, then
-step 6 (release 0.8.0). **T-312 done 2026-10-23 (D-259), T-313 done (D-260), T-315 done (D-261), T-314 done (D-262), T-316 done (D-263); T-315 independent review: no defect, follow-ups `30b88f1`. Step 6 started 2026-10-24 and **paused** the same day (owner: hold 0.8.0 until T-317 is done); the local bump was reverted, nothing pushed or tagged. T-317 done 2026-10-24 (D-264); next: step 6 again (owner already chose Python/Node.js/Ruby 0.5.1).** `3432912`'s `rust`/`miri` were
+step 6 (release 0.8.0). **T-312 done 2026-10-23 (D-259), T-313 done (D-260), T-315 done (D-261), T-314 done (D-262), T-316 done (D-263); T-315 independent review: no defect, follow-ups `30b88f1`. Step 6 started 2026-10-24 and **paused** the same day (owner: hold 0.8.0 until T-317 is done); the local bump was reverted, nothing pushed or tagged. T-317 done 2026-10-24 (D-264); CI on `1bb8858` green incl. Linux `smoke_completions` (zsh, fish, PowerShell, man page); next: step 6 again once `miri` on the release commit is green and the owner says go (owner already chose Python/Node.js/Ruby 0.5.1).** `3432912`'s `rust`/`miri` were
 cancelled by the next push (`cancel-in-progress`); the T-312 push carries everything since, so read its `rust`/`miri` runs (incl. `asm-check`'s 16 builds and `smoke_completions`). CI's Linux `test` job now installs zsh/fish/mandoc/groff
 and requires them (`UACRYPT_REQUIRE_SHELLS=1`, D-257 addendum) - the fish completer's first real
 run is there: check `smoke_completions` in the `rust` run of the push after `df62897`. `.git/worktrees/old_wt` is an
@@ -10741,3 +10741,92 @@ names (`create_new`, 64-bit random), `--force` never over a key, passphrase hand
 
 **State 2026-10-22: all eleven done, local commits `ff6e2f5`..HEAD, not pushed** (advisory-relevant for released 0.6.0: T-298, T-299, T-300, T-301 - the owner decides on an advisory before the push; the pushed tree would carry D-246..D-252's recipes and the CHANGELOG `[Unreleased]` lines; `5141320`'s subject names the CMAC warning). **Wave order (Claude, 2026-10-22):** T-308; T-299 (+ capi/bindings); T-298 (docs/test part); T-307;
 T-302; then the CLI batch T-300, T-303, T-304, T-305, T-301; T-306 docs. Commit per task.
+
+### Ecosystem integration (research 2026-10-24, D-265, `docs/ecosystem-integration.md`)
+
+Owner-requested ("which PKCS for OpenSSL, other libraries and browsers"). Recommended direction:
+verify-only DSTU 4145 + Kupyna CMS first. OpenSSL deferred; PKCS#11 soft token and browser signing
+not done. Order: T-318, then T-319; T-320 and T-321 can run in parallel; T-322 only after all of
+them. None of this blocks 0.8.0.
+
+- [ ] **T-318** (M, this repo, test-only; prerequisite for every signature path) **Spike: verify
+  real public Kupyna-era signatures with dstu-core.**
+  - **Fixtures:** at least 3 independent czo.gov.ua TEST `.p7s` samples (DSTU 4145 m=257, digest
+    `…1.2.2.1`, signature `…1.3.6.1.1`) with their certificates. Record the URL, download date and
+    SHA-256 of each; check the fields hold no real PII. Never use the D-185 private files.
+  - **Scope:** the signer's signature only, with no chain, revocation or time checks. Extraction is
+    scripted (`openssl asn1parse` to JSON), never hand-typed (D-163). A throwaway DER walker in
+    `tests/` or `xtask` only; no public ASN.1 API (D-17).
+  - **Build test-first:**
+    - m=257 point decompression: half-trace, trace check, then the existing `n*Q` subgroup check;
+    - the little-endian signature and key codec;
+    - a check that the certificate's explicit curve parameters equal the built-in m=257 curve, byte
+      for byte;
+    - the hash->field convention.
+  - **Conventions table:** one row per byte transform, each with a citation (clause, UAPKI or BC
+    source). A reversal that only makes the test pass is a defect (D-25). A convention found on
+    sample 1 must pass on samples 2 and 3 unchanged.
+  - **Oracles:**
+    - the producer's artefacts;
+    - a `uapkic` verify harness (the `tests/oracle-harness/uapki-*` pattern);
+    - BC `DSTU7564Digest` composed with `DSTU4145Signer` (it reverses the hash);
+    - decompression cross-checked against BC `DSTU4145PointEncoder`.
+  - **Negative tests:**
+    - a flipped bit in r, s, the signed attributes, the content and the key;
+    - r and s swapped;
+    - the wrong key;
+    - an x with no point, the point at infinity, a point outside the subgroup (cofactor 4);
+    - r or s equal to 0 or at least n;
+    - non-canonical lengths;
+    - a GOST-era sample refused explicitly as an unsupported digest.
+  - **Kill criterion:** three cited convention attempts, then stop and record a D-entry. Then an
+    independent reviewer subagent, offered to the owner.
+- [ ] **T-319** (M, this repo, after T-318; inside D-17: encodings of the standard's own objects)
+  **Promote the T-318 primitives.**
+  - What it adds:
+    - m=257 compressed-point decode/encode;
+    - a typed UA wire codec (33-byte LE compressed key, 64-byte LE reverse(s||r) signature, with a
+      top-byte check when narrowing) beside `crypto_sign257`, whose own format stays unchanged;
+    - an exact explicit-parameter matcher;
+    - additive capi symbols.
+  - The four test categories plus the active-attack category.
+  - Fuzz targets synced in all three places; Miri; a D-entry.
+  - Real-artefact vectors become a third oracle.
+- [ ] **T-320** (owner decisions, no code). Options are laid out in
+  `docs/ecosystem-integration.md` sections 3 and 5.
+  - **D-17:**
+    - A: as is;
+    - B: primitives plus the standard wire encodings and OID constants, no ASN.1 parser, with a
+      named companion verify layer (the architect leans B);
+    - C: full PKI (advised against).
+  - **D-118:**
+    - A: keep deferring;
+    - B: allow a verify-only WASM build with no secret-key API.
+  - **GOST 34.311:** a feature-gated, verify-only legacy primitive for chain verification during
+    the transition, with BC and UAPKI as oracles; or leave it out.
+  - **Where the verifier lives:** a separate Cargo workspace in this repo (the D-119 pattern) or a
+    sibling repo.
+- [ ] **T-321** (owner, non-code)
+  - **(a) Legal:** a lawyer's written answer to whether CMU 1298 item 6 ("перевірку … здійснюють
+    лише кваліфіковані надавачі") restricts a relying party's own local verification, and whether
+    CMU 991 covers an open-source library.
+  - **(b) User discovery:** ask 3-5 likely relying parties (an e-document vendor, a bank
+    integration team, govtech Rust/Python developers) whether they would use a memory-safe verify
+    path over UAPKI, and why. No answers is itself the answer.
+- [ ] **T-322** (L, gated on T-318, T-319, T-320 and T-321) **Verify-only CMS/X.509 verifier for DSTU
+  4145 + Kupyna.**
+  - **Before any code, threat models for:**
+    - untrusted input (DER/CMS/X.509, chain building, resource limits);
+    - the algorithm and date policy (the GOST cut-off by trusted timestamp or certificate validity,
+      never `signingTime`);
+    - the claims and regulatory statement (advanced vs qualified, no expertise conclusion).
+  - **Parsing:** strict DER, no BER, iterative with bounded depth; an OID allow-list; explicit curve
+    parameters matched exactly or rejected; audited DER crates only after a registry check.
+  - **Testing:** fuzz targets from the first commit; differential tests against the T-318 corpus
+    and UAPKI.
+  - **Wording:** "verifies DSTU 4145 + Kupyna CMS signatures", nothing more.
+- **Parked, revisit only on a named request:**
+  - an OpenSSL provider slice (Kupyna digest, Kalyna-128 cipher; never wide-block or streaming
+    AEAD);
+  - a verify-only WASM package (a spin-off of T-322);
+  - a PKCS#11 thin bridge to a customer-owned HSM (T-201).

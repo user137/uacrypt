@@ -14,6 +14,7 @@
 - [Release readiness gap analysis](release-readiness.md)
 - [User-journey gap analysis](user-journey-gaps.md)
 - [Language bindings strategy](bindings-strategy.md)
+- [Ecosystem integration research (OpenSSL, PKCS#11, CMS, browser)](ecosystem-integration.md)
 
 # Engineering
 

@@ -240,6 +240,7 @@ Algorithms in scope:
 | `docs/release-readiness.md` | assessing distance to a real, complete release; deciding what to build next toward it | a blocking item resolves (esp. D-05), a new construction lands, or the gap analysis otherwise changes | gap analysis between current state and a libsodium-equivalent 1.0 (D-43, T-87) |
 | `docs/user-journey-gaps.md` | assessing whether a real persona (binary user, library user, constrained-target user) can actually complete their journey end to end, not just whether a construction/API exists | a new persona-blocking gap is found or an existing one closes | persona/journey-framed gap analysis (T-114) — complements, doesn't replace, `docs/release-readiness.md`/`docs/dstu-crypto-project.md` |
 | `docs/bindings-strategy.md` | planning or building any Phase 3 language binding (Python/JS/Java/.NET/C++/PHP/Ruby) | binding scope/order changes, a new fork gets resolved, or a phase's status changes | language-binding popularity analysis, C-ABI-vs-native-FFI split, per-binding engineering checklist, phased roadmap (T-158 onward, D-115) |
+| `docs/ecosystem-integration.md` | considering OpenSSL/PKCS#11/CMS/browser integration or the UA signature formats/OIDs/legal frame | the integration verdicts (D-265) or the normative acts change | ecosystem-integration research: per-path facts, pitfalls, verdicts, never-do list |
 | `docs/SECURITY.md` | before writing any crypto primitive or adding a dependency | threat model or hard constraints change | threat model, hard constraints, supply-chain vetting |
 | `docs/DECISIONS.md` | need the reason behind an architectural choice | a new architectural decision is made | decisions + rejected alternatives, with citations |
 | `docs/ORACLES.md` | before implementing or verifying any primitive | oracle trust ranking changes, or a new oracle/vector source is added | oracle trust matrix, per-algorithm oracle map, test-vector convention, list of reference implementations |
@@ -513,18 +514,8 @@ check) is in `docs/dstu-crypto-project.md` "Resources found".
 - Official documentation PDFs live in `docs/papers/` (licensed scans/copies — all gitignored, never
   commit; 7624/7564 are draft editions, T-234). Render with PyMuPDF, not poppler (`.claude.local.md`).
   Vector provenance per algorithm: `docs/ORACLES.md` (Strumok: D-197/D-263).
-- **`hazmat::dstu9041` (`l(p)=256`/E256/1) is implemented (T-177)** — a partial primary-text
-  scan (T-173) plus a targeted supplement (T-176/D-165) gave clause citations for every algorithm
-  the primitive needed (6.5–6.12); `message.rs`/`fp256.rs`/`curve256.rs`/`encryption.rs` were then
-  written test-first against that source, verified end-to-end against Додаток Г's own worked
-  example (the sole oracle for this primitive, `docs/ORACLES.md`). Two security findings beyond
-  clause 12's literal text were caught and fixed before closure (an order-2 point via `r=p-1`, and
-  order-`2n` points outside `<P>` from cofactor 4 - no order-4 points exist, D-248) — see `docs/DECISIONS.md`'s T-177 entry.
-  **`l(p)=512`/E512/1 is implemented too (T-192, 2026-08-08)** — `message512.rs`/`fp512.rs`/
-  `curve512.rs`/`encryption512.rs`, same test-first/worked-example-verified pattern, both security
-  findings independently re-derived (not assumed to carry over) and re-confirmed applicable.
-  **`l(p)=384`/E384/1 too (T-297, 2026-10-19, D-241/D-244)**, its KW stage `hazmat::kalyna_kw_p`
-  per DSTU 7624's text - which Додаток Г.2's printed `t` does not follow (owner: follow the text).
+- **`hazmat::dstu9041`** (l(p)=256/384/512) is covered under "Project status" above; history and the
+  two security findings beyond clause 12 (D-248) in `docs/DECISIONS.md` T-177/T-192/T-297 entries.
   `l(p)=768` (no worked example anywhere in the standard, D-168) remains unimplemented.
 - Verify own implementation against Kalyna-reference and the other oracles in `docs/ORACLES.md`.
 - Hardware validation on STM32/ESP32 is a distinct post-MVP phase, not a claim of side-channel

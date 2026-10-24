@@ -623,6 +623,8 @@ primitives, not the ASN.1/PKCS#11/browser-integration layers around them.
 
 ## D-17: Reviewed project positioning against UAPKI — no overlap, no scope change
 
+> **Status (2026-10-24, D-265):** still in force. Its table's DSTU 9041 row ("planned, hard-blocked") is stale - implemented since T-177/T-192/T-297. The ecosystem-integration research (`docs/ecosystem-integration.md`) proposes options for amending this entry (T-320); none is decided.
+
 Finding UAPKI (D-16) raised the obvious question directly: is this project reimplementing
 something UAPKI already provides? Answer, after reading its actual scope rather than assuming from
 the algorithm list: **no — different layer, different language ecosystem, different platform
@@ -16420,3 +16422,87 @@ tests hit 99, and a source audit found no unprefixed invocation. Tests: `tests/s
 (old names, near miss, `hazmat` listing, per-command help without warning, unknown words, warning
 on a successful and a failing run, top-level help free of the eight), unit tests for the table
 agreement, hazmat dispatch arms and subcommands, and the man page section.
+
+## D-265: Ecosystem integration research - verify-only DSTU 4145 + Kupyna first; OpenSSL deferred; PKCS#11 soft token and browser signing not done (2026-10-24)
+
+Owner asked which "PKCS" to implement to plug dstu-core into OpenSSL or other libraries and reach
+browsers through them. Full research, sources and pitfalls: `docs/ecosystem-integration.md` (four
+primary-source research tracks, re-checked claims, six role reviews). This entry records the
+verdicts. It is analysis, not a scope change.
+
+**Findings that drive everything**
+- **The rules changed on 2026-09-01.** CMU 920 (15.07.2026) requires DSTU 4145 to be used with
+  DSTU 7564 and DSTU 7624 in qualified-signature tools, and drops GOST 34.311. Real czo.gov.ua TEST
+  artefacts use signature OID `1.2.804.2.1.1.1.1.3.6.1.1` and Kupyna-256. Both were verified this
+  session.
+- **The Kupyna-era sample still embeds CA certificates signed with GOST 34.311.** Chains therefore
+  need a GOST transition period of unknown length.
+- **dstu-core cannot yet verify a real UA signature**, for four reasons:
+  - it has no m=257 point decompression;
+  - its wire format differs: 66-byte uncompressed big-endian key and 66-byte big-endian signature,
+    against UA's 33-byte compressed little-endian key and 64-byte reverse(s||r) signature;
+  - real certificates carry explicit curve parameters;
+  - the hash->field convention in UA artefacts is unconfirmed.
+
+  "We implement what the 2026-09 rules mandate" therefore holds at the primitive level only.
+- **Bouncy Castle has no combined DSTU 4145 + Kupyna algorithm or OID.** Its `DSTU4145Signer`
+  reverses and accepts any hash (`hash2FieldElement`), so composing it with `DSTU7564Digest` is a
+  candidate second oracle. UAPKI (BSD-2, C) is the only public full implementation of the layer.
+- **Signing and verifying differ.** Verification handles public data only, so the constant-time,
+  custody, WASM and qualified-device objections apply only to signing.
+
+**Verdicts**
+- **CMS/CAdES verify-only (DSTU 4145 + Kupyna): recommended direction.** Gated by T-318, T-320 and
+  T-321. Its niche:
+  - memory-safe parsing of untrusted DER/CMS, against UAPKI's C code;
+  - a no_std primitive layer;
+  - reach through the existing bindings.
+
+  Signing CAdES, LT/LTA, TSP/OCSP and key containers (Key-6.dat, UA PKCS#12, JKS) stay out: they
+  duplicate UAPKI.
+- **OpenSSL provider: deferred.** At most a Kupyna and Kalyna-128 slice, on a named consumer's
+  request. Never wide-block Kalyna through EVP (`EVP_MAX_IV_LENGTH` 16), never streaming AEAD
+  (contradicts D-63/D-65), never libssl patches.
+  - Correction to what was said in chat: TLS groups have been pluggable since 3.0, and sigalgs
+    since 3.2 (TLS 1.3 only). No IANA DSTU codepoints exist.
+- **PKCS#11 soft token: not done.** No mainstream consumer would use a DSTU key without code
+  changes. The real consumers already work with certified hardware tokens, and a soft token yields
+  advanced, not qualified, signatures. T-201 stays parked; its "no new work needed" claim is
+  corrected (key encoding and fixed curve, not the 32-byte prehash).
+- **Browser: never a signing path or a Native Messaging host.** DSTU TLS is impossible in shipping
+  browsers. A verify-only WASM package is a possible later spin-off, with no demand shown.
+  - Correction: Ukrainian government signing uses in-page asm.js for file keys, an extension plus
+    native host for tokens, and a smartphone flow for Diia.Підпис. Native Messaging is only one of
+    the three.
+
+**Never do (binding unless the owner reverses it)**
+- Claims: "qualified"/"certified"/"КЕП"/"CMU 920-compliant"/side-channel-resistant wording.
+- Verification: a library's "valid" presented as a qualified verification service.
+- Key custody:
+  - a soft PKCS#11 token as a security product;
+  - browser signing with keys in IndexedDB;
+  - a Native Messaging host.
+- OpenSSL: wide-block Kalyna or streaming AEAD through EVP; libssl patches.
+- Legacy and proprietary formats:
+  - GOST signing;
+  - caller-supplied DKE or explicit curves on a signing path;
+  - Key-6.dat reverse engineering;
+  - invented OIDs.
+- dstu-core itself:
+  - no ASN.1 parsing;
+  - `crypto_*` wire formats are never changed; codecs are added beside them.
+- Evidence discipline:
+  - no byte-order "fix" without a citation (D-25);
+  - no hand-transcribed constants (D-163);
+  - no third-party or private signatures in the repo. The D-185 `.p7s` files are private; only
+    public czo TEST artefacts may be fixtures.
+
+**Caveats**
+- The six role reviews are one model reading one synthesis: a consistency check, not independent
+  opinions.
+- Every legal point is an AI reading for a lawyer to confirm. In particular, CMU 1298 item 6 may
+  reserve verification of advanced signatures based on qualified certificates to qualified
+  providers. That gates the recommended direction (T-321).
+
+**Rejected:** starting with PKCS#11 (the owner's original framing). Of the four paths it has the
+lowest return per effort and the highest custody risk, and it reaches no browser.
