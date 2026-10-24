@@ -8,7 +8,8 @@ asked, then the topic as a whole.
 then re-checked every claim that drives a recommendation, plus the repo itself. Six role reviews
 followed: senior developer, architect, QA, project manager, AI engineer and security engineer.
 
-**Status.** This is analysis, not a decision. The owner's decisions are tracked as T-320/T-321;
+**Status.** This is analysis, not a decision. Every verdict and the never-do list are
+recommendations until the owner confirms them (T-320). The owner's decisions are tracked as T-320/T-321;
 the verdicts are recorded in `docs/DECISIONS.md` D-265.
 
 **Tags.**
@@ -41,11 +42,15 @@ it is listed as an owner decision.
      `1.2.804.2.1.1.1.1.3.6.1.1`.
    - **The key OID is unchanged:** `1.2.804.2.1.1.1.1.3.1.1`, "DSTU 4145-2002 little endian".
    - **The GOST-era sample** uses GOST 34.311.
-   - **The Kupyna-era sample still embeds CA certificates signed with GOST 34.311.** Verifying a
-     chain therefore needs GOST 34.311 for a transition period. No primary act was found that says
+   - **The Kupyna-era sample still embeds GOST-era CA certificates.** They sit in its CAdES-X-Long
+     `certValues` unsigned attribute, not in `SignedData.certificates`: the outer signature OID
+     `…1.3.1.1` directly precedes each certificate's signature BIT STRING (`openssl asn1parse`).
+     UAPKI maps `…1.3.1.x` signatures to GOST 34.311. Verifying a chain therefore needs GOST
+     34.311 for a transition period. No primary act was found that says
      how long; "systems must support both" comes from news only. [S]
 3. **Bouncy Castle has no combined "DSTU 4145 with Kupyna" algorithm or OID.**
    - It registers only `GOST3411WITHDSTU4145(LE)`. [V]
+   - `UAObjectIdentifiers` has only `1.3.1.1` and `1.3.1.1.1.1`, with no `1.3.6.x`. [V✔]
    - Its `DSTU4145Signer` does accept any hash: `hash2FieldElement` starts with
      `Arrays.reverse(hash)` (`oracles/bouncycastle-java/core/src/main/java/org/bouncycastle/crypto/signers/DSTU4145Signer.java`).
      [V✔]
@@ -127,7 +132,7 @@ it is listed as an owner decision.
 | TLS with private sigalgs, which works only between our own peers | M on top |
 | Real DSTU TLS | not viable |
 
-**Verdict: defer.** A Kupyna and Kalyna-128 slice only on a named consumer's request. Never
+**Recommended verdict: defer.** A Kupyna and Kalyna-128 slice only on a named consumer's request. Never
 wide-block Kalyna, never streaming AEAD through EVP, never libssl patches.
 - Role scores (realism/niche/return, 1-5): about 2/4/2 across all six roles.
 
@@ -191,7 +196,7 @@ is a design reference, not a base.
 - a minimal m=257 soft token: L (realistically XL with an interop harness);
 - the full UA constant set: XL.
 
-**Verdict: do not do.** T-201 stays parked, with its "no new work needed" claim corrected.
+**Recommended verdict: do not do.** T-201 stays parked, with its "no new work needed" claim corrected.
 - Role scores: about 2/2/1.
 - What would change it: an integrator with an HSM they already own who needs a thin bridge, not
   custody.
@@ -267,7 +272,7 @@ is a design reference, not a base.
    991-2020-п.
 8. Unclear licences on jkurwa/dstucrypt (no LICENSE file).
 
-**Verdict: the one recommended direction, verify-only first.**
+**Recommended verdict: the one recommended direction, verify-only first.**
 - **Niche.** A memory-safe (Rust) parser of untrusted DER/CMS against UAPKI's C one; a `no_std`
   primitive layer underneath; reach into eight languages through the existing bindings; and DSTU
   4145 with Kupyna, which BC lacks as a combined algorithm.
@@ -314,7 +319,7 @@ is a design reference, not a base.
   - Safari needs an Xcode containing app plus an app extension.
   - It is a confused-deputy risk: `allowed_origins` gates the extension, not the web page.
 
-**Verdict.**
+**Recommended verdict.**
 - **Never** browser signing or a Native Messaging host.
 - **A verify-only WASM package** avoids the constant-time and custody objections. It is a possible
   later spin-off of §3, but no demand has been shown.
@@ -351,7 +356,7 @@ Not gated by T-318: an OpenSSL digest/cipher slice and a WASM feasibility probe.
   pattern) or as a sibling repo.
 - **L2 adapters**: CLI, capi, bindings and a verify-only WASM package.
 
-**Never do** (consolidated):
+**Recommended never-do list** (owner to confirm in T-320):
 - call anything "qualified", "certified", "КЕП-compliant", "CMU 920-compliant" or
   side-channel-resistant;
 - treat a library's "valid" as a qualified verification service;
@@ -380,5 +385,80 @@ Not gated by T-318: an OpenSSL digest/cipher slice and a WASM feasibility probe.
 - Whether `__multi3` appears on wasm32.
 - Whether the 0x0042xxxx PKCS#11 set is vendor-confirmed.
 
-The four research reports' full source lists (URLs, quotes, access dates) were not committed. The
-links above are the ones each recommendation rests on.
+## 6. Sources
+
+All accessed 2026-10-24. The four research reports' full quote lists were not committed; these are
+the sources each recommendation rests on.
+
+**OpenSSL (§1)**
+- Release list: https://api.github.com/repos/openssl/openssl/releases
+- Engine removal: https://raw.githubusercontent.com/openssl/openssl/openssl-4.1.0/NEWS.md and `CHANGES.md` in the same tree.
+- Man pages: https://raw.githubusercontent.com/openssl/openssl/openssl-4.1.0/doc/man7/provider.pod, plus `provider-base.pod`, `provider-signature.pod` and `provider-keymgmt.pod`. Also `doc/man5/config.pod` and `doc/man7/openssl-env.pod`.
+- Source files in the openssl-4.1.0 tree:
+  - `crypto/objects/objects.txt`
+  - `crypto/x509/x_pubkey.c`
+  - `crypto/asn1/a_verify.c`
+  - `crypto/cms/cms_sd.c`
+  - `crypto/cms/cms_enc.c`
+  - `include/openssl/evp.h`
+  - `ssl/s3_lib.c`
+  - `ssl/t1_lib.c`
+- Distribution versions: https://qa.debian.org/madison.php?package=openssl and https://people.canonical.com/~ubuntu-archive/madison.cgi?package=openssl
+- IANA registry: https://www.iana.org/assignments/tls-parameters/tls-parameters.xml
+- gost-engine: https://github.com/gost-engine/engine (PR #482, `patches/openssl-tls1.3.patch`)
+- oqs-provider: https://github.com/open-quantum-safe/oqs-provider
+- dstu-engine: https://github.com/dstucrypt/dstu-engine
+
+**PKCS#11 (§2)**
+- Spec v3.1: https://docs.oasis-open.org/pkcs11/pkcs11-spec/v3.1/os/pkcs11-spec-v3.1-os.html
+- Profiles: https://docs.oasis-open.org/pkcs11/pkcs11-profiles/v3.1/os/pkcs11-profiles-v3.1-os.html
+- v3.2 directory: https://docs.oasis-open.org/pkcs11/pkcs11-spec/v3.2/os/
+- NSS: https://github.com/nss-dev/nss (`cryptohi/keythi.h`, `pk11wrap/pk11akey.c`, `pk11wrap/pk11obj.c`)
+- SunPKCS11: https://docs.oracle.com/en/java/javase/25/security/pkcs11-reference-guide1.html
+- pkcs11-provider: https://github.com/latchset/pkcs11-provider
+- GnuTLS: https://gitlab.com/gnutls/gnutls (`lib/pkcs11_privkey.c`)
+- p11-kit: https://github.com/p11-glue/p11-kit (`rpc-client.c`, `rpc-message.c`)
+- Windows: https://learn.microsoft.com/en-us/windows/win32/seccng/key-storage-and-retrieval
+- UA constant headers:
+  - https://github.com/specinfo-ua/UAPKI (`library/common/cryptoki/pkcs11t-ua.h`, `cm-pkcs11/src/storage/cryptoki-storage.cpp`)
+  - https://github.com/edenlabllc/digital_signature.lib (`c_src/h/uacryptoki.h`)
+- Avtor SecureToken-337 datasheet: https://fbp.com.ua/docs/software/eTrade/SecureToken337.pdf
+- kryoptic: https://github.com/latchset/kryoptic (issue #250)
+- native-pkcs11: https://github.com/google/native-pkcs11
+- NVD CVE entries: CVE-2021-3798, CVE-2026-40253, CVE-2026-23893, CVE-2024-0914
+
+**CMS, formats, legal (§3)**
+- Law 2155-VIII: https://zakon.rada.gov.ua/laws/show/2155-19
+- CMU 1298 (2023): https://zakon.rada.gov.ua/laws/show/1298-2023-%D0%BF
+- CMU 920 (2026): https://zakon.rada.gov.ua/laws/show/920-2026-%D0%BF
+- CMU 764 (2024): https://zakon.rada.gov.ua/laws/show/764-2024-%D0%BF
+- CMU 991 (2020): https://zakon.rada.gov.ua/laws/show/991-2020-%D0%BF
+- Law 80/94-ВР: https://zakon.rada.gov.ua/laws/show/80/94-%D0%B2%D1%80
+- Repealed orders: https://zakon.rada.gov.ua/laws/show/z1039-20 (repealed by z0375-24) and https://zakon.rada.gov.ua/laws/show/z2227-13
+- czo.gov.ua: https://czo.gov.ua/testexamples (public TEST artefacts) and https://czo.gov.ua/faq
+- UAPKI expertise record: https://data.gov.ua/dataset/7b0d45fe-75eb-4d14-9792-59e440305678
+- Bouncy Castle: https://github.com/bcgit/bc-java (`core/src/main/java/org/bouncycastle/asn1/ua/UAObjectIdentifiers.java`, `DSTU4145NamedCurves.java`). The local `oracles/bouncycastle-java` copy has `crypto/signers/DSTU4145Signer.java`.
+- UAPKI: https://github.com/specinfo-ua/UAPKI (`library/common/pkix/oids.h`, `cm-pkcs12/src/crypto/pkcs5.c`)
+- jkurwa: https://github.com/dstucrypt/jkurwa
+- RFCs: 5652, 5280, 5958 and 7292 (https://www.rfc-editor.org/)
+- News, secondary only [S]: dtkt.ua, 2026-08-07, on the Kupyna switch dates
+
+**Browser (§4)**
+- IANA CSVs: https://www.iana.org/assignments/tls-parameters/tls-parameters-4.csv and `tls-signaturescheme.csv`
+- NSS: https://raw.githubusercontent.com/nss-dev/nss/master/lib/ssl/sslt.h
+- Chromium: https://chromium.googlesource.com/chromium/src/+/main/net/ssl/ssl_private_key.cc
+- Chromium-Gost: https://github.com/deemru/Chromium-Gost
+- Native messaging:
+  - Chrome: https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging
+  - Firefox: https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Native_manifests
+  - Edge: https://learn.microsoft.com/en-us/microsoft-edge/extensions/developer-guide/native-messaging
+- Chrome MV3 policy: https://developer.chrome.com/docs/webstore/program-policies/mv3-requirements
+- Safari extension messaging: https://developer.apple.com/documentation/safariservices/messaging-between-the-app-and-javascript-in-a-safari-web-extension
+- id.gov.ua: https://id.gov.ua/sign (widget `/js/sign-widget/eusign.js`, worker `sign-widget/v20260209/js/euscp.worker.ex.js`)
+- IIT extension: Chrome Web Store listing "ІІТ Користувач ЦСК-1. Бібл. підп. (web-р.)", ID `jffafkigfgmjafhpkoibhfefeaebmccg`, 800,000 users
+- IIT downloads: https://iit.com.ua/downloads
+- Web Crypto: https://www.w3.org/TR/WebCryptoAPI/ (Level 2 FPWD, 2025-04-22)
+- WebAssembly proposals: https://github.com/WebAssembly/proposals (README.md, inactive-proposals.md) and https://github.com/WebAssembly/wide-arithmetic
+- CT-Wasm: https://doi.org/10.1145/3290390
+- getrandom: https://docs.rs/getrandom/0.3.4/getrandom/
+- wasm org sunset: https://blog.rust-lang.org/inside-rust/2025/07/21/sunsetting-the-rustwasm-github-org/

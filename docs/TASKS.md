@@ -10806,6 +10806,8 @@ them. None of this blocks 0.8.0.
     the transition, with BC and UAPKI as oracles; or leave it out.
   - **Where the verifier lives:** a separate Cargo workspace in this repo (the D-119 pattern) or a
     sibling repo.
+  - **Confirm or amend the recommended verdicts and the never-do list in D-265** (they are
+    recommendations until then).
 - [ ] **T-321** (owner, non-code)
   - **(a) Legal:** a lawyer's written answer to whether CMU 1298 item 6 ("перевірку … здійснюють
     лише кваліфіковані надавачі") restricts a relying party's own local verification, and whether
@@ -10829,4 +10831,9 @@ them. None of this blocks 0.8.0.
   - an OpenSSL provider slice (Kupyna digest, Kalyna-128 cipher; never wide-block or streaming
     AEAD);
   - a verify-only WASM package (a spin-off of T-322);
-  - a PKCS#11 thin bridge to a customer-owned HSM (T-201).
+  - a PKCS#11 thin bridge to a customer-owned HSM (T-201);
+  - a shared, machine-readable cross-implementation corpus (DSTU 4145 m=163/257, Kupyna, Kalyna,
+    edge cases, provenance per vector) plus a diff harness against `uapkic`/BC, publishable for
+    other implementations (AI-engineer and QA roles; a natural follow-on of T-318/T-319);
+  - a wasm32 KAT feasibility probe under wasmtime, with no constant-time claim (needs
+    `rustup target add wasm32-unknown-unknown`, owner's yes).
