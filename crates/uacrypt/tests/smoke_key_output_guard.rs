@@ -64,7 +64,14 @@ fn commands(dir: &TempDir) -> Vec<Vec<String>> {
         vec!["sign", "--key", &p("sign.key"), "--in", &p("in32")],
         vec!["box-seal", "--key", &p("box.pub"), "--in", &p("in32")],
         vec!["box-open", "--key", &p("box.key"), "--in", &p("sealed")],
-        vec!["kupyna-digest", "--variant", "256", "--in", &p("in32")],
+        vec![
+            "hazmat",
+            "kupyna-digest",
+            "--variant",
+            "256",
+            "--in",
+            &p("in32"),
+        ],
     ]
     .into_iter()
     .map(|v| v.into_iter().map(str::to_string).collect())
@@ -122,6 +129,7 @@ fn a_damaged_key_file_is_still_protected_but_a_look_alike_is_not() {
     let p = |n: &str| dir.file(n).to_string_lossy().into_owned();
     let run = |out: &str| {
         uacrypt([
+            "hazmat",
             "kupyna-digest",
             "--variant",
             "256",
@@ -174,6 +182,7 @@ fn a_symlink_to_a_key_file_is_replaced_and_the_key_is_untouched() {
     let key = read_bytes(&dir.file("sym.key"));
     std::os::unix::fs::symlink(dir.file("sym.key"), dir.file("link")).expect("symlink");
     let r = uacrypt([
+        "hazmat",
         "kupyna-digest",
         "--variant",
         "256",
@@ -209,6 +218,7 @@ fn an_unreadable_existing_output_is_not_replaced_with_force() {
     }
     let before = listing(&dir);
     let r = uacrypt([
+        "hazmat",
         "kupyna-digest",
         "--variant",
         "256",
@@ -263,6 +273,7 @@ fn a_key_file_as_a_later_output_releases_the_earlier_ones() {
     for force in [false, true] {
         let before = listing(&dir);
         let mut args = vec![
+            "hazmat".to_string(),
             "kalyna-gcm".to_string(),
             "encrypt".into(),
             "--variant".into(),

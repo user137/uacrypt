@@ -95,6 +95,7 @@ const CASES: &[Case] = &[
     Case {
         name: "kupyna-digest",
         args: &[
+            "hazmat",
             "kupyna-digest",
             "--variant",
             "256",
@@ -119,6 +120,7 @@ const CASES: &[Case] = &[
     Case {
         name: "strumok-crypt",
         args: &[
+            "hazmat",
             "strumok-crypt",
             "--variant",
             "256",
@@ -136,6 +138,7 @@ const CASES: &[Case] = &[
     Case {
         name: "kalyna-block encrypt",
         args: &[
+            "hazmat",
             "kalyna-block",
             "encrypt",
             "--variant",
@@ -152,6 +155,7 @@ const CASES: &[Case] = &[
     Case {
         name: "kalyna-block decrypt",
         args: &[
+            "hazmat",
             "kalyna-block",
             "decrypt",
             "--variant",
@@ -168,6 +172,7 @@ const CASES: &[Case] = &[
     Case {
         name: "kalyna-ccm encrypt",
         args: &[
+            "hazmat",
             "kalyna-ccm",
             "encrypt",
             "--variant",
@@ -188,6 +193,7 @@ const CASES: &[Case] = &[
     Case {
         name: "kalyna-ccm decrypt",
         args: &[
+            "hazmat",
             "kalyna-ccm",
             "decrypt",
             "--variant",
@@ -208,6 +214,7 @@ const CASES: &[Case] = &[
     Case {
         name: "kalyna-gcm encrypt",
         args: &[
+            "hazmat",
             "kalyna-gcm",
             "encrypt",
             "--variant",
@@ -228,6 +235,7 @@ const CASES: &[Case] = &[
     Case {
         name: "kalyna-gcm decrypt",
         args: &[
+            "hazmat",
             "kalyna-gcm",
             "decrypt",
             "--variant",
@@ -250,6 +258,7 @@ const CASES: &[Case] = &[
     Case {
         name: "kalyna-gmac compute (parse-time flags)",
         args: &[
+            "hazmat",
             "kalyna-gmac",
             "compute",
             "--variant",
@@ -266,6 +275,7 @@ const CASES: &[Case] = &[
     Case {
         name: "kalyna-gmac compute (parse-time flags)",
         args: &[
+            "hazmat",
             "kalyna-gmac",
             "compute",
             "--variant",
@@ -282,6 +292,7 @@ const CASES: &[Case] = &[
     Case {
         name: "kalyna-kw wrap",
         args: &[
+            "hazmat",
             "kalyna-kw",
             "wrap",
             "--variant",
@@ -298,6 +309,7 @@ const CASES: &[Case] = &[
     Case {
         name: "kalyna-kw unwrap",
         args: &[
+            "hazmat",
             "kalyna-kw",
             "unwrap",
             "--variant",
@@ -314,6 +326,7 @@ const CASES: &[Case] = &[
     Case {
         name: "kalyna-xts encrypt",
         args: &[
+            "hazmat",
             "kalyna-xts",
             "encrypt",
             "--variant",
@@ -332,6 +345,7 @@ const CASES: &[Case] = &[
     Case {
         name: "kalyna-xts decrypt",
         args: &[
+            "hazmat",
             "kalyna-xts",
             "decrypt",
             "--variant",
@@ -408,6 +422,7 @@ fn unknown_flag_is_rejected_across_representative_commands() {
             "verify", "--key", "k", "--in", "i", "--sig", "s", "--curve", "m163",
         ],
         &[
+            "hazmat",
             "kalyna-xts",
             "encrypt",
             "--variant",
@@ -452,6 +467,7 @@ fn kalyna_gmac_verify_without_tag_is_missing_flag() {
     let dir = TempDir::new("misuse_gmac_verify_no_tag");
     let (key, input) = setup_cmac_fixture(&dir);
     let r = uacrypt([
+        "hazmat",
         "kalyna-gmac",
         "verify",
         "--variant",
@@ -478,6 +494,7 @@ fn kalyna_gmac_compute_without_out_is_missing_flag() {
     let dir = TempDir::new("misuse_gmac_compute_no_out");
     let (key, input) = setup_cmac_fixture(&dir);
     let r = uacrypt([
+        "hazmat",
         "kalyna-gmac",
         "compute",
         "--variant",
@@ -559,6 +576,7 @@ fn iterations_zero_behaves_like_one_across_representative_commands() {
 
     let out_zero = dir.file("out_zero.bin");
     let r = uacrypt([
+        "hazmat",
         "kalyna-block",
         "encrypt",
         "--variant",
@@ -576,6 +594,7 @@ fn iterations_zero_behaves_like_one_across_representative_commands() {
 
     let out_one = dir.file("out_one.bin");
     let r = uacrypt([
+        "hazmat",
         "kalyna-block",
         "encrypt",
         "--variant",

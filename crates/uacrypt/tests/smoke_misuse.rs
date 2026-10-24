@@ -45,6 +45,7 @@ fn strumok_crypt_in_place_round_trips_without_destroying_data() {
     write_bytes(&data, &plaintext);
 
     let args = [
+        "hazmat",
         "strumok-crypt",
         "--variant",
         "256",
@@ -98,6 +99,7 @@ fn strumok_crypt_in_place_leaves_no_partial_output_on_read_failure() {
     let out = dir.file("out.bin");
 
     let r = uacrypt([
+        "hazmat",
         "strumok-crypt",
         "--variant",
         "256",
@@ -171,6 +173,7 @@ fn kupyna_digest_in_place_does_not_corrupt_before_reading() {
     write_bytes(&data, &plaintext);
 
     ok(&uacrypt([
+        "hazmat",
         "kupyna-digest",
         "--variant",
         "256",
@@ -202,6 +205,7 @@ fn kalyna_block_in_place_does_not_corrupt_before_reading() {
     write_bytes(&data, &plaintext);
 
     ok(&uacrypt([
+        "hazmat",
         "kalyna-block",
         "encrypt",
         "--variant",
@@ -219,6 +223,7 @@ fn kalyna_block_in_place_does_not_corrupt_before_reading() {
     assert_ne!(ct, plaintext);
 
     ok(&uacrypt([
+        "hazmat",
         "kalyna-block",
         "decrypt",
         "--variant",

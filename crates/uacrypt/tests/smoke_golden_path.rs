@@ -37,6 +37,7 @@ fn kalyna_block_encrypt_decrypt_round_trips() {
     write_bytes(&pt, &[0x22; 32]);
 
     ok(&uacrypt([
+        "hazmat",
         "kalyna-block",
         "encrypt",
         "--variant",
@@ -51,6 +52,7 @@ fn kalyna_block_encrypt_decrypt_round_trips() {
     assert!(ct.exists());
 
     ok(&uacrypt([
+        "hazmat",
         "kalyna-block",
         "decrypt",
         "--variant",
@@ -82,6 +84,7 @@ fn kalyna_ccm_encrypt_decrypt_round_trips() {
     write_bytes(&pt, b"kalyna-ccm smoke test plaintext");
 
     ok(&uacrypt([
+        "hazmat",
         "kalyna-ccm",
         "encrypt",
         "--variant",
@@ -100,6 +103,7 @@ fn kalyna_ccm_encrypt_decrypt_round_trips() {
     assert!(nonce.exists() && tag.exists() && ct.exists());
 
     ok(&uacrypt([
+        "hazmat",
         "kalyna-ccm",
         "decrypt",
         "--variant",
@@ -138,6 +142,7 @@ fn kalyna_gcm_encrypt_decrypt_round_trips() {
     );
 
     ok(&uacrypt([
+        "hazmat",
         "kalyna-gcm",
         "encrypt",
         "--variant",
@@ -154,6 +159,7 @@ fn kalyna_gcm_encrypt_decrypt_round_trips() {
         tag.to_str().unwrap(),
     ]));
     ok(&uacrypt([
+        "hazmat",
         "kalyna-gcm",
         "decrypt",
         "--variant",
@@ -211,6 +217,7 @@ fn kalyna_gmac_compute_verify_round_trips() {
     write_bytes(&msg, b"gmac smoke test message");
 
     ok(&uacrypt([
+        "hazmat",
         "kalyna-gmac",
         "compute",
         "--variant",
@@ -225,6 +232,7 @@ fn kalyna_gmac_compute_verify_round_trips() {
     assert!(tag.exists());
 
     ok(&uacrypt([
+        "hazmat",
         "kalyna-gmac",
         "verify",
         "--variant",
@@ -253,6 +261,7 @@ fn kalyna_kw_wrap_unwrap_round_trips() {
     write_bytes(&material, &[0x88; 32]); // one 256-256 block of "key material" to wrap
 
     ok(&uacrypt([
+        "hazmat",
         "kalyna-kw",
         "wrap",
         "--variant",
@@ -267,6 +276,7 @@ fn kalyna_kw_wrap_unwrap_round_trips() {
     assert_eq!(support::read_bytes(&wrapped).len(), 32 + 32); // + one checksum block
 
     ok(&uacrypt([
+        "hazmat",
         "kalyna-kw",
         "unwrap",
         "--variant",
@@ -301,6 +311,7 @@ fn kalyna_xts_encrypt_decrypt_round_trips() {
     write_bytes(&pt, &[0xAA; 32]); // exactly one 256-256 block
 
     ok(&uacrypt([
+        "hazmat",
         "kalyna-xts",
         "encrypt",
         "--variant",
@@ -315,6 +326,7 @@ fn kalyna_xts_encrypt_decrypt_round_trips() {
         ct.to_str().unwrap(),
     ]));
     ok(&uacrypt([
+        "hazmat",
         "kalyna-xts",
         "decrypt",
         "--variant",
@@ -344,6 +356,7 @@ fn kupyna_digest_produces_expected_length_both_variants() {
     write_bytes(&input, b"kupyna-digest smoke test");
 
     ok(&uacrypt([
+        "hazmat",
         "kupyna-digest",
         "--variant",
         "256",
@@ -355,6 +368,7 @@ fn kupyna_digest_produces_expected_length_both_variants() {
     assert_eq!(support::read_bytes(&out256).len(), 32);
 
     ok(&uacrypt([
+        "hazmat",
         "kupyna-digest",
         "--variant",
         "512",
@@ -383,6 +397,7 @@ fn strumok_crypt_round_trips_via_second_pass() {
     write_bytes(&pt, b"strumok-crypt smoke test plaintext");
 
     ok(&uacrypt([
+        "hazmat",
         "strumok-crypt",
         "--variant",
         "256",
@@ -399,6 +414,7 @@ fn strumok_crypt_round_trips_via_second_pass() {
 
     // Same keystream cipher applied twice with the same key/IV round-trips (XOR).
     ok(&uacrypt([
+        "hazmat",
         "strumok-crypt",
         "--variant",
         "256",

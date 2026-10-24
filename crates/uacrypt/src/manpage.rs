@@ -1,8 +1,12 @@
 //! `uacrypt man` (T-264, `docs/DECISIONS.md` D-257): the `uacrypt(1)` page in roff, built from
 //! [`super::TOP_LEVEL_HELP`] and every [`super::COMMANDS`] entry's `--help` text, so it says
-//! exactly what `--help` says. Deterministic: no date, only the crate version.
+//! exactly what `--help` says; the [`super::HAZMAT_COMMANDS`] get a section of their own (T-317).
+//! Deterministic: no date, only the crate version.
 
-use super::{is_help_flag, print_command_help, write_stdout, CliError, COMMANDS, TOP_LEVEL_HELP};
+use super::{
+    is_help_flag, print_command_help, write_stdout, CliError, COMMANDS, HAZMAT_COMMANDS,
+    TOP_LEVEL_HELP,
+};
 use core::fmt::Write as _;
 
 /// `uacrypt man`: prints the page.
@@ -67,13 +71,22 @@ pub(crate) fn page() -> String {
             escape(c.help)
         );
     }
+    s.push_str(".SH LOW-LEVEL COMMANDS (uacrypt hazmat)\n");
+    for c in HAZMAT_COMMANDS {
+        let _ = write!(
+            s,
+            ".SS hazmat {}\n.nf\n{}.fi\n",
+            escape(c.name).trim_end(),
+            escape(c.help)
+        );
+    }
     s
 }
 
 #[cfg(test)]
 mod tests {
     use super::{escape, page};
-    use crate::COMMANDS;
+    use crate::{COMMANDS, HAZMAT_COMMANDS};
 
     #[test]
     fn page_has_a_title_and_one_section_per_command() {
@@ -87,8 +100,21 @@ mod tests {
         let names: Vec<String> = COMMANDS
             .iter()
             .map(|c| c.name.replace('-', "\\-"))
+            .chain(
+                HAZMAT_COMMANDS
+                    .iter()
+                    .map(|c| format!("hazmat {}", c.name.replace('-', "\\-"))),
+            )
             .collect();
         assert_eq!(sections, names);
+        let (everyday, hazmat) = text
+            .split_once("\n.SH LOW-LEVEL COMMANDS (uacrypt hazmat)\n")
+            .expect("hazmat section");
+        for c in HAZMAT_COMMANDS {
+            let name = c.name.replace('-', "\\-");
+            assert!(!everyday.contains(&format!(".SS {name}\n")), "{name}");
+            assert!(hazmat.contains(&format!(".SS hazmat {name}\n")), "{name}");
+        }
     }
 
     #[test]

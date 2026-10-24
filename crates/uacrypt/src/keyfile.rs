@@ -363,7 +363,7 @@ pub(crate) fn read_key(
 mod tests {
     use super::*;
 
-    /// Computed outside this module (Python builds the check preimage, `uacrypt kupyna-digest`
+    /// Computed outside this module (Python builds the check preimage, `uacrypt hazmat kupyna-digest`
     /// hashes it), key bytes `00 01 02 ...`, 2026-09-24. Pins the format.
     const GOLDEN: [(KeyKind, &str); 11] = [
         (KeyKind::Symmetric, "UACRYPT-SECRET-SYMMETRIC:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f:02348388"),
@@ -373,7 +373,7 @@ mod tests {
         (KeyKind::Sign257Public, "uacrypt-sign257-public:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f4041:1ef4eb6f"),
         (KeyKind::Box256Secret, "UACRYPT-SECRET-BOX256:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f:789b33a5"),
         (KeyKind::Box256Public, "uacrypt-box256-public:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f:4614d28c"),
-        // T-297, 2026-10-19, the same way (Python preimage, `uacrypt kupyna-digest` digest).
+        // T-297, 2026-10-19, the same way (Python preimage, `uacrypt hazmat kupyna-digest` digest).
         (KeyKind::Box384Secret, "UACRYPT-SECRET-BOX384:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f:f68a0bc1"),
         (KeyKind::Box384Public, "uacrypt-box384-public:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f:c0e3f38c"),
         (KeyKind::Box512Secret, "UACRYPT-SECRET-BOX512:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f:52b7ab4d"),

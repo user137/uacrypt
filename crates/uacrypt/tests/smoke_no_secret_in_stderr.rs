@@ -74,6 +74,7 @@ fn kalyna_block_wrong_key_length_does_not_leak_key() {
     write_bytes(&pt, &[0x22; 32]);
 
     let args = [
+        "hazmat",
         "kalyna-block",
         "encrypt",
         "--variant",
@@ -110,6 +111,7 @@ fn kalyna_ccm_tampered_tag_does_not_leak_key() {
     write_bytes(&pt, b"kalyna-ccm no-secret-leak test");
 
     assert!(uacrypt([
+        "hazmat",
         "kalyna-ccm",
         "encrypt",
         "--variant",
@@ -132,6 +134,7 @@ fn kalyna_ccm_tampered_tag_does_not_leak_key() {
     write_bytes(&tag, &tag_bytes);
 
     let args = [
+        "hazmat",
         "kalyna-ccm",
         "decrypt",
         "--variant",
@@ -172,6 +175,7 @@ fn kalyna_gcm_tampered_tag_does_not_leak_key() {
     );
 
     assert!(uacrypt([
+        "hazmat",
         "kalyna-gcm",
         "encrypt",
         "--variant",
@@ -193,6 +197,7 @@ fn kalyna_gcm_tampered_tag_does_not_leak_key() {
     write_bytes(&tag, &tag_bytes);
 
     let args = [
+        "hazmat",
         "kalyna-gcm",
         "decrypt",
         "--variant",
@@ -227,6 +232,7 @@ fn kalyna_gmac_tampered_tag_does_not_leak_key() {
     write_bytes(&msg, b"gmac no-secret-leak test message");
 
     assert!(uacrypt([
+        "hazmat",
         "kalyna-gmac",
         "compute",
         "--variant",
@@ -244,6 +250,7 @@ fn kalyna_gmac_tampered_tag_does_not_leak_key() {
     write_bytes(&tag, &tag_bytes);
 
     let args = [
+        "hazmat",
         "kalyna-gmac",
         "verify",
         "--variant",
@@ -275,6 +282,7 @@ fn kalyna_kw_corrupted_wrapped_data_does_not_leak_key() {
     write_bytes(&material, &[0x88; 32]);
 
     assert!(uacrypt([
+        "hazmat",
         "kalyna-kw",
         "wrap",
         "--variant",
@@ -293,6 +301,7 @@ fn kalyna_kw_corrupted_wrapped_data_does_not_leak_key() {
     write_bytes(&wrapped, &wrapped_bytes);
 
     let args = [
+        "hazmat",
         "kalyna-kw",
         "unwrap",
         "--variant",
@@ -325,6 +334,7 @@ fn kalyna_xts_wrong_key_length_does_not_leak_key() {
     write_bytes(&pt, &[0xAA; 32]);
 
     let args = [
+        "hazmat",
         "kalyna-xts",
         "encrypt",
         "--variant",
@@ -362,6 +372,7 @@ fn strumok_crypt_wrong_key_length_does_not_leak_key() {
     write_bytes(&pt, b"strumok-crypt no-secret-leak test");
 
     let args = [
+        "hazmat",
         "strumok-crypt",
         "--variant",
         "256",

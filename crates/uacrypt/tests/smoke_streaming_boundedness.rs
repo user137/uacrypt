@@ -44,6 +44,7 @@ fn kupyna_digest_stays_memory_bounded_on_a_large_file() {
     let out = dir.file("digest.bin");
 
     let (r, peak) = uacrypt_with_peak_rss([
+        "hazmat",
         "kupyna-digest",
         "--variant",
         "256",
@@ -74,6 +75,7 @@ fn strumok_crypt_stays_memory_bounded_on_a_large_file() {
     write_large_file(&input, LARGE_FILE_BYTES);
 
     let (r, peak) = uacrypt_with_peak_rss([
+        "hazmat",
         "strumok-crypt",
         "--variant",
         "256",

@@ -63,8 +63,8 @@ uacrypt decrypt --in sealed.bin --out decrypted.bin              # asks for the 
 ```
 
 See [`docs/CLI.md`](https://github.com/user137/uacrypt/blob/master/docs/CLI.md) for the full
-command reference (`sign`/`verify`, `box-seal`/`box-open`, and the lower-level `kalyna-block`/
-`kalyna-ccm` tools) and for verifying a downloaded release (signed checksums, provenance), and
+command reference (`sign`/`verify`, `box-seal`/`box-open`, and the low-level `uacrypt hazmat`
+tools) and for verifying a downloaded release (signed checksums, provenance), and
 [docs.rs](https://docs.rs/dstu-core) for the full library API.
 
 ## Language bindings

@@ -117,6 +117,9 @@ pub enum CliError {
     },
     /// `kalyna-cmac`, removed in 0.7 because DSTU 7624 §9's CMAC can be forged (T-298, D-247).
     RemovedForgeableCmac,
+    /// A low-level command called by its pre-0.8 top-level name; it now lives under `hazmat`
+    /// (T-317, D-264). Holds the command's name.
+    MovedToHazmat(&'static str),
     MissingSubcommand(&'static str),
     UnknownVariant(String),
     MissingFlag(&'static str),
@@ -302,6 +305,11 @@ impl fmt::Display for CliError {
                 "`kalyna-cmac` was removed in uacrypt 0.7: DSTU 7624 section 9 CMAC tags can be \
                  forged from chosen messages (docs/DECISIONS.md D-247). The construction stays in \
                  the dstu-core library (hazmat::kalyna_cmac) for interop with that text only"
+            ),
+            CliError::MovedToHazmat(name) => write!(
+                f,
+                "`{name}` moved in uacrypt 0.8 - use `uacrypt hazmat {name}` (a low-level command \
+                 without misuse protection; see `uacrypt hazmat`)"
             ),
             CliError::MissingSubcommand(choices) => {
                 write!(f, "missing subcommand: expected one of {choices}")
@@ -655,6 +663,7 @@ impl CliError {
             CliError::UnknownCommand { .. }
             | CliError::RemovedCommand { .. }
             | CliError::RemovedForgeableCmac
+            | CliError::MovedToHazmat(_)
             | CliError::MissingSubcommand(_)
             | CliError::UnknownVariant(_)
             | CliError::MissingFlag(_)
@@ -4582,7 +4591,7 @@ pub fn run_strumok_command(args: &StrumokArgs) -> Result<(), CliError> {
 }
 
 /// `true` for `--help`/`-h` - checked against every token in a (sub)command's remaining args
-/// (not just the first one), so `uacrypt kalyna-block encrypt --key k --help` still shows help
+/// (not just the first one), so `uacrypt hazmat kalyna-block encrypt --key k --help` still shows help
 /// instead of failing on a missing `--in`/`--out`.
 fn is_help_flag(s: &str) -> bool {
     s == "--help" || s == "-h"
@@ -4633,15 +4642,9 @@ EVERYDAY COMMANDS:
     box-open        Decrypt a file produced by `box-seal`.
     key-import      Convert a raw key file from uacrypt 0.4 or older into a typed key file.
 
-LOWER-LEVEL COMMANDS (benchmarking and interop with other DSTU implementations):
-    kalyna-block    Single Kalyna block encrypt/decrypt - exactly one block, no file support.
-    kalyna-ccm      Kalyna-CCM authenticated encryption - messages/AAD capped at 255 bytes.
-    kalyna-gcm      Kalyna-GCM authenticated encryption - no message-length cap.
-    kalyna-gmac     Kalyna-GMAC message authentication (compute/verify a tag, no encryption).
-    kalyna-kw       Kalyna key wrap/unwrap - wraps block-aligned key material, not a general cipher.
-    kalyna-xts      Kalyna-XTS disk-sector mode - confidentiality only, no tag, by design.
-    kupyna-digest   Kupyna hash with a selectable variant (256/512) and a benchmark --iterations flag.
-    strumok-crypt   Strumok keystream cipher - NOT authenticated, tampering is never detected.
+LOW-LEVEL PRIMITIVES (benchmarking and interop with other DSTU implementations):
+    hazmat          Raw Kalyna modes, Kupyna and Strumok with no misuse protection - `uacrypt
+                    hazmat` lists them. Not for protecting files: use the commands above.
 
 SHELL INTEGRATION:
     completions     Print a tab-completion script for bash, zsh, fish or PowerShell.
@@ -4656,9 +4659,9 @@ FILE FORMATS (byte layouts, with field sizes in bytes: see docs/CLI.md 'File for
     box-seal        version (1, = 3) || KEM ciphertext (128 / 176 / 256 by curve), then the
                     `encrypt` stream above (its own version, header, records)
     key files       one text line `<kind>:<key hex>:<check hex>`, see docs/CLI.md 'Key files';
-                    the lower-level commands above take raw key bytes instead
-    kalyna-gcm/-gmac write raw ciphertext/tag files with no container and no format version, so
-    use `encrypt` or `box-seal` for files.
+                    the `hazmat` commands take raw key bytes instead
+    `hazmat kalyna-gcm`/`kalyna-gmac` write raw ciphertext/tag files with no container and no
+    format version, so use `encrypt` or `box-seal` for files.
 
 The curve is chosen once, by the keygen command; every other command reads it from the key.
 
@@ -5097,14 +5100,14 @@ Notes:
 ";
 
 const KALYNA_BLOCK_HELP: &str = "\
-uacrypt kalyna-block - encrypt or decrypt exactly one Kalyna block, no mode of operation.
+uacrypt hazmat kalyna-block - encrypt or decrypt exactly one Kalyna block, no mode of operation.
 
 Low-level: this is a single block-cipher call, not a file-encryption tool - it does not chain
 multiple blocks or add padding. For encrypting a whole file, use `encrypt`/`decrypt` instead.
 
 USAGE:
-    uacrypt kalyna-block encrypt --variant <v> --key <path> --in <path> --out <path> [--force]
-    uacrypt kalyna-block decrypt --variant <v> --key <path> --in <path> --out <path> [--force]
+    uacrypt hazmat kalyna-block encrypt --variant <v> --key <path> --in <path> --out <path> [--force]
+    uacrypt hazmat kalyna-block decrypt --variant <v> --key <path> --in <path> --out <path> [--force]
 
 FLAGS:
     --variant <v>      one of 128-128, 128-256, 256-256, 256-512, 512-512 (block/key size in bits)
@@ -5116,18 +5119,18 @@ FLAGS:
     --raw-schedule     (benchmarking only) re-expand the key schedule on every iteration
 
 EXAMPLE:
-    uacrypt kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out block.enc
+    uacrypt hazmat kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out block.enc
 ";
 
 const KALYNA_CCM_HELP: &str = "\
-uacrypt kalyna-ccm - Kalyna-CCM authenticated encryption (DSTU 7624:2014 §13, docs/DECISIONS.md D-205).
+uacrypt hazmat kalyna-ccm - Kalyna-CCM authenticated encryption (DSTU 7624:2014 §13, docs/DECISIONS.md D-205).
 
 Messages and AAD are capped at 255 bytes each (see hazmat::kalyna_ccm docs) - for larger files use
 `encrypt`/`decrypt` instead, which have no such cap.
 
 USAGE:
-    uacrypt kalyna-ccm encrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--force]
-    uacrypt kalyna-ccm decrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--force]
+    uacrypt hazmat kalyna-ccm encrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--force]
+    uacrypt hazmat kalyna-ccm decrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--force]
 
 FLAGS:
     --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
@@ -5142,12 +5145,12 @@ FLAGS:
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
-    uacrypt kalyna-ccm encrypt --variant 128-256 --key key.bin --nonce nonce.bin --in msg.bin \\
+    uacrypt hazmat kalyna-ccm encrypt --variant 128-256 --key key.bin --nonce nonce.bin --in msg.bin \\
         --out msg.enc --tag tag.bin
 ";
 
 const KALYNA_GCM_HELP: &str = "\
-uacrypt kalyna-gcm - Kalyna-GCM authenticated encryption (DSTU 7624:2014 §12, docs/DECISIONS.md D-204).
+uacrypt hazmat kalyna-gcm - Kalyna-GCM authenticated encryption (DSTU 7624:2014 §12, docs/DECISIONS.md D-204).
 
 Benchmarking/interop tool (docs/DECISIONS.md D-31/D-71), same shape as `kalyna-ccm` but with no
 message-length cap - for everyday use, `encrypt`/`decrypt` (crypto_secretstream) are simpler and
@@ -5159,8 +5162,8 @@ WARNING:
     with no --aad is rejected (D-207). For files, use `encrypt` or `box-seal`.
 
 USAGE:
-    uacrypt kalyna-gcm encrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--iterations <n>] [--force]
-    uacrypt kalyna-gcm decrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--iterations <n>] [--force]
+    uacrypt hazmat kalyna-gcm encrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--iterations <n>] [--force]
+    uacrypt hazmat kalyna-gcm decrypt --variant <v> --key <path> --nonce <path> --in <path> --out <path> --tag <path> [--aad <path>] [--iterations <n>] [--force]
 
 FLAGS:
     --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
@@ -5175,12 +5178,12 @@ FLAGS:
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
-    uacrypt kalyna-gcm encrypt --variant 128-256 --key key.bin --nonce nonce.bin --in msg.bin \\
+    uacrypt hazmat kalyna-gcm encrypt --variant 128-256 --key key.bin --nonce nonce.bin --in msg.bin \\
         --out msg.enc --tag tag.bin
 ";
 
 const KALYNA_GMAC_HELP: &str = "\
-uacrypt kalyna-gmac - Kalyna-GMAC message authentication, for benchmarking/interop (docs/DECISIONS.md D-31/D-71).
+uacrypt hazmat kalyna-gmac - Kalyna-GMAC message authentication, for benchmarking/interop (docs/DECISIONS.md D-31/D-71).
 
 Computes or verifies a full-block-length tag over a message - no encryption, no nonce (unlike
 kalyna-gcm, hazmat::kalyna_gmac takes none). Do not reuse this key for any encryption mode.
@@ -5190,8 +5193,8 @@ WARNING:
     (docs/DECISIONS.md D-207). Use `sign` to prove who wrote a file.
 
 USAGE:
-    uacrypt kalyna-gmac compute --variant <v> --key <path> --in <path> --out <path> [--iterations <n>] [--force]
-    uacrypt kalyna-gmac verify --variant <v> --key <path> --in <path> --tag <path> [--iterations <n>]
+    uacrypt hazmat kalyna-gmac compute --variant <v> --key <path> --in <path> --out <path> [--iterations <n>] [--force]
+    uacrypt hazmat kalyna-gmac verify --variant <v> --key <path> --in <path> --tag <path> [--iterations <n>]
 
 FLAGS:
     --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
@@ -5203,18 +5206,18 @@ FLAGS:
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
-    uacrypt kalyna-gmac compute --variant 128-128 --key key.bin --in msg.bin --out tag.bin
+    uacrypt hazmat kalyna-gmac compute --variant 128-128 --key key.bin --in msg.bin --out tag.bin
 ";
 
 const KALYNA_KW_HELP: &str = "\
-uacrypt kalyna-kw - Kalyna key wrap/unwrap, for benchmarking/interop (docs/DECISIONS.md D-31/D-71).
+uacrypt hazmat kalyna-kw - Kalyna key wrap/unwrap, for benchmarking/interop (docs/DECISIONS.md D-31/D-71).
 
 Wraps block-aligned key material (1..=20 blocks) into a blob one block longer, with a checksum
 block for tamper-evidence - not a general-purpose cipher, see hazmat::kalyna_kw docs.
 
 USAGE:
-    uacrypt kalyna-kw wrap --variant <v> --key <path> --in <path> --out <path> [--iterations <n>] [--force]
-    uacrypt kalyna-kw unwrap --variant <v> --key <path> --in <path> --out <path> [--iterations <n>] [--force]
+    uacrypt hazmat kalyna-kw wrap --variant <v> --key <path> --in <path> --out <path> [--iterations <n>] [--force]
+    uacrypt hazmat kalyna-kw unwrap --variant <v> --key <path> --in <path> --out <path> [--iterations <n>] [--force]
 
 FLAGS:
     --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
@@ -5225,18 +5228,18 @@ FLAGS:
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
-    uacrypt kalyna-kw wrap --variant 128-128 --key kek.bin --in key-to-wrap.bin --out wrapped.bin
+    uacrypt hazmat kalyna-kw wrap --variant 128-128 --key kek.bin --in key-to-wrap.bin --out wrapped.bin
 ";
 
 const KALYNA_XTS_HELP: &str = "\
-uacrypt kalyna-xts - Kalyna-XTS disk-sector mode, for benchmarking/interop (docs/DECISIONS.md D-31/D-71).
+uacrypt hazmat kalyna-xts - Kalyna-XTS disk-sector mode, for benchmarking/interop (docs/DECISIONS.md D-31/D-71).
 
 Confidentiality only, no tag - the correct design for disk-sector encryption, not a gap (see
 hazmat::kalyna_xts docs). --in must be at least one block long.
 
 USAGE:
-    uacrypt kalyna-xts encrypt --variant <v> --key <path> --tweak <path> --in <path> --out <path> [--iterations <n>] [--force]
-    uacrypt kalyna-xts decrypt --variant <v> --key <path> --tweak <path> --in <path> --out <path> [--iterations <n>] [--force]
+    uacrypt hazmat kalyna-xts encrypt --variant <v> --key <path> --tweak <path> --in <path> --out <path> [--iterations <n>] [--force]
+    uacrypt hazmat kalyna-xts decrypt --variant <v> --key <path> --tweak <path> --in <path> --out <path> [--iterations <n>] [--force]
 
 FLAGS:
     --variant <v>    one of 128-128, 128-256, 256-256, 256-512, 512-512
@@ -5249,17 +5252,17 @@ FLAGS:
     --iterations <n> (benchmarking only) repeat the operation n times, print timing to stderr
 
 EXAMPLE:
-    uacrypt kalyna-xts encrypt --variant 128-128 --key key.bin --tweak tweak.bin --in sector.bin \\
+    uacrypt hazmat kalyna-xts encrypt --variant 128-128 --key key.bin --tweak tweak.bin --in sector.bin \\
         --out sector.enc
 ";
 
 const KUPYNA_DIGEST_HELP: &str = "\
-uacrypt kupyna-digest - Kupyna hash with a selectable variant, for benchmarking/interop.
+uacrypt hazmat kupyna-digest - Kupyna hash with a selectable variant, for benchmarking/interop.
 
 For everyday hashing, `hash` is simpler (fixed to Kupyna-256, no --variant flag needed).
 
 USAGE:
-    uacrypt kupyna-digest --variant <v> --in <path> --out <path> [--iterations <n>] [--force]
+    uacrypt hazmat kupyna-digest --variant <v> --in <path> --out <path> [--iterations <n>] [--force]
 
 FLAGS:
     --variant <v>      256 or 512
@@ -5269,11 +5272,11 @@ FLAGS:
     --iterations <n>   (benchmarking only) re-hash n times, print timing/MB-per-s to stderr
 
 EXAMPLE:
-    uacrypt kupyna-digest --variant 512 --in report.pdf --out report.pdf.kupyna512
+    uacrypt hazmat kupyna-digest --variant 512 --in report.pdf --out report.pdf.kupyna512
 ";
 
 const STRUMOK_CRYPT_HELP: &str = "\
-uacrypt strumok-crypt - Strumok keystream cipher (XOR-based), for benchmarking/interop.
+uacrypt hazmat strumok-crypt - Strumok keystream cipher (XOR-based), for benchmarking/interop.
 
 WARNING: NOT authenticated. A tampered output file decrypts silently into wrong plaintext instead
 of an error - there is no tag to detect it. For a file cipher that detects tampering, use
@@ -5281,7 +5284,7 @@ of an error - there is no tag to detect it. For a file cipher that detects tampe
 doing so lets an attacker recover both messages by XORing the two ciphertexts together.
 
 USAGE:
-    uacrypt strumok-crypt --variant <v> --key <path> --iv <path> --in <path> --out <path> \\
+    uacrypt hazmat strumok-crypt --variant <v> --key <path> --iv <path> --in <path> --out <path> \\
         [--iterations <n>] [--raw-schedule] [--force]
 
 FLAGS:
@@ -5295,8 +5298,33 @@ FLAGS:
     --raw-schedule     (benchmarking only) re-initialize the cipher fresh on every iteration
 
 EXAMPLE:
-    uacrypt strumok-crypt --variant 256 --key key.bin --iv iv.bin --in msg.bin --out msg.enc
+    uacrypt hazmat strumok-crypt --variant 256 --key key.bin --iv iv.bin --in msg.bin --out msg.enc
 ";
+
+const HAZMAT_HELP: &str = "\
+uacrypt hazmat - low-level DSTU primitives, for benchmarking and interop with other implementations.
+
+These commands have no misuse protection: you choose the mode, nonce, IV and key bytes, and some
+detect no tampering at all. A repeated nonce or IV, or a missing tag check, can expose or forge
+your data. To protect a file, use `encrypt`/`decrypt`, `box-seal`/`box-open` or `sign`/`verify`
+instead. Every run prints a warning to stderr.
+
+USAGE:
+    uacrypt hazmat <command> [flags]
+    uacrypt hazmat <command> --help    show that command's flags and an example invocation
+
+COMMANDS:
+    kalyna-block    Single Kalyna block encrypt/decrypt - exactly one block, no file support.
+    kalyna-ccm      Kalyna-CCM authenticated encryption - messages/AAD capped at 255 bytes.
+    kalyna-gcm      Kalyna-GCM authenticated encryption - no message-length cap.
+    kalyna-gmac     Kalyna-GMAC message authentication (compute/verify a tag, no encryption).
+    kalyna-kw       Kalyna key wrap/unwrap - wraps block-aligned key material, not a general cipher.
+    kalyna-xts      Kalyna-XTS disk-sector mode - confidentiality only, no tag, by design.
+    kupyna-digest   Kupyna hash with a selectable variant (256/512), for benchmarking.
+    strumok-crypt   Strumok keystream cipher - NOT authenticated, tampering is never detected.
+
+They take raw key, nonce, IV and tag files (no typed key files) and write raw output with no
+container or format version.";
 
 const COMPLETIONS_HELP: &str = "uacrypt completions - print a tab-completion script for your shell.
 
@@ -5520,6 +5548,32 @@ pub(crate) const COMMANDS: &[Command] = &[
     command("box-keygen512", BOX_KEYGEN512_HELP, &OUT_ONLY_FLAGS),
     command("key-import", KEY_IMPORT_HELP, &KEY_IMPORT_FLAGS),
     Command {
+        subcommands: HAZMAT_NAMES,
+        ..command("hazmat", HAZMAT_HELP, &NO_FLAGS)
+    },
+    Command {
+        subcommands: SHELLS,
+        ..command("completions", COMPLETIONS_HELP, &NO_FLAGS)
+    },
+    command("man", MAN_HELP, &NO_FLAGS),
+];
+
+/// The commands under `uacrypt hazmat` (T-317, D-264), in [`HAZMAT_COMMANDS`]' order.
+const HAZMAT_NAMES: &[&str] = &[
+    "kalyna-block",
+    "kalyna-ccm",
+    "kalyna-gcm",
+    "kalyna-gmac",
+    "kalyna-kw",
+    "kalyna-xts",
+    "kupyna-digest",
+    "strumok-crypt",
+];
+
+/// The low-level commands, reachable only as `uacrypt hazmat <name>` (T-317, D-264): kept out of
+/// [`COMMANDS`] so the everyday help, suggestions and completions never offer them.
+pub(crate) const HAZMAT_COMMANDS: &[Command] = &[
+    Command {
         subcommands: ENCRYPT_DECRYPT,
         ..command("kalyna-block", KALYNA_BLOCK_HELP, &BLOCK_FLAGS)
     },
@@ -5545,11 +5599,18 @@ pub(crate) const COMMANDS: &[Command] = &[
     },
     command("kupyna-digest", KUPYNA_DIGEST_HELP, &DIGEST_FLAGS),
     command("strumok-crypt", STRUMOK_CRYPT_HELP, &STRUMOK_FLAGS),
-    Command {
-        subcommands: SHELLS,
-        ..command("completions", COMPLETIONS_HELP, &NO_FLAGS)
-    },
-    command("man", MAN_HELP, &NO_FLAGS),
+];
+
+/// Each hazmat command's `hazmat <name>` form, the suggestion for a near miss of its old name.
+const HAZMAT_MOVED: &[&str] = &[
+    "hazmat kalyna-block",
+    "hazmat kalyna-ccm",
+    "hazmat kalyna-gcm",
+    "hazmat kalyna-gmac",
+    "hazmat kalyna-kw",
+    "hazmat kalyna-xts",
+    "hazmat kupyna-digest",
+    "hazmat strumok-crypt",
 ];
 
 fn command_help(command: &str) -> Option<&'static str> {
@@ -5570,6 +5631,9 @@ fn unknown_command(command: &str) -> CliError {
     if command == "kalyna-cmac" {
         return CliError::RemovedForgeableCmac;
     }
+    if let Some(&name) = HAZMAT_NAMES.iter().find(|n| **n == command) {
+        return CliError::MovedToHazmat(name);
+    }
     if let Some(&(_, replacement)) = REMOVED_COMMANDS.iter().find(|(old, _)| *old == command) {
         return CliError::RemovedCommand {
             command: command.to_string(),
@@ -5577,9 +5641,14 @@ fn unknown_command(command: &str) -> CliError {
         };
     }
     let names = COMMANDS.iter().map(|c| c.name).chain(["help"]);
+    let moved = || {
+        let near = suggest(command, HAZMAT_NAMES.iter().copied())?;
+        let i = HAZMAT_NAMES.iter().position(|n| *n == near)?;
+        HAZMAT_MOVED.get(i).copied()
+    };
     CliError::UnknownCommand {
         command: command.to_string(),
-        suggestion: suggest(command, names),
+        suggestion: suggest(command, names).or_else(moved),
     }
 }
 
@@ -5595,7 +5664,99 @@ fn unknown_subcommand(cmd: &str, other: &str, choices: &[&'static str]) -> CliEr
 /// Prints one command's `--help` text to stdout, or [`TOP_LEVEL_HELP`] for anything not in
 /// [`COMMANDS`] (including `""`).
 fn print_command_help(command: &str) {
-    println!("{}", command_help(command).unwrap_or(TOP_LEVEL_HELP));
+    let hazmat = || {
+        HAZMAT_COMMANDS
+            .iter()
+            .find(|c| c.name == command)
+            .map(|c| c.help)
+    };
+    println!(
+        "{}",
+        command_help(command)
+            .or_else(hazmat)
+            .unwrap_or(TOP_LEVEL_HELP)
+    );
+}
+
+/// The one-line stderr warning every `uacrypt hazmat <name>` run prints (T-317, D-264), naming
+/// the everyday command to use instead.
+fn hazmat_warning(name: &str) -> String {
+    let instead = match name {
+        "kupyna-digest" => "use 'hash' for file digests",
+        "kalyna-gmac" => "use 'sign'/'verify' to authenticate files",
+        "kalyna-kw" => "use 'encrypt' or 'box-seal' to protect keys and files",
+        _ => "use 'encrypt' for files",
+    };
+    format!("uacrypt: warning: 'hazmat {name}' is a low-level primitive with no misuse protection - {instead}")
+}
+
+/// `uacrypt hazmat <command>` (T-317, D-264): the low-level commands, each warning on stderr
+/// before it runs (not for `--help`). No command, or a help flag, prints [`HAZMAT_HELP`].
+fn run_hazmat_command(args: &[String]) -> Result<(), CliError> {
+    let Some(cmd) = args.first().map(String::as_str) else {
+        print_command_help("hazmat");
+        return Ok(());
+    };
+    if is_help_flag(cmd) {
+        print_command_help("hazmat");
+        return Ok(());
+    }
+    if HAZMAT_NAMES.contains(&cmd) && !args[1..].iter().any(|a| is_help_flag(a)) {
+        eprintln!("{}", hazmat_warning(cmd));
+    }
+    match cmd {
+        "kalyna-block" => {
+            let rest = &args[1..];
+            if rest.iter().any(|a| is_help_flag(a)) {
+                print_command_help("kalyna-block");
+                return Ok(());
+            }
+            match rest.first().map(String::as_str) {
+                Some("encrypt") => run_block_command(false, &parse_block_args(&rest[1..])?),
+                Some("decrypt") => run_block_command(true, &parse_block_args(&rest[1..])?),
+                Some(other) => Err(unknown_subcommand(
+                    "kalyna-block",
+                    other,
+                    &["encrypt", "decrypt"],
+                )),
+                None => Err(CliError::MissingSubcommand("encrypt|decrypt")),
+            }
+        }
+        "kalyna-ccm" => {
+            let rest = &args[1..];
+            if rest.iter().any(|a| is_help_flag(a)) {
+                print_command_help("kalyna-ccm");
+                return Ok(());
+            }
+            match rest.first().map(String::as_str) {
+                Some("encrypt") => run_ccm_command(false, &parse_ccm_args(&rest[1..])?),
+                Some("decrypt") => run_ccm_command(true, &parse_ccm_args(&rest[1..])?),
+                Some(other) => Err(unknown_subcommand(
+                    "kalyna-ccm",
+                    other,
+                    &["encrypt", "decrypt"],
+                )),
+                None => Err(CliError::MissingSubcommand("encrypt|decrypt")),
+            }
+        }
+        cmd @ ("kalyna-gcm" | "kalyna-gmac" | "kalyna-kw" | "kalyna-xts") => {
+            dispatch_kalyna_mode(cmd, &args[1..])
+        }
+        "kupyna-digest" => dispatch_simple(
+            "kupyna-digest",
+            &args[1..],
+            parse_digest_args,
+            run_digest_command,
+        ),
+        "strumok-crypt" => dispatch_simple(
+            "strumok-crypt",
+            &args[1..],
+            parse_strumok_args,
+            run_strumok_command,
+        ),
+        "kalyna-cmac" => Err(CliError::RemovedForgeableCmac),
+        other => Err(unknown_subcommand("hazmat", other, HAZMAT_NAMES)),
+    }
 }
 
 /// `uacrypt help [command]`: no argument prints the top-level help, a known command its own help;
@@ -5757,55 +5918,7 @@ pub fn run(args: &[String]) -> Result<(), CliError> {
             );
             Ok(())
         }
-        Some("kalyna-block") => {
-            let rest = &args[1..];
-            if rest.iter().any(|a| is_help_flag(a)) {
-                print_command_help("kalyna-block");
-                return Ok(());
-            }
-            match rest.first().map(String::as_str) {
-                Some("encrypt") => run_block_command(false, &parse_block_args(&rest[1..])?),
-                Some("decrypt") => run_block_command(true, &parse_block_args(&rest[1..])?),
-                Some(other) => Err(unknown_subcommand(
-                    "kalyna-block",
-                    other,
-                    &["encrypt", "decrypt"],
-                )),
-                None => Err(CliError::MissingSubcommand("encrypt|decrypt")),
-            }
-        }
-        Some("kalyna-ccm") => {
-            let rest = &args[1..];
-            if rest.iter().any(|a| is_help_flag(a)) {
-                print_command_help("kalyna-ccm");
-                return Ok(());
-            }
-            match rest.first().map(String::as_str) {
-                Some("encrypt") => run_ccm_command(false, &parse_ccm_args(&rest[1..])?),
-                Some("decrypt") => run_ccm_command(true, &parse_ccm_args(&rest[1..])?),
-                Some(other) => Err(unknown_subcommand(
-                    "kalyna-ccm",
-                    other,
-                    &["encrypt", "decrypt"],
-                )),
-                None => Err(CliError::MissingSubcommand("encrypt|decrypt")),
-            }
-        }
-        Some(cmd @ ("kalyna-gcm" | "kalyna-gmac" | "kalyna-kw" | "kalyna-xts")) => {
-            dispatch_kalyna_mode(cmd, &args[1..])
-        }
-        Some("kupyna-digest") => dispatch_simple(
-            "kupyna-digest",
-            &args[1..],
-            parse_digest_args,
-            run_digest_command,
-        ),
-        Some("strumok-crypt") => dispatch_simple(
-            "strumok-crypt",
-            &args[1..],
-            parse_strumok_args,
-            run_strumok_command,
-        ),
+        Some("hazmat") => run_hazmat_command(&args[1..]),
         Some("hash") => dispatch_simple("hash", &args[1..], parse_hash_args, run_hash_command),
         Some("keygen") => {
             dispatch_simple("keygen", &args[1..], parse_keygen_args, run_keygen_command)
@@ -7492,10 +7605,7 @@ mod tests {
             "sign-pubkey",
             "sign",
             "verify",
-            "kalyna-block",
-            "kalyna-ccm",
-            "kupyna-digest",
-            "strumok-crypt",
+            "hazmat",
         ] {
             assert!(
                 run(&[command.to_string(), "--help".to_string()]).is_ok(),
@@ -7506,14 +7616,21 @@ mod tests {
 
     #[test]
     fn run_kalyna_subcommand_help_succeeds_before_and_after_encrypt_decrypt() {
-        assert!(run(&["kalyna-block".to_string(), "--help".to_string()]).is_ok());
         assert!(run(&[
+            "hazmat".to_string(),
+            "kalyna-block".to_string(),
+            "--help".to_string()
+        ])
+        .is_ok());
+        assert!(run(&[
+            "hazmat".to_string(),
             "kalyna-block".to_string(),
             "encrypt".to_string(),
             "--help".to_string()
         ])
         .is_ok());
         assert!(run(&[
+            "hazmat".to_string(),
             "kalyna-ccm".to_string(),
             "decrypt".to_string(),
             "-h".to_string()
@@ -7526,6 +7643,7 @@ mod tests {
         // `--key k` alone is missing --in/--out, which would normally error - --help must still
         // win and print help instead of surfacing that MissingFlag error.
         assert!(run(&[
+            "hazmat".to_string(),
             "kalyna-block".to_string(),
             "encrypt".to_string(),
             "--key".to_string(),
@@ -7970,7 +8088,7 @@ mod tests {
     fn run_dispatches_all_five_new_kalyna_mode_commands_help() {
         for cmd in ["kalyna-gcm", "kalyna-gmac", "kalyna-kw", "kalyna-xts"] {
             assert!(
-                run(&[cmd.to_string(), "--help".to_string()]).is_ok(),
+                run(&["hazmat".to_string(), cmd.to_string(), "--help".to_string()]).is_ok(),
                 "{cmd} --help should succeed"
             );
         }
@@ -7984,6 +8102,7 @@ mod tests {
 
         let path = |p: &std::path::Path| p.to_str().expect("valid utf-8 path").to_string();
         let encrypt: Vec<String> = [
+            "hazmat",
             "kalyna-gcm",
             "encrypt",
             "--variant",
@@ -8005,6 +8124,7 @@ mod tests {
         run(&encrypt).expect("encrypt dispatch should succeed");
 
         let decrypt: Vec<String> = [
+            "hazmat",
             "kalyna-gcm",
             "decrypt",
             "--variant",
@@ -8033,7 +8153,11 @@ mod tests {
     #[test]
     fn run_unknown_subcommand_for_each_new_mode_is_rejected() {
         for cmd in ["kalyna-gcm", "kalyna-gmac", "kalyna-kw", "kalyna-xts"] {
-            let result = run(&[cmd.to_string(), "not-a-real-subcommand".to_string()]);
+            let result = run(&[
+                "hazmat".to_string(),
+                cmd.to_string(),
+                "not-a-real-subcommand".to_string(),
+            ]);
             assert!(
                 matches!(result, Err(CliError::UnknownCommand { .. })),
                 "{cmd} with an unknown subcommand should be rejected, got {result:?}"
@@ -9972,7 +10096,7 @@ mod tests {
             let head = arm.split("=>").next().unwrap_or_default();
             found.extend(head.split('"').skip(1).step_by(2).map(str::to_string));
         }
-        assert!(found.len() > 20, "{found:?}");
+        assert!(found.len() > 15, "{found:?}");
         for name in found.iter().filter(|n| *n != "help") {
             assert!(
                 COMMANDS.iter().any(|c| c.name == name),
@@ -10004,9 +10128,96 @@ mod tests {
             BOX_SEAL_HELP,
             BOX_OPEN_HELP,
             BOX_KEYGEN512_HELP,
+            HAZMAT_HELP,
         ] {
             assert!(!has_ref(help), "{help}");
             assert!(!help.contains("--iterations"), "{help}");
+        }
+    }
+
+    /// T-317: the `hazmat` entry's subcommands, the near-miss suggestions and the hazmat table
+    /// name the same eight commands, in the same order; none of them is a top-level command.
+    #[test]
+    fn hazmat_lists_agree_and_stay_off_the_top_level() {
+        let names: Vec<&str> = HAZMAT_COMMANDS.iter().map(|c| c.name).collect();
+        assert_eq!(names, HAZMAT_NAMES.to_vec());
+        let hazmat = COMMANDS
+            .iter()
+            .find(|c| c.name == "hazmat")
+            .expect("hazmat entry");
+        assert_eq!(hazmat.subcommands, HAZMAT_NAMES);
+        let moved: Vec<String> = names.iter().map(|n| format!("hazmat {n}")).collect();
+        assert_eq!(moved, HAZMAT_MOVED.to_vec());
+        for name in names {
+            assert!(command_help(name).is_none(), "{name}");
+            assert_eq!(unknown_command(name), CliError::MovedToHazmat(name));
+        }
+    }
+
+    #[test]
+    fn every_hazmat_command_has_its_own_help_and_dispatches() {
+        for c in HAZMAT_COMMANDS {
+            assert!(
+                c.help.starts_with(&format!("uacrypt hazmat {} ", c.name)),
+                "{}",
+                c.name
+            );
+            let args = ["hazmat", c.name, "--help"].map(String::from);
+            assert_eq!(run(&args), Ok(()), "{}", c.name);
+        }
+    }
+
+    #[test]
+    fn every_command_run_hazmat_command_dispatches_is_in_the_hazmat_table() {
+        let src = include_str!("lib.rs");
+        let start = src
+            .find("fn run_hazmat_command(args: &[String])")
+            .expect("run_hazmat_command");
+        let body = &src[start
+            ..start
+                + src[start..]
+                    .find(
+                        "
+}
+",
+                    )
+                    .expect("end of run_hazmat_command")];
+        let mut found = Vec::new();
+        for line in body.lines() {
+            let Some(arm) = line.strip_prefix("        ") else {
+                continue;
+            };
+            if arm.starts_with(' ') || !arm.contains("=>") {
+                continue;
+            }
+            let head = arm.split("=>").next().unwrap_or_default();
+            found.extend(head.split('"').skip(1).step_by(2).map(str::to_string));
+        }
+        found.retain(|n| n != "kalyna-cmac");
+        let mut want: Vec<String> = HAZMAT_NAMES.iter().map(|n| (*n).to_string()).collect();
+        found.sort();
+        want.sort();
+        assert_eq!(found, want);
+    }
+
+    #[test]
+    fn hazmat_subcommands_are_the_ones_run_dispatches() {
+        for c in HAZMAT_COMMANDS.iter().filter(|c| !c.subcommands.is_empty()) {
+            for sub in c.subcommands {
+                let r = run(&["hazmat", c.name, sub].map(String::from));
+                assert!(
+                    !matches!(
+                        r,
+                        Err(CliError::UnknownCommand { .. } | CliError::MissingSubcommand(_))
+                    ),
+                    "hazmat {} {sub}: {r:?}",
+                    c.name
+                );
+            }
+            assert!(matches!(
+                run(&["hazmat", c.name, "nope"].map(String::from)),
+                Err(CliError::UnknownCommand { .. })
+            ));
         }
     }
 
@@ -10074,12 +10285,13 @@ mod tests {
     fn every_table_entry_matches_its_parser_both_ways() {
         let all: Vec<&str> = COMMANDS
             .iter()
+            .chain(HAZMAT_COMMANDS)
             .flat_map(|c| c.flags.values.iter().chain(c.flags.bools).copied())
             .collect();
-        for c in COMMANDS {
+        for c in COMMANDS.iter().chain(HAZMAT_COMMANDS) {
             let Some(parse) = parser_for(c.name) else {
                 assert!(
-                    matches!(c.name, "completions" | "man"),
+                    matches!(c.name, "completions" | "man" | "hazmat"),
                     "{}: no parser",
                     c.name
                 );
@@ -10127,7 +10339,7 @@ mod tests {
 
     #[test]
     fn visible_flags_are_in_their_help_and_hidden_ones_are_not() {
-        for c in COMMANDS {
+        for c in COMMANDS.iter().chain(HAZMAT_COMMANDS) {
             let shown = help_flags(c.help);
             for flag in c.flags.visible() {
                 assert!(
@@ -10159,7 +10371,7 @@ mod tests {
             .all(|v| KalynaVariant::parse(v).is_some()));
         assert!(BIT_VARIANTS.iter().all(|v| HashBits::parse(v).is_some()));
         assert_eq!(KEY_KINDS.to_vec(), KeyKind::names().collect::<Vec<_>>());
-        for c in COMMANDS {
+        for c in COMMANDS.iter().chain(HAZMAT_COMMANDS) {
             for (flag, values) in c.flags.choices {
                 assert!(c.flags.values.contains(flag), "{} {flag}", c.name);
                 assert!(!values.is_empty(), "{} {flag}", c.name);
@@ -10171,7 +10383,7 @@ mod tests {
     fn subcommands_are_the_ones_run_dispatches() {
         for c in COMMANDS
             .iter()
-            .filter(|c| !c.subcommands.is_empty() && c.name != "completions")
+            .filter(|c| !c.subcommands.is_empty() && !matches!(c.name, "completions" | "hazmat"))
         {
             for sub in c.subcommands {
                 let r = run(&[c.name.to_string(), (*sub).to_string()]);

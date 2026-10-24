@@ -106,6 +106,7 @@ fn repeated_flag_is_a_usage_error_and_writes_nothing() {
 )]
 fn repeated_bool_flag_is_a_usage_error() {
     let r = uacrypt([
+        "hazmat",
         "kalyna-block",
         "encrypt",
         "--raw-schedule",
@@ -144,7 +145,7 @@ fn flag_followed_by_another_flag_is_a_missing_value() {
     ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
 )]
 fn bool_flag_with_a_value_is_a_usage_error() {
-    let r = uacrypt(["kalyna-block", "encrypt", "--raw-schedule=1"]);
+    let r = uacrypt(["hazmat", "kalyna-block", "encrypt", "--raw-schedule=1"]);
     assert_code(&r, 2);
     assert!(
         r.stderr.contains("--raw-schedule takes no value"),
@@ -223,11 +224,11 @@ fn unknown_command_suggests_the_closest_one() {
     ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
 )]
 fn unknown_subcommand_suggests_the_closest_one() {
-    let r = uacrypt(["kalyna-gcm", "encrpyt"]);
+    let r = uacrypt(["hazmat", "kalyna-gcm", "encrpyt"]);
     assert_code(&r, 2);
     assert!(r.stderr.contains("did you mean `encrypt`?"), "{}", r.stderr);
 
-    let r = uacrypt(["kalyna-gmac", "verfy"]);
+    let r = uacrypt(["hazmat", "kalyna-gmac", "verfy"]);
     assert!(r.stderr.contains("did you mean `verify`?"), "{}", r.stderr);
 }
 
@@ -237,7 +238,7 @@ fn unknown_subcommand_suggests_the_closest_one() {
     ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
 )]
 fn missing_subcommand_names_the_choices_not_a_flag() {
-    let r = uacrypt(["kalyna-kw"]);
+    let r = uacrypt(["hazmat", "kalyna-kw"]);
     assert_code(&r, 2);
     assert!(r.stderr.contains("wrap|unwrap"), "{}", r.stderr);
     assert!(!r.stderr.contains("--wrap"), "{}", r.stderr);
@@ -263,9 +264,9 @@ fn help_command_prints_top_level_and_per_command_help() {
     assert_code(&r, 0);
     assert!(r.stdout.contains("EXIT STATUS:"), "{}", r.stdout);
 
-    let r = uacrypt(["help", "kalyna-gcm"]);
+    let r = uacrypt(["help", "hazmat"]);
     assert_code(&r, 0);
-    assert!(r.stdout.starts_with("uacrypt kalyna-gcm"), "{}", r.stdout);
+    assert!(r.stdout.starts_with("uacrypt hazmat"), "{}", r.stdout);
 }
 
 #[test]
@@ -398,6 +399,7 @@ fn wrong_length_tag_is_a_rejection_not_a_file_problem() {
     write_bytes(&msg, b"message");
     write_bytes(&tag, &[0u8; 3]);
     let r = uacrypt([
+        "hazmat",
         "kalyna-gmac",
         "verify",
         "--variant",

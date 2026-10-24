@@ -103,9 +103,20 @@ fn write_script(dir: &TempDir, shell: &str, ext: &str) -> PathBuf {
 /// The completion cases every shell runs: the command line typed so far, words that must be
 /// offered, words that must not.
 const CASES: &[(&str, &[&str], &[&str])] = &[
-    ("uacrypt kal", &["kalyna-block", "kalyna-xts"], &["keygen"]),
-    ("uacrypt kalyna-block ", &["encrypt", "decrypt"], &["--key"]),
-    ("uacrypt kalyna-block encrypt --it", &["--iterations"], &[]),
+    ("uacrypt haz", &["hazmat"], &["kalyna-block", "keygen"]),
+    ("uacrypt kal", &[], &["kalyna-block", "kalyna-xts"]),
+    (
+        "uacrypt hazmat kal",
+        &["kalyna-block", "kalyna-xts"],
+        &["keygen"],
+    ),
+    // T-317: flags under `hazmat <command>` are deliberately not completed.
+    (
+        "uacrypt hazmat kalyna-block --",
+        &[],
+        &["--key", "--iterations"],
+    ),
+    ("uacrypt completions ", &["bash", "powershell"], &["--key"]),
     (
         "uacrypt sign --",
         &["--key", "--force", "--help"],
@@ -121,7 +132,6 @@ const CASES: &[(&str, &[&str], &[&str])] = &[
         &["box512-secret", "box512-public"],
         &["symmetric"],
     ),
-    ("uacrypt kupyna-digest --variant ", &["256", "512"], &[]),
     ("uacrypt help ver", &["verify"], &[]),
     ("uacrypt completions p", &["powershell"], &[]),
     ("uacrypt encrypt --in secret-", &["secret-input.bin"], &[]),

@@ -16380,3 +16380,43 @@ What this closes: "not independently transcription-verified in full" (D-15/D-198
 everywhere it was stated. What it rests on: the S-box/MDS (four sources, D-256), and `g(z)` as
 printed in the designers' paper (`docs/papers/Strumok.pdf` section 2), not the DSTU scan; the
 official vectors (D-197) tie both to the standard.
+
+## D-264: T-317 - the low-level commands live under `uacrypt hazmat` (2026-10-24)
+
+The eight raw-primitive commands (`kalyna-block`, `kalyna-ccm`, `kalyna-gcm`, `kalyna-gmac`,
+`kalyna-kw`, `kalyna-xts`, `kupyna-digest`, `strumok-crypt`; D-31/D-71) sat beside `encrypt` and
+`box-*` with equal standing in the help, completions and man page, although several are footguns
+(`strumok-crypt`: no tag, caller IV; `kalyna-block`: ECB-like; `kalyna-gcm`/`kalyna-ccm`: caller
+nonce). Owner, 2026-10-24: fence them off before 0.8.0. D-47's tie-breaker (libsodium's shape, safe
+entry points only) applies to the CLI's surface too, and libsodium keeps its primitives out of the
+high-level namespace.
+
+- `HAZMAT_COMMANDS` holds the eight entries unchanged; `COMMANDS` gains one `hazmat` entry whose
+  subcommands are their names (`HAZMAT_NAMES`, unit-tested equal to the table). `run` dispatches
+  `hazmat` to `run_hazmat_command`, which holds the eight former top-level arms verbatim.
+- Every run of a hazmat command prints one stderr line first: `uacrypt: warning: 'hazmat <name>'
+  is a low-level primitive with no misuse protection - <everyday command to use instead>`. Not for
+  `--help` (a help flag anywhere still means help), and no flag silences it: a silencing knob is
+  exactly the configuration surface D-47 removes. `bench-compare` parses only `key=value` tokens
+  from stderr, so the line does not disturb it.
+- Old names: `CliError::MovedToHazmat`, exit 2 (usage), naming `uacrypt hazmat <name>`; the same for
+  `uacrypt help <old name>`. A near miss of an old name (`kalyna-blok`) suggests
+  `hazmat kalyna-block`. `uacrypt hazmat kalyna-cmac` keeps the forgeable-CMAC message (D-247).
+- Help lookup: `uacrypt help` reads `COMMANDS` only; `print_command_help` falls back to
+  `HAZMAT_COMMANDS`, so `hazmat <name> --help` prints that command's own text (tested for all
+  eight - without the fallback it would silently print the top-level help).
+- Completions offer `hazmat` and, after it, the eight names, but no flags after
+  `hazmat <name>`: deeper completion would need a word-offset change in all four generators, and
+  low discoverability is the point here. Man page: a `LOW-LEVEL COMMANDS (uacrypt hazmat)` section
+  after `COMMANDS`.
+
+Rejected: keeping the old names as working aliases (the surface would not shrink); a
+`--i-know-what-i-am-doing` style flag instead of the namespace (a knob, and still listed beside
+`encrypt`); full nested completion (above).
+
+Sweep check: while the test call sites were re-prefixed, `MovedToHazmat` exited 99 instead of 2,
+so a missed call in a test that only expects exit 2 could not pass silently; only the new old-name
+tests hit 99, and a source audit found no unprefixed invocation. Tests: `tests/smoke_hazmat.rs`
+(old names, near miss, `hazmat` listing, per-command help without warning, unknown words, warning
+on a successful and a failing run, top-level help free of the eight), unit tests for the table
+agreement, hazmat dispatch arms and subcommands, and the man page section.

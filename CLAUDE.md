@@ -133,9 +133,9 @@ canonical source (`docs/TASKS.md`/`docs/DECISIONS.md`) — this section states c
   4145's Annex B.1) against the live compiled build, embedded via `include_str!`. Built so every
   language binding wraps one shared check instead of reimplementing it (T-161/D-117).
 
-**`crates/uacrypt`** — the CLI binary. `kalyna-block`,
-`kupyna-digest`, `strumok-crypt`, `kalyna-ccm` subcommands exist for binary-level comparisons
-(D-31/D-41, see `docs/PERFORMANCE.md`). Top-level `encrypt`/`decrypt`/`hash` are real (T-16/D-52):
+**`crates/uacrypt`** — the CLI binary. Raw-primitive commands for binary-level comparisons and
+interop live only under `uacrypt hazmat` (warn on every run, absent from everyday help/completions;
+T-317/D-264, D-31/D-41, `docs/PERFORMANCE.md`). Top-level `encrypt`/`decrypt`/`hash` are real (T-16/D-52):
 `encrypt`/`decrypt` are backed by `crypto_secretstream` (T-40/T-70/D-68), key file or passphrase
 (Argon2id header, D-219), no message-length cap,
 `--in`/`--out` streamed in fixed-size chunks, temp-then-rename for a file `--out` (`-` =

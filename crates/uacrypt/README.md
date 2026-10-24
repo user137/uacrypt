@@ -52,10 +52,10 @@ Lower-level, `hazmat`-scoped commands also exist for anyone who wants direct con
 misuse-resistant trio above:
 
 ```
-uacrypt kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out ct.bin
-uacrypt kalyna-ccm encrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in msg.bin --out ct.bin --tag tag.bin
-uacrypt kupyna-digest --variant 256 --in file.bin --out digest.bin
-uacrypt strumok-crypt --variant 256 --key key.bin --iv iv.bin --in file.bin --out out.bin
+uacrypt hazmat kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out ct.bin
+uacrypt hazmat kalyna-ccm encrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in msg.bin --out ct.bin --tag tag.bin
+uacrypt hazmat kupyna-digest --variant 256 --in file.bin --out digest.bin
+uacrypt hazmat strumok-crypt --variant 256 --key key.bin --iv iv.bin --in file.bin --out out.bin
 ```
 
 `kalyna-block` operates on exactly one block (no mode, no padding). `kalyna-ccm` additionally

@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking - the low-level commands moved under `uacrypt hazmat`** (T-317, `docs/DECISIONS.md`
+  D-264): `kalyna-block`, `kalyna-ccm`, `kalyna-gcm`, `kalyna-gmac`, `kalyna-kw`, `kalyna-xts`,
+  `kupyna-digest` and `strumok-crypt` are now `uacrypt hazmat <command>`, with the same flags and
+  output. They have no misuse protection, so they left the everyday help and the shell completions
+  (`uacrypt hazmat` lists them; the man page has its own section for them) and every run prints a
+  one-line warning to stderr naming the command to use instead. The old names fail as a usage
+  error (exit 2) that names the new form; scripts need the `hazmat` word added.
+
 ### Added
 
 - **`uacrypt completions bash|zsh|fish|powershell` and `uacrypt man`** (T-264,

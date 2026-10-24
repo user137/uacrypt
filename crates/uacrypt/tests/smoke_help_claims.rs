@@ -40,6 +40,7 @@ fn strumok_crypt_help_claims_tampering_is_undetected_not_an_error() {
     write_bytes(&pt, &plaintext);
 
     ok(&uacrypt([
+        "hazmat",
         "strumok-crypt",
         "--variant",
         "256",
@@ -58,6 +59,7 @@ fn strumok_crypt_help_claims_tampering_is_undetected_not_an_error() {
     write_bytes(&ct, &tampered);
 
     let r = uacrypt([
+        "hazmat",
         "strumok-crypt",
         "--variant",
         "256",
@@ -196,6 +198,7 @@ fn kalyna_ccm_help_claims_255_byte_message_cap() {
     write_bytes(&pt, &vec![b'A'; 256]); // one byte over the claimed cap
 
     let r = uacrypt([
+        "hazmat",
         "kalyna-ccm",
         "encrypt",
         "--variant",
@@ -232,6 +235,7 @@ fn kalyna_xts_help_claims_in_must_be_at_least_one_block() {
     write_bytes(&short_in, &[0x66; 8]); // 128-128's block length is 16
 
     let r = uacrypt([
+        "hazmat",
         "kalyna-xts",
         "encrypt",
         "--variant",

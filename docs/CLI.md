@@ -72,7 +72,7 @@ cat report.pdf | uacrypt hash --in -          # prints "<hex>  -"
   or `\??\` path is refused before any file-system call, so no connection is made; on Windows the
   type check itself opens a device with no access rights, which reads nothing.
 - Every other path flag (`--key`, `--sig`, `key-import --in`, and all paths of
-  the lower-level `kalyna-*`/`kupyna-digest`/`strumok-crypt` commands) refuses `-` as a usage
+  the `hazmat` commands) refuses `-` as a usage
   error, so `-` never silently names a file. A file really named `-` is `./-`.
 - `--force` with `--out -` is a usage error: there is no file to replace.
 - **`decrypt --out -` can print part of a message.** Each chunk is written once its tag verifies,
@@ -101,7 +101,7 @@ stderr, such as `uacrypt: 1.2 GiB / 4.0 GiB (30%)`. It is redrawn at most 10 tim
 erased before the command prints its result or its error. For stdin, where the size is unknown, it
 is a byte counter (`uacrypt: 96.0 MiB read`) that appears once 64 MiB have been read. There is no
 flag: with stderr redirected or piped (`2>file`, `2>&1 | ...`, a script, CI) nothing is printed at
-all. `box-seal`/`box-open` show the same line since 0.7.0 (T-265), and the lower-level `kalyna-*`/`kupyna-digest`/`strumok-crypt` commands never do. Known cosmetic limit:
+all. `box-seal`/`box-open` show the same line since 0.7.0 (T-265), and the `hazmat` commands never do. Known cosmetic limit:
 in `decrypt --out - | more` on a large file, the line is drawn over the pager's screen, because
 both share the terminal (do not silence it with `2>/dev/null` - that hides the INCOMPLETE warning
 too). Ctrl-C leaves the last line on screen without a newline.
@@ -264,16 +264,22 @@ Up to 0.4, the non-keygen commands had curve twins (`sign-pubkey257`, `sign257`,
 `box-seal512`, `box-open512`). They are gone in 0.5.0; each name now fails as a usage error
 (exit 2) that names the command to use instead.
 
-What exists below this level: `kalyna-block`, `kupyna-digest`, and `strumok-crypt`, all
-`hazmat`-scoped commands added for binary-level performance comparisons
-(`docs/PERFORMANCE.md`, `docs/DECISIONS.md` D-31/D-34) rather than everyday use - `hash` and
-`encrypt`/`decrypt` above are what most users want.
+What exists below this level: the `uacrypt hazmat` commands (`kalyna-block`, `kalyna-ccm`,
+`kalyna-gcm`, `kalyna-gmac`, `kalyna-kw`, `kalyna-xts`, `kupyna-digest`, `strumok-crypt`), raw
+primitives added for binary-level performance comparisons and interop with other DSTU
+implementations (`docs/PERFORMANCE.md`, `docs/DECISIONS.md` D-31/D-34) rather than everyday use -
+`hash` and `encrypt`/`decrypt` above are what most users want. They have no misuse protection (you
+choose the nonce, IV and key bytes; some detect no tampering), so since 0.8.0 they are reachable
+only as `uacrypt hazmat <command>`: `uacrypt hazmat` lists them, the everyday help and the shell
+completions do not offer them, and every run prints a one-line warning to stderr naming the
+command to use instead. Their old top-level names (`uacrypt kalyna-block`, ...) fail as a usage
+error (exit 2) that names the new form (T-317, `docs/DECISIONS.md` D-264).
 
 `kalyna-block` is a single block (no mode, no padding):
 
 ```
-uacrypt kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out ct.bin
-uacrypt kalyna-block decrypt --variant 128-128 --key key.bin --in ct.bin --out pt.bin
+uacrypt hazmat kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out ct.bin
+uacrypt hazmat kalyna-block decrypt --variant 128-128 --key key.bin --in ct.bin --out pt.bin
 ```
 
 `--key`/`--in`/`--out` are raw binary files of the variant's exact byte length (16/32/64 bytes
@@ -283,7 +289,7 @@ depending on variant — see `--variant`'s five values).
 to Kupyna-256, no `--variant` flag):
 
 ```
-uacrypt kupyna-digest --variant 512 --in report.pdf --out report.pdf.kupyna512
+uacrypt hazmat kupyna-digest --variant 512 --in report.pdf --out report.pdf.kupyna512
 ```
 
 `strumok-crypt` is the bare Strumok keystream cipher (XOR-based) - **not authenticated**: a
@@ -293,7 +299,7 @@ messages by XORing the two ciphertexts together. Use `encrypt`/`decrypt` instead
 that detects tampering:
 
 ```
-uacrypt strumok-crypt --variant 256 --key key.bin --iv iv.bin --in message.bin --out sealed.bin
+uacrypt hazmat strumok-crypt --variant 256 --key key.bin --iv iv.bin --in message.bin --out sealed.bin
 ```
 
 `--variant` is the key size in bits (256 or 512); `--iv` is always exactly 32 bytes regardless of
@@ -306,8 +312,8 @@ define CCM for an empty message. Tags differ from UAPKI's and Bouncy Castle's on
 example when `--aad` is omitted (see [COMPATIBILITY.md](COMPATIBILITY.md)):
 
 ```
-uacrypt kalyna-ccm encrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in msg.bin --out ct.bin --tag tag.bin
-uacrypt kalyna-ccm decrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in ct.bin --out pt.bin --tag tag.bin
+uacrypt hazmat kalyna-ccm encrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in msg.bin --out ct.bin --tag tag.bin
+uacrypt hazmat kalyna-ccm decrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in ct.bin --out pt.bin --tag tag.bin
 ```
 
 `--nonce` is a raw file of exactly the variant's block length (16/32/64 bytes) — but it's an

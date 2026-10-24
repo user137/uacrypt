@@ -160,6 +160,7 @@ fn bench_kalyna_vs_aes(dir: &Path) {
             continue;
         }
         let Some(fields) = run_uacrypt(&[
+            "hazmat",
             "kalyna-block",
             "encrypt",
             "--variant",
@@ -233,6 +234,7 @@ fn bench_kupyna_vs_whirlpool(dir: &Path) {
         for variant in ["256", "512"] {
             let out_path = dir.join("kupyna-out.bin");
             let Some(fields) = run_uacrypt(&[
+                "hazmat",
                 "kupyna-digest",
                 "--variant",
                 variant,
@@ -303,6 +305,7 @@ fn bench_strumok_vs_chacha20(dir: &Path) {
                 continue;
             }
             let Some(fields) = run_uacrypt(&[
+                "hazmat",
                 "strumok-crypt",
                 "--variant",
                 variant,

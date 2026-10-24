@@ -399,6 +399,7 @@ fn dash_is_refused_everywhere_it_is_not_stdio() {
             "o",
         ],
         &[
+            "hazmat",
             "kupyna-digest",
             "--variant",
             "256",
@@ -408,6 +409,7 @@ fn dash_is_refused_everywhere_it_is_not_stdio() {
             "o",
         ],
         &[
+            "hazmat",
             "kupyna-digest",
             "--variant",
             "256",
@@ -417,6 +419,7 @@ fn dash_is_refused_everywhere_it_is_not_stdio() {
             "-",
         ],
         &[
+            "hazmat",
             "strumok-crypt",
             "--variant",
             "256",
@@ -430,6 +433,7 @@ fn dash_is_refused_everywhere_it_is_not_stdio() {
             "o",
         ],
         &[
+            "hazmat",
             "kalyna-block",
             "encrypt",
             "--variant",

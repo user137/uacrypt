@@ -157,7 +157,7 @@ same factor. Strumok's `T`-substitution is only one part of its per-word cost (L
 slowdown from the part that does.
 
 **Reproducing**: `cargo build -p uacrypt --release [--features dstu-core/small-tables]`, then the
-same `kalyna-block`/`kupyna-digest`/`strumok-crypt` commands `docs/PERFORMANCE.md`'s "Reproducing" notes
+same `hazmat kalyna-block`/`kupyna-digest`/`strumok-crypt` commands `docs/PERFORMANCE.md`'s "Reproducing" notes
 document.
 
 ## DSTU 4145 `verify`: the same flag, a different kind of trade (T-151/D-108)

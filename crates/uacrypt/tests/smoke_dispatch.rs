@@ -95,7 +95,7 @@ fn unknown_command_exits_failure_with_prefixed_stderr() {
     ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
 )]
 fn kalyna_block_with_no_subcommand_reports_missing_subcommand() {
-    let r = uacrypt(["kalyna-block"]);
+    let r = uacrypt(["hazmat", "kalyna-block"]);
     assert!(r.failure());
     assert!(
         r.stderr
@@ -111,7 +111,7 @@ fn kalyna_block_with_no_subcommand_reports_missing_subcommand() {
     ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
 )]
 fn kalyna_block_with_unknown_subcommand_is_unknown_command() {
-    let r = uacrypt(["kalyna-block", "frobnicate"]);
+    let r = uacrypt(["hazmat", "kalyna-block", "frobnicate"]);
     assert!(r.failure());
     assert!(
         r.stderr
@@ -127,7 +127,7 @@ fn kalyna_block_with_unknown_subcommand_is_unknown_command() {
     ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
 )]
 fn kalyna_block_help_shows_command_specific_text_not_top_level() {
-    let r = uacrypt(["kalyna-block", "--help"]);
+    let r = uacrypt(["hazmat", "kalyna-block", "--help"]);
     assert!(r.success());
     assert!(r.stdout.contains("kalyna-block"));
     assert!(!r.stdout.contains("USAGE:\n    uacrypt <command> [flags]"));
@@ -143,6 +143,7 @@ fn kalyna_block_help_shows_command_specific_text_not_top_level() {
 )]
 fn help_flag_takes_priority_over_missing_required_flags() {
     let r = uacrypt([
+        "hazmat",
         "kalyna-block",
         "encrypt",
         "--key",

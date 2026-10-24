@@ -92,6 +92,7 @@ const CASES: &[Case] = &[
     },
     Case {
         argv: &[
+            "hazmat",
             "kupyna-digest",
             "--variant",
             "256",
@@ -104,6 +105,7 @@ const CASES: &[Case] = &[
     },
     Case {
         argv: &[
+            "hazmat",
             "strumok-crypt",
             "--variant",
             "256",
@@ -120,6 +122,7 @@ const CASES: &[Case] = &[
     },
     Case {
         argv: &[
+            "hazmat",
             "kalyna-block",
             "encrypt",
             "--variant",
@@ -135,6 +138,7 @@ const CASES: &[Case] = &[
     },
     Case {
         argv: &[
+            "hazmat",
             "kalyna-ccm",
             "encrypt",
             "--variant",
@@ -154,6 +158,7 @@ const CASES: &[Case] = &[
     },
     Case {
         argv: &[
+            "hazmat",
             "kalyna-gcm",
             "encrypt",
             "--variant",
@@ -173,6 +178,7 @@ const CASES: &[Case] = &[
     },
     Case {
         argv: &[
+            "hazmat",
             "kalyna-gmac",
             "compute",
             "--variant",
@@ -188,6 +194,7 @@ const CASES: &[Case] = &[
     },
     Case {
         argv: &[
+            "hazmat",
             "kalyna-gmac",
             "compute",
             "--variant",
@@ -203,6 +210,7 @@ const CASES: &[Case] = &[
     },
     Case {
         argv: &[
+            "hazmat",
             "kalyna-kw",
             "wrap",
             "--variant",
@@ -218,6 +226,7 @@ const CASES: &[Case] = &[
     },
     Case {
         argv: &[
+            "hazmat",
             "kalyna-xts",
             "encrypt",
             "--variant",
@@ -419,7 +428,14 @@ fn a_failed_command_leaves_no_output_placeholder_or_temp_file() {
             3,
         ),
         (
-            &["kupyna-digest", "--variant", "256", "--in", &p("missing")],
+            &[
+                "hazmat",
+                "kupyna-digest",
+                "--variant",
+                "256",
+                "--in",
+                &p("missing"),
+            ],
             3,
         ),
     ];
@@ -441,6 +457,7 @@ fn a_failed_command_leaves_no_output_placeholder_or_temp_file() {
     // mode's domain) must release all three.
     let before = listing(&dir);
     let r = uacrypt([
+        "hazmat",
         "kalyna-ccm",
         "encrypt",
         "--variant",
@@ -471,6 +488,7 @@ fn two_outputs_naming_one_file_is_a_usage_error_even_with_force() {
     let p = |n: &str| dir.file(n).to_string_lossy().into_owned();
     for force in [false, true] {
         let mut argv = vec![
+            "hazmat".to_string(),
             "kalyna-gcm".to_string(),
             "encrypt".into(),
             "--variant".into(),
@@ -512,6 +530,7 @@ fn decrypt_side_nonce_and_tag_are_inputs_not_outputs() {
     let p = |n: &str| dir.file(n).to_string_lossy().into_owned();
     for mode in ["kalyna-ccm", "kalyna-gcm"] {
         let enc = uacrypt([
+            "hazmat",
             mode,
             "encrypt",
             "--variant",
@@ -529,6 +548,7 @@ fn decrypt_side_nonce_and_tag_are_inputs_not_outputs() {
         ]);
         assert!(enc.success(), "{mode}: {}", enc.stderr);
         let dec = uacrypt([
+            "hazmat",
             mode,
             "decrypt",
             "--variant",
@@ -562,14 +582,14 @@ fn decrypt_side_nonce_and_tag_are_inputs_not_outputs() {
             &p("in32"),
         ];
         let tag = uacrypt(
-            [mode, "compute"]
+            ["hazmat", mode, "compute"]
                 .into_iter()
                 .chain(base[1..].iter().copied())
                 .chain(["--out", &p("t")]),
         );
         assert!(tag.success(), "{mode}: {}", tag.stderr);
         let verify = uacrypt(
-            [mode, "verify"]
+            ["hazmat", mode, "verify"]
                 .into_iter()
                 .chain(base[1..].iter().copied())
                 .chain(["--tag", &p("t")]),
@@ -657,6 +677,7 @@ fn force_takes_no_value() {
     fixtures(&dir);
     let p = |n: &str| dir.file(n).to_string_lossy().into_owned();
     let r = uacrypt([
+        "hazmat",
         "kupyna-digest",
         "--variant",
         "256",
@@ -684,6 +705,7 @@ fn a_symlink_output_is_refused_and_force_replaces_the_link_not_its_target() {
     std::os::unix::fs::symlink(dir.file("target"), dir.file("link")).expect("symlink");
 
     let r = uacrypt([
+        "hazmat",
         "kupyna-digest",
         "--variant",
         "256",
@@ -696,6 +718,7 @@ fn a_symlink_output_is_refused_and_force_replaces_the_link_not_its_target() {
     assert_eq!(read_bytes(&dir.file("target")), EXISTING);
 
     let r = uacrypt([
+        "hazmat",
         "kupyna-digest",
         "--variant",
         "256",
@@ -723,6 +746,7 @@ fn every_output_is_owner_only_even_when_force_replaces_a_0644_file() {
     fixtures(&dir);
     let p = |n: &str| dir.file(n).to_string_lossy().into_owned();
     let r = uacrypt([
+        "hazmat",
         "kupyna-digest",
         "--variant",
         "256",
@@ -736,6 +760,7 @@ fn every_output_is_owner_only_even_when_force_replaces_a_0644_file() {
     std::fs::set_permissions(dir.file("shared"), std::fs::Permissions::from_mode(0o644))
         .expect("chmod");
     let r = uacrypt([
+        "hazmat",
         "kupyna-digest",
         "--variant",
         "256",
@@ -761,13 +786,22 @@ fn every_output_is_owner_only_even_when_force_replaces_a_0644_file() {
     ignore = "spawns the real uacrypt binary - Miri cannot run a subprocess"
 )]
 fn help_offers_force_exactly_where_it_is_accepted() {
-    let mut commands: Vec<&str> = CASES.iter().map(|c| c.argv[0]).collect();
+    let mut commands: Vec<&[&str]> = CASES
+        .iter()
+        .map(|c| {
+            if c.argv[0] == "hazmat" {
+                &c.argv[..2]
+            } else {
+                &c.argv[..1]
+            }
+        })
+        .collect();
     commands.dedup();
     for cmd in commands {
-        let r = uacrypt([cmd, "--help"]);
-        assert!(r.success(), "{cmd}: {}", r.stderr);
-        assert!(r.stdout.contains("[--force]"), "{cmd}: {}", r.stdout);
-        assert!(r.stdout.contains("    --force "), "{cmd}: {}", r.stdout);
+        let r = uacrypt(cmd.iter().chain(&["--help"]));
+        assert!(r.success(), "{cmd:?}: {}", r.stderr);
+        assert!(r.stdout.contains("[--force]"), "{cmd:?}: {}", r.stdout);
+        assert!(r.stdout.contains("    --force "), "{cmd:?}: {}", r.stdout);
     }
     for cmd in [
         "keygen",
@@ -801,6 +835,7 @@ fn an_output_naming_a_key_input_is_refused_even_with_force() {
     fixtures(&dir);
     let p = |n: &str| dir.file(n).to_string_lossy().into_owned();
     let gcm = uacrypt([
+        "hazmat",
         "kalyna-gcm",
         "encrypt",
         "--variant",
@@ -840,6 +875,7 @@ fn an_output_naming_a_key_input_is_refused_even_with_force() {
         ),
         (
             &[
+                "hazmat",
                 "kalyna-block",
                 "encrypt",
                 "--variant",
@@ -854,6 +890,7 @@ fn an_output_naming_a_key_input_is_refused_even_with_force() {
         ),
         (
             &[
+                "hazmat",
                 "strumok-crypt",
                 "--variant",
                 "256",
@@ -869,6 +906,7 @@ fn an_output_naming_a_key_input_is_refused_even_with_force() {
         ),
         (
             &[
+                "hazmat",
                 "kalyna-gcm",
                 "decrypt",
                 "--variant",
@@ -887,6 +925,7 @@ fn an_output_naming_a_key_input_is_refused_even_with_force() {
         ),
         (
             &[
+                "hazmat",
                 "kalyna-gmac",
                 "compute",
                 "--variant",
@@ -936,6 +975,7 @@ fn a_directory_output_is_refused_and_left_intact_with_or_without_force() {
     let before = listing(&dir);
 
     let r = uacrypt([
+        "hazmat",
         "kupyna-digest",
         "--variant",
         "256",
@@ -978,6 +1018,7 @@ fn outputs_are_owner_only_on_windows() {
     fixtures(&dir);
     let p = |n: &str| dir.file(n).to_string_lossy().into_owned();
     let r = uacrypt([
+        "hazmat",
         "kupyna-digest",
         "--variant",
         "256",
@@ -989,6 +1030,7 @@ fn outputs_are_owner_only_on_windows() {
     assert!(r.success(), "{}", r.stderr);
     write_bytes(&dir.file("shared"), EXISTING);
     let r = uacrypt([
+        "hazmat",
         "kupyna-digest",
         "--variant",
         "256",
