@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-9527357c.js";
+            window.path_to_searchindex_js = "searchindex-dc9762d1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d4c7990f.js"></script>
@@ -184,6 +184,7 @@
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
+<h2 id="080---2026-10-24"><a class="header" href="#080---2026-10-24">[0.8.0] - 2026-10-24</a></h2>
 <h3 id="added"><a class="header" href="#added">Added</a></h3>
 <ul>
 <li><strong><code>uacrypt completions bash|zsh|fish|powershell</code> and <code>uacrypt man</code></strong> (T-264,
@@ -200,6 +201,8 @@ output. They have no misuse protection, so they left the everyday help and the t
 completions (<code>uacrypt hazmat</code> lists them; the man page has its own section for them) and every run prints a
 one-line warning to stderr naming the command to use instead. The old names fail as a usage
 error (exit 2) that names the new form; scripts need the <code>hazmat</code> word added.</li>
+<li>The Python, Node.js and Ruby packages are 0.5.1: the same API, built on <code>dstu-core</code> 0.8.0, so
+they carry the fixes below.</li>
 </ul>
 <h3 id="removed"><a class="header" href="#removed">Removed</a></h3>
 <ul>

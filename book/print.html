@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-9527357c.js";
+            window.path_to_searchindex_js = "searchindex-dc9762d1.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d4c7990f.js"></script>
@@ -192,7 +192,7 @@
 encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
 OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
 (<code>uacrypt</code>), and bindings for eight languages.</p>
-<!-- uacrypt-version: 0.7.0 -->
+<!-- uacrypt-version: 0.8.0 -->
 <p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
 <a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python, Node.js, and Ruby bindings are on
 <a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a>/
@@ -5535,7 +5535,7 @@ mdBook for the existing <code>docs/*.md</code> corpus, plus a mandatory <code>ca
 encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
 OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
 (<code>uacrypt</code>), and bindings for eight languages.</p>
-<!-- uacrypt-version: 0.7.0 -->
+<!-- uacrypt-version: 0.8.0 -->
 <p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
 <a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python, Node.js, and Ruby bindings are on
 <a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a>/
@@ -11897,6 +11897,32 @@ T-302; then the CLI batch T-300, T-303, T-304, T-305, T-301; T-306 docs. Commit 
 verify-only DSTU 4145 + Kupyna CMS first. OpenSSL deferred; PKCS#11 soft token and browser signing
 not done. Order: T-318, then T-319; T-320 and T-321 can run in parallel; T-322 only after all of
 them. None of this blocks 0.8.0.</p>
+<p><strong>Plan after 0.8.0 (owner 2026-10-24: “add T-318, T-319 and T-322 to the plan”).</strong> The next wave,
+in order:</p>
+<ol>
+<li>
+<p><strong>T-318</strong>, the spike. Its kill criterion still stands: if the real samples do not verify after
+three cited attempts, stop and bring the finding to the owner before going on.</p>
+</li>
+<li>
+<p><strong>T-319</strong>, promoting the primitives.</p>
+</li>
+<li>
+<p><strong>T-322</strong>, the verify-only CMS verifier. Before it starts, the owner decides the T-320 design
+inputs it needs:</p>
+<ul>
+<li>where it lives (a separate workspace in this repo, or a sibling repo);</li>
+<li>the D-17 option (A/B);</li>
+<li>GOST 34.311 legacy verify in or out;</li>
+<li>confirming D-265’s never-do list.</li>
+</ul>
+<p>T-321 (lawyer on CMU 1298 item 6, user discovery) is recommended alongside but is not a gate:
+the owner put T-322 in the plan. Its answer decides the wording and audience, and must be in
+before T-322 is published or announced.</p>
+</li>
+</ol>
+<p>Each task gets its own plan (plan mode plus advisor for T-319 and T-322) and test-first work. T-318
+and T-319 are crypto/interop changes, so an independent reviewer subagent is offered at each close.</p>
 <ul>
 <li><input disabled="" type="checkbox"> <strong>T-318</strong> (M, this repo, test-only; prerequisite for every signature path) <strong>Spike: verify
 real public Kupyna-era signatures with dstu-core.</strong>
@@ -31830,7 +31856,7 @@ transcludes the whole README via `# uacrypt</p>
 encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
 OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
 (<code>uacrypt</code>), and bindings for eight languages.</p>
-<!-- uacrypt-version: 0.7.0 -->
+<!-- uacrypt-version: 0.8.0 -->
 <p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
 <a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python, Node.js, and Ruby bindings are on
 <a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a>/
@@ -35170,6 +35196,7 @@ lowest return per effort and the highest custody risk, and it reaches no browser
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
+<h2 id="080---2026-10-24"><a class="header" href="#080---2026-10-24">[0.8.0] - 2026-10-24</a></h2>
 <h3 id="added"><a class="header" href="#added">Added</a></h3>
 <ul>
 <li><strong><code>uacrypt completions bash|zsh|fish|powershell</code> and <code>uacrypt man</code></strong> (T-264,
@@ -35186,6 +35213,8 @@ output. They have no misuse protection, so they left the everyday help and the t
 completions (<code>uacrypt hazmat</code> lists them; the man page has its own section for them) and every run prints a
 one-line warning to stderr naming the command to use instead. The old names fail as a usage
 error (exit 2) that names the new form; scripts need the <code>hazmat</code> word added.</li>
+<li>The Python, Node.js and Ruby packages are 0.5.1: the same API, built on <code>dstu-core</code> 0.8.0, so
+they carry the fixes below.</li>
 </ul>
 <h3 id="removed"><a class="header" href="#removed">Removed</a></h3>
 <ul>
