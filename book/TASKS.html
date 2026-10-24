@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-287d4a85.js";
+            window.path_to_searchindex_js = "searchindex-9527357c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-bc9924e8.js"></script>
+        <script src="toc-d4c7990f.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -4580,7 +4580,7 @@ entry is the research/documentation half of the owner's own framing ("оформ
 </code></pre>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-201</strong> <strong>Not started, owner-requested (2026-08-09) - PKCS#11 (Cryptoki) support, as a
+<p><input disabled="" type="checkbox"> <strong>T-201</strong> <em>(2026-10-24, D-265: parked - a soft token is not recommended; “the connection point needs no new work” below is wrong: capi passes only the 66-byte uncompressed BE key on a fixed curve, while UA PKI uses a 33-byte LE compressed point and explicit parameters.)</em> <strong>Not started, owner-requested (2026-08-09) - PKCS#11 (Cryptoki) support, as a
 separate sibling project, not part of this repository.</strong> <code>docs/DECISIONS.md</code> D-17 already
 excludes PKCS#11/12 from this project’s own scope explicitly (“the layer above crypto
 primitives… not this project’s job” - this repo is a libsodium-style primitives library,
@@ -10812,7 +10812,7 @@ targets), T-249 (D-256, findings T-312..T-316), T-264 (completions + <code>uacry
 (incl. 28 <code>fuzz-smoke</code> jobs, macOS bash 3.2 + <code>zsh -n</code>, Linux <code>pwsh</code> completion tests) and <code>miri</code>
 still queued - <strong>first: <code>gh run list</code> / <code>gh run view</code> both for <code>3432912</code></strong>. D-258 and the CI-shells change were pushed together. Owner delegated the open forks (D-258): no reviewer subagent for
 T-249/T-310; <strong>T-312..T-316 join 0.8.0</strong> - next in order T-312, T-313, T-315, T-314, T-316, then
-step 6 (release 0.8.0). <strong>T-312 done 2026-10-23 (D-259), T-313 done (D-260), T-315 done (D-261), T-314 done (D-262), T-316 done (D-263); T-315 independent review: no defect, follow-ups <code>30b88f1</code>. Step 6 started 2026-10-24 and <strong>paused</strong> the same day (owner: hold 0.8.0 until T-317 is done); the local bump was reverted, nothing pushed or tagged. T-317 done 2026-10-24 (D-264); next: step 6 again (owner already chose Python/Node.js/Ruby 0.5.1).</strong> <code>3432912</code>’s <code>rust</code>/<code>miri</code> were
+step 6 (release 0.8.0). <strong>T-312 done 2026-10-23 (D-259), T-313 done (D-260), T-315 done (D-261), T-314 done (D-262), T-316 done (D-263); T-315 independent review: no defect, follow-ups <code>30b88f1</code>. Step 6 started 2026-10-24 and <strong>paused</strong> the same day (owner: hold 0.8.0 until T-317 is done); the local bump was reverted, nothing pushed or tagged. T-317 done 2026-10-24 (D-264); CI on <code>1bb8858</code> green incl. Linux <code>smoke_completions</code> (zsh, fish, PowerShell, man page); next: step 6 again once <code>miri</code> on the release commit is green and the owner says go (owner already chose Python/Node.js/Ruby 0.5.1).</strong> <code>3432912</code>’s <code>rust</code>/<code>miri</code> were
 cancelled by the next push (<code>cancel-in-progress</code>); the T-312 push carries everything since, so read its <code>rust</code>/<code>miri</code> runs (incl. <code>asm-check</code>’s 16 builds and <code>smoke_completions</code>). CI’s Linux <code>test</code> job now installs zsh/fish/mandoc/groff
 and requires them (<code>UACRYPT_REQUIRE_SHELLS=1</code>, D-257 addendum) - the fish completer’s first real
 run is there: check <code>smoke_completions</code> in the <code>rust</code> run of the push after <code>df62897</code>. <code>.git/worktrees/old_wt</code> is an
@@ -11253,6 +11253,140 @@ handler-installation failures without a stated decision (Low). Fix: refuse a roo
 </ul>
 <p><strong>State 2026-10-22: all eleven done, local commits <code>ff6e2f5</code>..HEAD, not pushed</strong> (advisory-relevant for released 0.6.0: T-298, T-299, T-300, T-301 - the owner decides on an advisory before the push; the pushed tree would carry D-246..D-252’s recipes and the CHANGELOG <code>[Unreleased]</code> lines; <code>5141320</code>’s subject names the CMAC warning). <strong>Wave order (Claude, 2026-10-22):</strong> T-308; T-299 (+ capi/bindings); T-298 (docs/test part); T-307;
 T-302; then the CLI batch T-300, T-303, T-304, T-305, T-301; T-306 docs. Commit per task.</p>
+<h3 id="ecosystem-integration-research-2026-10-24-d-265-docsecosystem-integrationmd"><a class="header" href="#ecosystem-integration-research-2026-10-24-d-265-docsecosystem-integrationmd">Ecosystem integration (research 2026-10-24, D-265, <code>docs/ecosystem-integration.md</code>)</a></h3>
+<p>Owner-requested (“which PKCS for OpenSSL, other libraries and browsers”). Recommended direction:
+verify-only DSTU 4145 + Kupyna CMS first. OpenSSL deferred; PKCS#11 soft token and browser signing
+not done. Order: T-318, then T-319; T-320 and T-321 can run in parallel; T-322 only after all of
+them. None of this blocks 0.8.0.</p>
+<ul>
+<li><input disabled="" type="checkbox"> <strong>T-318</strong> (M, this repo, test-only; prerequisite for every signature path) <strong>Spike: verify
+real public Kupyna-era signatures with dstu-core.</strong>
+<ul>
+<li><strong>Fixtures:</strong> at least 3 independent czo.gov.ua TEST <code>.p7s</code> samples (DSTU 4145 m=257, digest
+<code>…1.2.2.1</code>, signature <code>…1.3.6.1.1</code>) with their certificates. Record the URL, download date and
+SHA-256 of each; check the fields hold no real PII. Never use the D-185 private files.</li>
+<li><strong>Scope:</strong> the signer’s signature only, with no chain, revocation or time checks. Extraction is
+scripted (<code>openssl asn1parse</code> to JSON), never hand-typed (D-163). A throwaway DER walker in
+<code>tests/</code> or <code>xtask</code> only; no public ASN.1 API (D-17).</li>
+<li><strong>Build test-first:</strong>
+<ul>
+<li>m=257 point decompression: half-trace, trace check, then the existing <code>n*Q</code> subgroup check;</li>
+<li>the little-endian signature and key codec;</li>
+<li>a check that the certificate’s explicit curve parameters equal the built-in m=257 curve, byte
+for byte;</li>
+<li>the hash-&gt;field convention.</li>
+</ul>
+</li>
+<li><strong>Conventions table:</strong> one row per byte transform, each with a citation (clause, UAPKI or BC
+source). A reversal that only makes the test pass is a defect (D-25). A convention found on
+sample 1 must pass on samples 2 and 3 unchanged.</li>
+<li><strong>Oracles:</strong>
+<ul>
+<li>the producer’s artefacts;</li>
+<li>a <code>uapkic</code> verify harness (the <code>tests/oracle-harness/uapki-*</code> pattern);</li>
+<li>BC <code>DSTU7564Digest</code> composed with <code>DSTU4145Signer</code> (it reverses the hash);</li>
+<li>decompression cross-checked against BC <code>DSTU4145PointEncoder</code>.</li>
+</ul>
+</li>
+<li><strong>Negative tests:</strong>
+<ul>
+<li>a flipped bit in r, s, the signed attributes, the content and the key;</li>
+<li>r and s swapped;</li>
+<li>the wrong key;</li>
+<li>an x with no point, the point at infinity, a point outside the subgroup (cofactor 4);</li>
+<li>r or s equal to 0 or at least n;</li>
+<li>non-canonical lengths;</li>
+<li>a GOST-era sample refused explicitly as an unsupported digest.</li>
+</ul>
+</li>
+<li><strong>Kill criterion:</strong> three cited convention attempts, then stop and record a D-entry. Then an
+independent reviewer subagent, offered to the owner.</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox"> <strong>T-319</strong> (M, this repo, after T-318; inside D-17: encodings of the standard’s own objects)
+<strong>Promote the T-318 primitives.</strong>
+<ul>
+<li>What it adds:
+<ul>
+<li>m=257 compressed-point decode/encode;</li>
+<li>a typed UA wire codec (33-byte LE compressed key, 64-byte LE reverse(s||r) signature, with a
+top-byte check when narrowing) beside <code>crypto_sign257</code>, whose own format stays unchanged;</li>
+<li>an exact explicit-parameter matcher;</li>
+<li>additive capi symbols.</li>
+</ul>
+</li>
+<li>The four test categories plus the active-attack category.</li>
+<li>Fuzz targets synced in all three places; Miri; a D-entry.</li>
+<li>Real-artefact vectors become a third oracle.</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox"> <strong>T-320</strong> (owner decisions, no code). Options are laid out in
+<code>docs/ecosystem-integration.md</code> sections 3 and 5.
+<ul>
+<li><strong>D-17:</strong>
+<ul>
+<li>A: as is;</li>
+<li>B: primitives plus the standard wire encodings and OID constants, no ASN.1 parser, with a
+named companion verify layer (the architect leans B);</li>
+<li>C: full PKI (advised against).</li>
+</ul>
+</li>
+<li><strong>D-118:</strong>
+<ul>
+<li>A: keep deferring;</li>
+<li>B: allow a verify-only WASM build with no secret-key API.</li>
+</ul>
+</li>
+<li><strong>GOST 34.311:</strong> a feature-gated, verify-only legacy primitive for chain verification during
+the transition, with BC and UAPKI as oracles; or leave it out.</li>
+<li><strong>Where the verifier lives:</strong> a separate Cargo workspace in this repo (the D-119 pattern) or a
+sibling repo.</li>
+<li><strong>Confirm or amend the recommended verdicts and the never-do list in D-265</strong> (they are
+recommendations until then).</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox"> <strong>T-321</strong> (owner, non-code)
+<ul>
+<li><strong>(a) Legal:</strong> a lawyer’s written answer to whether CMU 1298 item 6 (“перевірку … здійснюють
+лише кваліфіковані надавачі”) restricts a relying party’s own local verification, and whether
+CMU 991 covers an open-source library.</li>
+<li><strong>(b) User discovery:</strong> ask 3-5 likely relying parties (an e-document vendor, a bank
+integration team, govtech Rust/Python developers) whether they would use a memory-safe verify
+path over UAPKI, and why. No answers is itself the answer.</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox"> <strong>T-322</strong> (L, gated on T-318, T-319, T-320 and T-321) <strong>Verify-only CMS/X.509 verifier for DSTU
+4145 + Kupyna.</strong>
+<ul>
+<li><strong>Before any code, threat models for:</strong>
+<ul>
+<li>untrusted input (DER/CMS/X.509, chain building, resource limits);</li>
+<li>the algorithm and date policy (the GOST cut-off by trusted timestamp or certificate validity,
+never <code>signingTime</code>);</li>
+<li>the claims and regulatory statement (advanced vs qualified, no expertise conclusion).</li>
+</ul>
+</li>
+<li><strong>Parsing:</strong> strict DER, no BER, iterative with bounded depth; an OID allow-list; explicit curve
+parameters matched exactly or rejected; audited DER crates only after a registry check.</li>
+<li><strong>Testing:</strong> fuzz targets from the first commit; differential tests against the T-318 corpus
+and UAPKI.</li>
+<li><strong>Wording:</strong> “verifies DSTU 4145 + Kupyna CMS signatures”, nothing more.</li>
+</ul>
+</li>
+<li><strong>Parked, revisit only on a named request:</strong>
+<ul>
+<li>an OpenSSL provider slice (Kupyna digest, Kalyna-128 cipher; never wide-block or streaming
+AEAD);</li>
+<li>a verify-only WASM package (a spin-off of T-322);</li>
+<li>a PKCS#11 thin bridge to a customer-owned HSM (T-201);</li>
+<li>a shared, machine-readable cross-implementation corpus (DSTU 4145 m=163/257, Kupyna, Kalyna,
+edge cases, provenance per vector) plus a diff harness against <code>uapkic</code>/BC, publishable for
+other implementations (AI-engineer and QA roles; a natural follow-on of T-318/T-319);</li>
+<li>a wasm32 KAT feasibility probe under wasmtime, with no constant-time claim (needs
+<code>rustup target add wasm32-unknown-unknown</code>, owner’s yes).</li>
+</ul>
+</li>
+</ul>
 
                     </main>
 

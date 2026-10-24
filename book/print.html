@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-287d4a85.js";
+            window.path_to_searchindex_js = "searchindex-9527357c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-bc9924e8.js"></script>
+        <script src="toc-d4c7990f.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -5219,7 +5219,7 @@ entry is the research/documentation half of the owner's own framing ("оформ
 </code></pre>
 </li>
 <li>
-<p><input disabled="" type="checkbox"> <strong>T-201</strong> <strong>Not started, owner-requested (2026-08-09) - PKCS#11 (Cryptoki) support, as a
+<p><input disabled="" type="checkbox"> <strong>T-201</strong> <em>(2026-10-24, D-265: parked - a soft token is not recommended; “the connection point needs no new work” below is wrong: capi passes only the 66-byte uncompressed BE key on a fixed curve, while UA PKI uses a 33-byte LE compressed point and explicit parameters.)</em> <strong>Not started, owner-requested (2026-08-09) - PKCS#11 (Cryptoki) support, as a
 separate sibling project, not part of this repository.</strong> <code>docs/DECISIONS.md</code> D-17 already
 excludes PKCS#11/12 from this project’s own scope explicitly (“the layer above crypto
 primitives… not this project’s job” - this repo is a libsodium-style primitives library,
@@ -11451,7 +11451,7 @@ targets), T-249 (D-256, findings T-312..T-316), T-264 (completions + <code>uacry
 (incl. 28 <code>fuzz-smoke</code> jobs, macOS bash 3.2 + <code>zsh -n</code>, Linux <code>pwsh</code> completion tests) and <code>miri</code>
 still queued - <strong>first: <code>gh run list</code> / <code>gh run view</code> both for <code>3432912</code></strong>. D-258 and the CI-shells change were pushed together. Owner delegated the open forks (D-258): no reviewer subagent for
 T-249/T-310; <strong>T-312..T-316 join 0.8.0</strong> - next in order T-312, T-313, T-315, T-314, T-316, then
-step 6 (release 0.8.0). <strong>T-312 done 2026-10-23 (D-259), T-313 done (D-260), T-315 done (D-261), T-314 done (D-262), T-316 done (D-263); T-315 independent review: no defect, follow-ups <code>30b88f1</code>. Step 6 started 2026-10-24 and <strong>paused</strong> the same day (owner: hold 0.8.0 until T-317 is done); the local bump was reverted, nothing pushed or tagged. T-317 done 2026-10-24 (D-264); next: step 6 again (owner already chose Python/Node.js/Ruby 0.5.1).</strong> <code>3432912</code>’s <code>rust</code>/<code>miri</code> were
+step 6 (release 0.8.0). <strong>T-312 done 2026-10-23 (D-259), T-313 done (D-260), T-315 done (D-261), T-314 done (D-262), T-316 done (D-263); T-315 independent review: no defect, follow-ups <code>30b88f1</code>. Step 6 started 2026-10-24 and <strong>paused</strong> the same day (owner: hold 0.8.0 until T-317 is done); the local bump was reverted, nothing pushed or tagged. T-317 done 2026-10-24 (D-264); CI on <code>1bb8858</code> green incl. Linux <code>smoke_completions</code> (zsh, fish, PowerShell, man page); next: step 6 again once <code>miri</code> on the release commit is green and the owner says go (owner already chose Python/Node.js/Ruby 0.5.1).</strong> <code>3432912</code>’s <code>rust</code>/<code>miri</code> were
 cancelled by the next push (<code>cancel-in-progress</code>); the T-312 push carries everything since, so read its <code>rust</code>/<code>miri</code> runs (incl. <code>asm-check</code>’s 16 builds and <code>smoke_completions</code>). CI’s Linux <code>test</code> job now installs zsh/fish/mandoc/groff
 and requires them (<code>UACRYPT_REQUIRE_SHELLS=1</code>, D-257 addendum) - the fish completer’s first real
 run is there: check <code>smoke_completions</code> in the <code>rust</code> run of the push after <code>df62897</code>. <code>.git/worktrees/old_wt</code> is an
@@ -11892,6 +11892,140 @@ handler-installation failures without a stated decision (Low). Fix: refuse a roo
 </ul>
 <p><strong>State 2026-10-22: all eleven done, local commits <code>ff6e2f5</code>..HEAD, not pushed</strong> (advisory-relevant for released 0.6.0: T-298, T-299, T-300, T-301 - the owner decides on an advisory before the push; the pushed tree would carry D-246..D-252’s recipes and the CHANGELOG <code>[Unreleased]</code> lines; <code>5141320</code>’s subject names the CMAC warning). <strong>Wave order (Claude, 2026-10-22):</strong> T-308; T-299 (+ capi/bindings); T-298 (docs/test part); T-307;
 T-302; then the CLI batch T-300, T-303, T-304, T-305, T-301; T-306 docs. Commit per task.</p>
+<h3 id="ecosystem-integration-research-2026-10-24-d-265-docsecosystem-integrationmd"><a class="header" href="#ecosystem-integration-research-2026-10-24-d-265-docsecosystem-integrationmd">Ecosystem integration (research 2026-10-24, D-265, <code>docs/ecosystem-integration.md</code>)</a></h3>
+<p>Owner-requested (“which PKCS for OpenSSL, other libraries and browsers”). Recommended direction:
+verify-only DSTU 4145 + Kupyna CMS first. OpenSSL deferred; PKCS#11 soft token and browser signing
+not done. Order: T-318, then T-319; T-320 and T-321 can run in parallel; T-322 only after all of
+them. None of this blocks 0.8.0.</p>
+<ul>
+<li><input disabled="" type="checkbox"> <strong>T-318</strong> (M, this repo, test-only; prerequisite for every signature path) <strong>Spike: verify
+real public Kupyna-era signatures with dstu-core.</strong>
+<ul>
+<li><strong>Fixtures:</strong> at least 3 independent czo.gov.ua TEST <code>.p7s</code> samples (DSTU 4145 m=257, digest
+<code>…1.2.2.1</code>, signature <code>…1.3.6.1.1</code>) with their certificates. Record the URL, download date and
+SHA-256 of each; check the fields hold no real PII. Never use the D-185 private files.</li>
+<li><strong>Scope:</strong> the signer’s signature only, with no chain, revocation or time checks. Extraction is
+scripted (<code>openssl asn1parse</code> to JSON), never hand-typed (D-163). A throwaway DER walker in
+<code>tests/</code> or <code>xtask</code> only; no public ASN.1 API (D-17).</li>
+<li><strong>Build test-first:</strong>
+<ul>
+<li>m=257 point decompression: half-trace, trace check, then the existing <code>n*Q</code> subgroup check;</li>
+<li>the little-endian signature and key codec;</li>
+<li>a check that the certificate’s explicit curve parameters equal the built-in m=257 curve, byte
+for byte;</li>
+<li>the hash-&gt;field convention.</li>
+</ul>
+</li>
+<li><strong>Conventions table:</strong> one row per byte transform, each with a citation (clause, UAPKI or BC
+source). A reversal that only makes the test pass is a defect (D-25). A convention found on
+sample 1 must pass on samples 2 and 3 unchanged.</li>
+<li><strong>Oracles:</strong>
+<ul>
+<li>the producer’s artefacts;</li>
+<li>a <code>uapkic</code> verify harness (the <code>tests/oracle-harness/uapki-*</code> pattern);</li>
+<li>BC <code>DSTU7564Digest</code> composed with <code>DSTU4145Signer</code> (it reverses the hash);</li>
+<li>decompression cross-checked against BC <code>DSTU4145PointEncoder</code>.</li>
+</ul>
+</li>
+<li><strong>Negative tests:</strong>
+<ul>
+<li>a flipped bit in r, s, the signed attributes, the content and the key;</li>
+<li>r and s swapped;</li>
+<li>the wrong key;</li>
+<li>an x with no point, the point at infinity, a point outside the subgroup (cofactor 4);</li>
+<li>r or s equal to 0 or at least n;</li>
+<li>non-canonical lengths;</li>
+<li>a GOST-era sample refused explicitly as an unsupported digest.</li>
+</ul>
+</li>
+<li><strong>Kill criterion:</strong> three cited convention attempts, then stop and record a D-entry. Then an
+independent reviewer subagent, offered to the owner.</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox"> <strong>T-319</strong> (M, this repo, after T-318; inside D-17: encodings of the standard’s own objects)
+<strong>Promote the T-318 primitives.</strong>
+<ul>
+<li>What it adds:
+<ul>
+<li>m=257 compressed-point decode/encode;</li>
+<li>a typed UA wire codec (33-byte LE compressed key, 64-byte LE reverse(s||r) signature, with a
+top-byte check when narrowing) beside <code>crypto_sign257</code>, whose own format stays unchanged;</li>
+<li>an exact explicit-parameter matcher;</li>
+<li>additive capi symbols.</li>
+</ul>
+</li>
+<li>The four test categories plus the active-attack category.</li>
+<li>Fuzz targets synced in all three places; Miri; a D-entry.</li>
+<li>Real-artefact vectors become a third oracle.</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox"> <strong>T-320</strong> (owner decisions, no code). Options are laid out in
+<code>docs/ecosystem-integration.md</code> sections 3 and 5.
+<ul>
+<li><strong>D-17:</strong>
+<ul>
+<li>A: as is;</li>
+<li>B: primitives plus the standard wire encodings and OID constants, no ASN.1 parser, with a
+named companion verify layer (the architect leans B);</li>
+<li>C: full PKI (advised against).</li>
+</ul>
+</li>
+<li><strong>D-118:</strong>
+<ul>
+<li>A: keep deferring;</li>
+<li>B: allow a verify-only WASM build with no secret-key API.</li>
+</ul>
+</li>
+<li><strong>GOST 34.311:</strong> a feature-gated, verify-only legacy primitive for chain verification during
+the transition, with BC and UAPKI as oracles; or leave it out.</li>
+<li><strong>Where the verifier lives:</strong> a separate Cargo workspace in this repo (the D-119 pattern) or a
+sibling repo.</li>
+<li><strong>Confirm or amend the recommended verdicts and the never-do list in D-265</strong> (they are
+recommendations until then).</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox"> <strong>T-321</strong> (owner, non-code)
+<ul>
+<li><strong>(a) Legal:</strong> a lawyer’s written answer to whether CMU 1298 item 6 (“перевірку … здійснюють
+лише кваліфіковані надавачі”) restricts a relying party’s own local verification, and whether
+CMU 991 covers an open-source library.</li>
+<li><strong>(b) User discovery:</strong> ask 3-5 likely relying parties (an e-document vendor, a bank
+integration team, govtech Rust/Python developers) whether they would use a memory-safe verify
+path over UAPKI, and why. No answers is itself the answer.</li>
+</ul>
+</li>
+<li><input disabled="" type="checkbox"> <strong>T-322</strong> (L, gated on T-318, T-319, T-320 and T-321) <strong>Verify-only CMS/X.509 verifier for DSTU
+4145 + Kupyna.</strong>
+<ul>
+<li><strong>Before any code, threat models for:</strong>
+<ul>
+<li>untrusted input (DER/CMS/X.509, chain building, resource limits);</li>
+<li>the algorithm and date policy (the GOST cut-off by trusted timestamp or certificate validity,
+never <code>signingTime</code>);</li>
+<li>the claims and regulatory statement (advanced vs qualified, no expertise conclusion).</li>
+</ul>
+</li>
+<li><strong>Parsing:</strong> strict DER, no BER, iterative with bounded depth; an OID allow-list; explicit curve
+parameters matched exactly or rejected; audited DER crates only after a registry check.</li>
+<li><strong>Testing:</strong> fuzz targets from the first commit; differential tests against the T-318 corpus
+and UAPKI.</li>
+<li><strong>Wording:</strong> “verifies DSTU 4145 + Kupyna CMS signatures”, nothing more.</li>
+</ul>
+</li>
+<li><strong>Parked, revisit only on a named request:</strong>
+<ul>
+<li>an OpenSSL provider slice (Kupyna digest, Kalyna-128 cipher; never wide-block or streaming
+AEAD);</li>
+<li>a verify-only WASM package (a spin-off of T-322);</li>
+<li>a PKCS#11 thin bridge to a customer-owned HSM (T-201);</li>
+<li>a shared, machine-readable cross-implementation corpus (DSTU 4145 m=163/257, Kupyna, Kalyna,
+edge cases, provenance per vector) plus a diff harness against <code>uapkic</code>/BC, publishable for
+other implementations (AI-engineer and QA roles; a natural follow-on of T-318/T-319);</li>
+<li>a wasm32 KAT feasibility probe under wasmtime, with no constant-time claim (needs
+<code>rustup target add wasm32-unknown-unknown</code>, owner’s yes).</li>
+</ul>
+</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="open-crypto-library-for-ukrainian-dstu-standards"><a class="header" href="#open-crypto-library-for-ukrainian-dstu-standards">Open crypto library for Ukrainian DSTU standards</a></h1>
 <h2 id="idea"><a class="header" href="#idea">Idea</a></h2>
@@ -14130,6 +14264,565 @@ mixed drop).</li>
 and <code>docs/cross-language-style-guide.md</code>’s “applies today to” line, before calling that phase done —
 <code>CLAUDE.md</code>’s own agent-discipline notes record this exact failure mode happening once already for
 <code>crypto_secretstream</code> (D-68) and warn against repeating it here at five-times the scale.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="ecosystem-integration-openssl-pkcs11-cmscades-and-key-formats-browser"><a class="header" href="#ecosystem-integration-openssl-pkcs11-cmscades-and-key-formats-browser">Ecosystem integration: OpenSSL, PKCS#11, CMS/CAdES and key formats, browser</a></h1>
+<p>Research of 2026-10-24 (owner request: “which PKCS do we need, to plug into OpenSSL or others, and
+through them reach browsers and other consumers?”). It covers four paths in the order the owner
+asked, then the topic as a whole.</p>
+<p><strong>Method.</strong> Four read-only research agents read the governing standards and code directly. Claude
+then re-checked every claim that drives a recommendation, plus the repo itself. Six role reviews
+followed: senior developer, architect, QA, project manager, AI engineer and security engineer.</p>
+<p><strong>Status.</strong> This is analysis, not a decision. Every verdict and the never-do list are
+recommendations until the owner confirms them (T-320). The owner’s decisions are tracked as T-320/T-321;
+the verdicts are recorded in <code>docs/DECISIONS.md</code> D-265.</p>
+<p><strong>Tags.</strong></p>
+<ul>
+<li>[V]: verified from a primary source or artefact.</li>
+<li>[V✔]: re-checked by Claude in this session.</li>
+<li></li>
+<li>[S]: secondary source only (news, search snippet).</li>
+</ul>
+<p><strong>Legal caveat.</strong> Every legal point below is an AI reading of Ukrainian acts. It is input for a
+lawyer, not legal advice.</p>
+<p><strong>Scope.</strong> This document does not change <code>docs/DECISIONS.md</code> D-17 (this repo is primitives only;
+ASN.1, X.509, CMS, PKCS#11/12 and browser signing are “not this project’s job”), D-118 (browser/WASM
+deferred) or T-201 (PKCS#11 as a sibling project). Where a recommendation would change one of them,
+it is listed as an owner decision.</p>
+<h2 id="0-the-facts-that-frame-every-path"><a class="header" href="#0-the-facts-that-frame-every-path">0. The facts that frame every path</a></h2>
+<ol>
+<li><strong>The national combination changed on 2026-09-01.</strong> [V✔]
+<ul>
+<li>CMU resolution No. 920 of 15.07.2026 (https://zakon.rada.gov.ua/laws/show/920-2026-%D0%BF),
+items 2-4, in force from 1 September 2026. DSTU 4145 in qualified-signature tools is used
+“із застосуванням ДСТУ 7564:2014 … та ДСТУ 7624:2014”, and GOST 34.311-95 is removed from the
+list.</li>
+<li>Other signature algorithms are allowed “у спосіб, визначений ДСТУ ETSI TS 119 312:2022”, so
+DSTU 4145 is the national option, not the only one.</li>
+<li>Qualified certificates with ECDSA/RSA are reported for ДПС and ЗСУ. [S]</li>
+</ul>
+</li>
+<li><strong>Real artefacts confirm the switch.</strong> [V✔] <code>openssl asn1parse</code> of the public czo.gov.ua TEST
+samples (https://czo.gov.ua/testexamples) shows:
+<ul>
+<li><strong>Kupyna-era CMS.</strong> Digest <code>1.2.804.2.1.1.1.1.2.2.1</code> (Kupyna-256), signature
+<code>1.2.804.2.1.1.1.1.3.6.1.1</code>.</li>
+<li><strong>The key OID is unchanged:</strong> <code>1.2.804.2.1.1.1.1.3.1.1</code>, “DSTU 4145-2002 little endian”.</li>
+<li><strong>The GOST-era sample</strong> uses GOST 34.311.</li>
+<li><strong>The Kupyna-era sample still embeds GOST-era CA certificates.</strong> They sit in its CAdES-X-Long
+<code>certValues</code> unsigned attribute, not in <code>SignedData.certificates</code>: the outer signature OID
+<code>…1.3.1.1</code> directly precedes each certificate’s signature BIT STRING (<code>openssl asn1parse</code>).
+UAPKI maps <code>…1.3.1.x</code> signatures to GOST 34.311. Verifying a chain therefore needs GOST
+34.311 for a transition period. No primary act was found that says
+how long; “systems must support both” comes from news only. [S]</li>
+</ul>
+</li>
+<li><strong>Bouncy Castle has no combined “DSTU 4145 with Kupyna” algorithm or OID.</strong>
+<ul>
+<li>It registers only <code>GOST3411WITHDSTU4145(LE)</code>. [V]</li>
+<li><code>UAObjectIdentifiers</code> has only <code>1.3.1.1</code> and <code>1.3.1.1.1.1</code>, with no <code>1.3.6.x</code>. [V✔]</li>
+<li>Its <code>DSTU4145Signer</code> does accept any hash: <code>hash2FieldElement</code> starts with
+<code>Arrays.reverse(hash)</code> (<code>oracles/bouncycastle-java/core/src/main/java/org/bouncycastle/crypto/signers/DSTU4145Signer.java</code>).
+[V✔]</li>
+<li>So composing <code>DSTU7564Digest</code> with <code>DSTU4145Signer</code> is a candidate second oracle for new
+signatures. Whether real artefacts use that byte convention is exactly what T-318 must settle.</li>
+</ul>
+</li>
+<li><strong>UAPKI is the only public implementation of the full layer.</strong> [V]
+<ul>
+<li>Repo: https://github.com/specinfo-ua/UAPKI. BSD-2, C, a cryptonite fork.</li>
+<li>Coverage:
+<ul>
+<li>CAdES BES/T/C/XL/A and B-LT/B-LTA;</li>
+<li>PKCS#12, JKS, Key-6.dat, a PKCS#11 client;</li>
+<li>an Emscripten WASM build and a Native Messaging host.</li>
+</ul>
+</li>
+<li>It holds a 2021 state-expertise conclusion. That certificate covers that build; forks and
+rebuilds do not inherit it, and nothing this project builds would carry one either. <a href="inferred.">I</a></li>
+<li>This repo vendors only <code>uapkic</code> (primitives), not UAPKI’s CMS layer.</li>
+</ul>
+</li>
+<li><strong>dstu-core cannot yet verify one real Ukrainian DSTU 4145 signature end to end.</strong> [V✔]
+<ul>
+<li><code>hazmat::dstu4145</code> m=257 has no point decompression. Real certificates carry a 33-byte
+little-endian compressed point.</li>
+<li>Real certificates carry explicit curve parameters; dstu-core has the m=257 curve built in.</li>
+<li><code>crypto_sign257</code> uses its own wire format: a 66-byte uncompressed big-endian key and a 66-byte
+(33+33) big-endian signature. The UA CMS signature is 64 bytes,
+little-endian (= reverse(s‖r)).</li>
+<li>So “we already implement what the 2026-09 rules mandate” holds at the primitive level only.
+It is unproven against real artefacts until T-318 passes.</li>
+</ul>
+</li>
+<li><strong>Signing and verifying differ in kind.</strong> Verification handles only public data. The
+constant-time, key-custody, WASM and “qualified signature device” objections below apply to
+signing, decryption and key generation, not to verification.</li>
+</ol>
+<h2 id="1-openssl-provider"><a class="header" href="#1-openssl-provider">1. OpenSSL provider</a></h2>
+<p><strong>Standards and sources</strong></p>
+<ul>
+<li>OpenSSL 4.1.0 man pages: provider(7), provider-base/-cipher/-digest/-mac/-signature/-keymgmt/
+-encoder/-decoder(7), property(7).</li>
+<li>Source: <code>crypto/x509/x_pubkey.c</code>, <code>crypto/asn1/a_verify.c</code>, <code>crypto/cms/cms_sd.c</code>,
+<code>ssl/s3_lib.c</code>, <code>ssl/t1_lib.c</code>.</li>
+<li>IANA TLS registries (2026-10-21), RFC 8446.</li>
+</ul>
+<p><strong>Facts</strong></p>
+<ul>
+<li><strong>Engines are gone.</strong> [V] OpenSSL 4.1.0 is current (2026-10-23), and 4.0 removed engines, so on
+4.x a provider is the only extension path.</li>
+<li><strong>LTS distributions ship 3.0.</strong> [V] Ubuntu 22.04/24.04 and Debian 12 are on 3.0. Provider-based
+CMS signatures and TLS sigalgs need 3.2+. Debian 13 ships 3.5 and Ubuntu 26.04 ships 3.5.</li>
+<li><strong>OIDs.</strong> [V]
+<ul>
+<li>OpenSSL already knows <code>dstu4145le</code> (<code>1.2.804.2.1.1.1.1.3.1.1</code>) and <code>uacurve0..9</code>.</li>
+<li>It has no Kupyna/Kalyna OIDs and no DSTU sigid.</li>
+<li>A provider must:
+<ul>
+<li>register OIDs and sigids (<code>core_obj_create</code>, <code>core_obj_add_sigid</code>);</li>
+<li>name its keymgmt exactly <code>dstu4145le</code>;</li>
+<li>ship DER/SubjectPublicKeyInfo/PKCS#8 encoders.</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><strong>TLS.</strong> [V]
+<ul>
+<li>Groups have been pluggable since 3.0 and sigalgs since 3.2 (TLS 1.3 only). Cipher suites are
+hard-coded.</li>
+<li>IANA has no DSTU entries.</li>
+<li>gost-engine carries a 793-line libssl patch for its own (IANA-registered) suites.</li>
+<li><strong>Earlier I said “groups and sigalgs from 3.2”; groups date from 3.0.</strong></li>
+</ul>
+</li>
+<li><strong>No DSTU provider exists anywhere.</strong> dstucrypt/dstu-engine is an engine, so it is dead on 4.x.
+This is a negative search, so the claim is weaker than a positive finding.</li>
+</ul>
+<p><strong>Pitfalls, ranked</strong></p>
+<ol>
+<li><strong>Wide-block Kalyna versus EVP.</strong> <code>EVP_MAX_IV_LENGTH</code> is 16. CMS and <code>enc</code> size stack buffers by
+that constant without checking the provider’s IV length. Expose only 128-bit-block Kalyna.
+<ul>
+<li>This is a scope limit; the overflow itself is inferred, not reproduced. <a href="inferred.">I</a></li>
+</ul>
+</li>
+<li><strong>AEAD streaming.</strong> EVP decryption releases plaintext before the tag is checked. That
+contradicts dstu-core’s “never unverified plaintext” (D-63/D-65), so no Kalyna GCM/CCM through
+EVP.</li>
+<li><strong>Real UA artefacts need GOST 34.311 for chains</strong>, and the sigid table is one-to-one.</li>
+<li><strong>Key material crosses into OpenSSL</strong> through OSSL_PARAM import/export and PKCS#8 encoding. A
+provider can keep keys in its own zeroizing objects; the export paths are the leak.</li>
+<li><strong>Version spread:</strong> 3.0/3.5/3.6/4.x, plus LibreSSL on macOS (no provider API) and no system
+OpenSSL on Windows.</li>
+<li><strong>Exposing hazmat through a generic API</strong> undoes D-47’s misuse resistance.</li>
+</ol>
+<p><strong>Sizes</strong> <a href="inferred.">I</a> (excluding test infrastructure, which roughly doubles them):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scope</th><th>Size</th></tr>
+</thead>
+<tbody>
+<tr><td>Kupyna digest and Kalyna-128 cipher</td><td>S-M</td></tr>
+<tr><td>DSTU 4145 signature, keymgmt and encoders</td><td>L</td></tr>
+<tr><td>Real UA CMS/X.509</td><td>L, or XL with GOST</td></tr>
+<tr><td>TLS with private sigalgs, which works only between our own peers</td><td>M on top</td></tr>
+<tr><td>Real DSTU TLS</td><td>not viable</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Recommended verdict: defer.</strong> A Kupyna and Kalyna-128 slice only on a named consumer’s request. Never
+wide-block Kalyna, never streaming AEAD through EVP, never libssl patches.</p>
+<ul>
+<li>Role scores (realism/niche/return, 1-5): about 2/4/2 across all six roles.</li>
+</ul>
+<h2 id="2-pkcs11-cryptoki"><a class="header" href="#2-pkcs11-cryptoki">2. PKCS#11 (Cryptoki)</a></h2>
+<p><strong>Standards and sources</strong></p>
+<ul>
+<li>OASIS PKCS#11 3.1 base spec and profiles.</li>
+<li>3.2 is an OASIS Standard (directory dated 2026-06-03). [V]</li>
+<li>NSS source, the Java SunPKCS11 guide (JDK 25), latchset/pkcs11-provider, GnuTLS, p11-kit, MS CNG.</li>
+</ul>
+<p><strong>Facts</strong></p>
+<ul>
+<li><strong>Mechanisms.</strong> [V]
+<ul>
+<li>Binary-field curves are expressible (<code>CKF_EC_F_2M</code>).</li>
+<li>The DSTU 4145 signature equation is not ECDSA, so honest support needs vendor-defined
+CKK/CKM.</li>
+<li>GOST R 34.10 is a registered precedent: <code>CKM_GOSTR3410</code> is a raw 32-byte prehash mechanism.</li>
+</ul>
+</li>
+<li><strong>No mainstream consumer would use a DSTU key without code changes.</strong> [V]
+<ul>
+<li>NSS has a closed <code>KeyType</code> enum.</li>
+<li>SunPKCS11 has a fixed algorithm table.</li>
+<li>pkcs11-provider covers ec/rsa/ml-dsa/… only.</li>
+<li>GnuTLS does not handle even GOST.</li>
+<li>p11-kit RPC drops vendor mechanisms through a whitelist.</li>
+<li>Windows CNG has no PKCS#11 path.</li>
+<li><strong>Earlier I said “NSS uses only mechanisms it knows”; confirmed</strong> for its high-level layers.
+NSS’s low-level <code>PK11_SignWithMechanism</code> passes anything through, but only from an
+application’s own code.</li>
+</ul>
+</li>
+<li><strong>Real consumers are Ukrainian PKI stacks</strong>: UAPKI cm-pkcs11, IIT and Avtor, used for CMS document
+signing.</li>
+<li><strong>The constant set is de facto only.</strong> [V] It is <code>VENDOR_DEFINED + 0x0042xxxx</code>, and two public
+client headers agree on it (UAPKI <code>pkcs11t-ua.h</code>, edenlab <code>uacryptoki.h</code>). There is no vendor or
+official specification. Both headers <code>#undef</code>/redefine the OASIS GOST names, which is a collision
+hazard.</li>
+<li><strong>Certified hardware tokens already exist</strong> (Алмаз-1К, SecureToken-337, Гряда, Diamond HSM).</li>
+<li><strong>A soft token makes advanced, not qualified, signatures.</strong> [V; I applied]
+<ul>
+<li>A qualified signature needs a certified qualified signature-creation device (Law 2155-VIII
+art. 19(5)).</li>
+<li>A soft token can give at most an advanced signature based on a qualified certificate (art. 1
+item 59).</li>
+</ul>
+</li>
+<li><strong>T-201 correction.</strong> capi has the right prehash shape: <code>dstu_sign257_digest</code>/<code>_verify257_digest</code>,
+32 bytes. The real gaps are elsewhere:
+<ul>
+<li>only the 66-byte uncompressed big-endian key crosses the ABI;</li>
+<li>the curve is hard-coded;</li>
+<li>there is no 48/64-byte prehash.</li>
+</ul>
+</li>
+</ul>
+<p><strong>Pitfalls, ranked</strong></p>
+<ol>
+<li>Byte layout versus UAPKI/IIT: little-endian, compressed point, <code>DSTU4145Params</code> in
+<code>CKA_EC_PARAMS</code>.</li>
+<li>Vendor constant collisions.</li>
+<li>Consumers silently ignore the mechanisms.</li>
+<li>Soft-token custody: offline PIN brute force, rollback, keys in process memory. Also the
+openCryptoki CVE classes:
+<ul>
+<li>CVE-2021-3798, invalid-curve key extraction via <code>C_CreateObject</code>;</li>
+<li>CVE-2026-40253, BER length trust;</li>
+<li>symlink and timing attacks.</li>
+</ul>
+</li>
+<li>Windows 1-byte struct packing.</li>
+</ol>
+<p><strong>Implementation.</strong> kryoptic (Rust, Apache-2.0) depends on OpenSSL and has no Windows support, so it
+is a design reference, not a base.</p>
+<p><strong>Sizes</strong> <a href="inferred.">I</a>:</p>
+<ul>
+<li>a minimal m=257 soft token: L (realistically XL with an interop harness);</li>
+<li>the full UA constant set: XL.</li>
+</ul>
+<p><strong>Recommended verdict: do not do.</strong> T-201 stays parked, with its “no new work needed” claim corrected.</p>
+<ul>
+<li>Role scores: about 2/2/1.</li>
+<li>What would change it: an integrator with an HSM they already own who needs a thin bridge, not
+custody.</li>
+</ul>
+<h2 id="3-cmscades-key-formats-and-oids"><a class="header" href="#3-cmscades-key-formats-and-oids">3. CMS/CAdES, key formats and OIDs</a></h2>
+<p><strong>Standards and sources</strong></p>
+<ul>
+<li>RFC 5652 (CMS), RFC 5280 (X.509), RFC 5958 (PKCS#8), RFC 7292 (PKCS#12).</li>
+<li>ДСТУ ETSI EN 319 122/132/142/162, ДСТУ ETSI TS 119 182-1.</li>
+<li>Law 2155-VIII; CMU 1298 (2023), 764 (2024), 920 (2026), 991 (2020); Law 80/94 art. 8.</li>
+<li>BC <code>UAObjectIdentifiers.java</code>; UAPKI <code>oids.h</code>.</li>
+</ul>
+<p><strong>Formats.</strong> [V]</p>
+<ul>
+<li>CMU 1298 covers electronic public services. Signatures in XML, CMS, PDF, ASN.1 or JSON at
+B-B/B-T/B-LT/B-LTA, or in containers, per the ДСТУ ETSI adoptions.</li>
+<li>czo still generates legacy CAdES-C/X-Long, so a validator must accept both.</li>
+<li>The older formats order (140/614 of 2020) was repealed on 2024-03-26.</li>
+</ul>
+<p><strong>OIDs</strong> [V]. Arc <code>1.2.804.2.1.1.1</code>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Object</th><th>OID</th></tr>
+</thead>
+<tbody>
+<tr><td>DSTU 4145 LE key and GOST-era signature</td><td><code>.1.3.1.1</code></td></tr>
+<tr><td>DSTU 4145 with Kupyna-256/384/512</td><td><code>.1.3.6.1.1</code> / <code>.1.3.6.2.1</code> / <code>.1.3.6.3.1</code></td></tr>
+<tr><td>Named curves (m=257 is <code>.6</code>)</td><td><code>.1.3.1.1.2.{0..9}</code></td></tr>
+<tr><td>GOST 34.311</td><td><code>.1.2.1</code></td></tr>
+<tr><td>Kupyna-256/384/512</td><td><code>.1.2.2.{1,2,3}</code></td></tr>
+<tr><td>Kupyna-KMAC</td><td><code>.1.2.2.{4,5,6}</code></td></tr>
+<tr><td>Kalyna</td><td><code>.1.1.3.{mode}.{block}</code></td></tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li>The UAPKI GCM/WRAP numbers are marked non-standard by UAPKI itself.</li>
+<li>No OIDs were found for DSTU 9041 or Strumok (negative search). Inventing them is not this
+project’s role.</li>
+</ul>
+<p><strong>Encoding</strong> [V]</p>
+<ul>
+<li>Signature, little-endian: reverse(s‖r).</li>
+<li>In X.509 it is a BIT STRING wrapping a 64-byte OCTET STRING. In CMS it is a bare 64-byte OCTET
+STRING.</li>
+<li>The public key is a BIT STRING wrapping an OCTET STRING with the 33-byte little-endian compressed
+point.</li>
+<li>Curve b and the base point are little-endian OCTET STRINGs; n is an INTEGER.</li>
+<li>GOST-era keys also carry a 64-byte DKE (an S-box).</li>
+</ul>
+<p><strong>Key containers</strong> [V]</p>
+<ul>
+<li>Key-6.dat is IIT-proprietary. UAPKI reverse-engineered it: GOST 28147-ECB plus iterated 34.311.</li>
+<li>UA PKCS#12 uses HMAC-GOST or a non-standard Kupyna-PBKDF2.</li>
+<li>PrivatBank JKS uses SHA-1 XOR.</li>
+<li>No container profile is in force: the 2013 and 2020 orders were repealed.</li>
+</ul>
+<p><strong>Legal frame</strong> [V text; I application; needs a lawyer]</p>
+<ul>
+<li>A file key gives an <em>advanced</em> signature based on a qualified certificate, not a qualified one
+(Law art. 1 item 59).</li>
+<li>Qualified signature devices need certification (art. 19(5)).</li>
+<li><strong>CMU 1298 item 6:</strong> “Перевірку та підтвердження удосконалених електронних підписів, які
+базуються на кваліфікованих сертифікатах … здійснюють лише кваліфіковані надавачі”. <strong>Open:</strong>
+does this restrict a relying party’s own local check, or only verification offered as a
+service? This gates the recommended path (T-321).</li>
+<li><strong>State information systems:</strong> for службова інформація, only cryptographic tools with a
+state-expertise conclusion count (Law 80/94 art. 8).</li>
+<li><strong>CMU 991</strong> (the technical regulation for cryptographic tools): whether it covers open-source
+libraries is unknown. Its transition cliff is 2027-01-01.</li>
+</ul>
+<p><strong>Pitfalls, ranked</strong></p>
+<ol>
+<li>Signature OID versus key OID: the hash must come from the signature OID.</li>
+<li>Byte order and wrapping.</li>
+<li>Explicit curve parameters in the SPKI: a CurveBall-class risk. Accept only an exact byte match to
+a known curve.</li>
+<li>The GOST cut-off must never rest on the attacker-written <code>signingTime</code>. Use a trusted timestamp
+or the certificate validity window, and allow GOST only in a verify-only legacy feature.</li>
+<li>Untrusted DER/CMS parsing: strict DER, bounded depth, an OID allow-list, fuzzing.</li>
+<li>“Qualified” wording, or a library’s “valid” standing in for a qualified verification service.</li>
+<li>Frequently changing acts: watch the “Редакція від” of 2155-19, 764-2024-п, 1298-2023-п and
+991-2020-п.</li>
+<li>Unclear licences on jkurwa/dstucrypt (no LICENSE file).</li>
+</ol>
+<p><strong>Recommended verdict: the one recommended direction, verify-only first.</strong></p>
+<ul>
+<li><strong>Niche.</strong> A memory-safe (Rust) parser of untrusted DER/CMS against UAPKI’s C one; a <code>no_std</code>
+primitive layer underneath; reach into eight languages through the existing bindings; and DSTU
+4145 with Kupyna, which BC lacks as a combined algorithm.</li>
+<li><strong>Out of scope.</strong> Signing CAdES, LT/LTA, TSP/OCSP clients and key containers duplicate UAPKI
+(XL) and stay out.</li>
+<li><strong>Role scores:</strong> about 3-4/4/4 for verify-only and about 1-2/1/1 for full CAdES with containers.</li>
+</ul>
+<h2 id="4-browser"><a class="header" href="#4-browser">4. Browser</a></h2>
+<p><strong>Standards and sources</strong></p>
+<ul>
+<li>IANA TLS registries.</li>
+<li>NSS <code>sslt.h</code>; Chromium <code>net/ssl/ssl_private_key.cc</code>.</li>
+<li>Chrome, Firefox (MDN) and Edge Native Messaging docs; Apple Safari web-extension docs.</li>
+<li>W3C Web Cryptography Level 2 (FPWD 2025-04-22).</li>
+<li>WebAssembly proposals; CT-Wasm (POPL 2019, doi:10.1145/3290390); getrandom 0.3.4 docs.</li>
+</ul>
+<p><strong>Facts</strong></p>
+<ul>
+<li><strong>DSTU TLS in mainstream browsers is impossible.</strong> [V] There are no IANA codepoints.
+Registration alone would not help either: GOST and SM are registered and still absent from NSS
+and Chromium. The only shipped route is a forked browser (Chromium-Gost).
+<ul>
+<li><strong>Earlier I said this; confirmed.</strong></li>
+</ul>
+</li>
+<li><strong>No algorithm plugins.</strong> [V; Safari I] Chrome, Edge and Safari accept none. Firefox’s PKCS#11
+modules act as key stores for algorithms NSS already knows.
+<ul>
+<li><strong>Earlier I said this; confirmed.</strong></li>
+</ul>
+</li>
+<li><strong>How Ukrainian government signing actually works.</strong> [V]
+<ul>
+<li>The id.gov.ua/czo widget signs <strong>file keys in-page</strong> with a 16.7 MB Emscripten <strong>asm.js</strong>
+build of IIT’s library (not WASM).</li>
+<li><strong>Tokens</strong> go through IIT’s Chrome MV3 extension plus a native host. It has 800,000 users per
+its Chrome Web Store listing.</li>
+<li><strong>Diia.Підпис</strong> is a smartphone flow.</li>
+<li><strong>Earlier I said “IIT and Diia sign through Native Messaging”; that is only one of three
+channels.</strong></li>
+</ul>
+</li>
+<li><strong>WASM.</strong>
+<ul>
+<li>wasm32 has no 64×64→128 multiply, so <code>__multi3</code> may appear in the field arithmetic. That is
+unbuilt and probably branchless. <a href="inferred.">I</a></li>
+<li>The real issue is that WASM engines give no constant-time guarantee (CT-Wasm), and the
+constant-time proposal is inactive. [V]</li>
+<li>getrandom needs <code>wasm_js</code> and must be confined to a binding crate. [V]</li>
+<li>Web Crypto cannot hold DSTU keys, so they would sit as bytes in JS/WASM/IndexedDB. [V]</li>
+<li>A local wasm32 build was not run because the target is not installed.</li>
+</ul>
+</li>
+<li><strong>Native Messaging.</strong> [V]
+<ul>
+<li>Host-to-browser messages are capped at 1 MB.</li>
+<li>Hosts are registered per OS and per browser, and Edge and Chrome store IDs differ.</li>
+<li>Safari needs an Xcode containing app plus an app extension.</li>
+<li>It is a confused-deputy risk: <code>allowed_origins</code> gates the extension, not the web page.</li>
+</ul>
+</li>
+</ul>
+<p><strong>Recommended verdict.</strong></p>
+<ul>
+<li><strong>Never</strong> browser signing or a Native Messaging host.</li>
+<li><strong>A verify-only WASM package</strong> avoids the constant-time and custody objections. It is a possible
+later spin-off of §3, but no demand has been shown.</li>
+<li><strong>Role scores:</strong> about 2/2/2 for verify-only and about 1/2/1 for signing.</li>
+</ul>
+<h2 id="5-the-topic-as-a-whole"><a class="header" href="#5-the-topic-as-a-whole">5. The topic as a whole</a></h2>
+<p><strong>What the panel agreed on.</strong> All six roles ranked the same way:</p>
+<ol>
+<li>Verify-only DSTU 4145 + Kupyna CMS is the one direction with a real niche and a real external
+oracle: a producer’s signature either verifies or it does not.</li>
+<li>OpenSSL is deferred.</li>
+<li>PKCS#11 and browser signing are not to be done.</li>
+</ol>
+<p><strong>How much weight the agreement carries.</strong> The roles are one model reading one synthesis, so their
+agreement is a consistency check, not six independent opinions. Their corrections, folded in
+above, are the valuable part.</p>
+<p><strong>Dependency order</strong></p>
+<pre><code>T-318 spike (verify ≥3 public czo Kupyna-era samples)    &lt;- gates every SIGNATURE path
+  -&gt; T-319 primitives in dstu-core (decompression, UA codec)   [inside D-17]
+       -&gt; T-322 verify-only CMS verifier (separate workspace or sibling repo)  [gated by T-320/T-321]
+            -&gt; later, only on demand: verify-only WASM; OpenSSL Kupyna/Kalyna-128 slice
+</code></pre>
+<p>Not gated by T-318: an OpenSSL digest/cipher slice and a WASM feasibility probe.</p>
+<p><strong>Target layering</strong> (architect, for the owner to decide in T-320):</p>
+<ul>
+<li><strong>L0 <code>dstu-core</code>.</strong> Primitives plus the standard wire encodings of their own objects: compressed
+point, little-endian signature, exact explicit-parameter match. No ASN.1.
+<ul>
+<li>GOST 34.311, if ever, is a feature-gated, verify-only legacy primitive.</li>
+</ul>
+</li>
+<li><strong>L1 a verify-only CMS/X.509 crate.</strong> It depends on <code>dstu-core</code> (never on capi) and uses audited
+DER crates after a registry check. It starts as a separate workspace in this repo (the D-119
+pattern) or as a sibling repo.</li>
+<li><strong>L2 adapters</strong>: CLI, capi, bindings and a verify-only WASM package.</li>
+</ul>
+<p><strong>Recommended never-do list</strong> (owner to confirm in T-320):</p>
+<ul>
+<li>call anything “qualified”, “certified”, “КЕП-compliant”, “CMU 920-compliant” or
+side-channel-resistant;</li>
+<li>treat a library’s “valid” as a qualified verification service;</li>
+<li>ship a soft PKCS#11 token as a security product;</li>
+<li>run a Native Messaging host, or sign in the browser with keys in IndexedDB;</li>
+<li>put wide-block Kalyna or streaming AEAD through EVP, or patch libssl;</li>
+<li>sign with GOST, or accept caller-supplied DKE or explicit curves on a signing path;</li>
+<li>reverse-engineer Key-6.dat;</li>
+<li>invent OIDs;</li>
+<li>put ASN.1 into <code>dstu-core</code>, or change <code>crypto_*</code> wire formats instead of adding codecs beside
+them;</li>
+<li>accept a byte-order “fix” without a citation (D-25);</li>
+<li>hand-transcribe constants (D-163);</li>
+<li>commit third-party or private signatures (the D-185 <code>.p7s</code> files are private and can never be
+fixtures; only the czo public TEST artefacts can be).</li>
+</ul>
+<p><strong>Still unknown</strong></p>
+<ul>
+<li>Whether CMU 1298 item 6 restricts local relying-party verification.</li>
+<li>Whether CMU 991 covers open-source libraries.</li>
+<li>Whether qualified signature device certification covers signing software or only devices.</li>
+<li>How long GOST 34.311 verification must continue.</li>
+<li>Whether real production Kupyna certificates match the czo TEST ones.</li>
+<li>The exact hash→field convention in Kupyna-era artefacts. T-318 settles it; BC reverses the hash
+bytes.</li>
+<li>Whether OpenSSL’s IV overflow is real (needs an ASan run).</li>
+<li>Whether <code>__multi3</code> appears on wasm32.</li>
+<li>Whether the 0x0042xxxx PKCS#11 set is vendor-confirmed.</li>
+</ul>
+<h2 id="6-sources"><a class="header" href="#6-sources">6. Sources</a></h2>
+<p>All accessed 2026-10-24. The four research reports’ full quote lists were not committed; these are
+the sources each recommendation rests on.</p>
+<p><strong>OpenSSL (§1)</strong></p>
+<ul>
+<li>Release list: https://api.github.com/repos/openssl/openssl/releases</li>
+<li>Engine removal: https://raw.githubusercontent.com/openssl/openssl/openssl-4.1.0/NEWS.md and <code>CHANGES.md</code> in the same tree.</li>
+<li>Man pages: https://raw.githubusercontent.com/openssl/openssl/openssl-4.1.0/doc/man7/provider.pod, plus <code>provider-base.pod</code>, <code>provider-signature.pod</code> and <code>provider-keymgmt.pod</code>. Also <code>doc/man5/config.pod</code> and <code>doc/man7/openssl-env.pod</code>.</li>
+<li>Source files in the openssl-4.1.0 tree:
+<ul>
+<li><code>crypto/objects/objects.txt</code></li>
+<li><code>crypto/x509/x_pubkey.c</code></li>
+<li><code>crypto/asn1/a_verify.c</code></li>
+<li><code>crypto/cms/cms_sd.c</code></li>
+<li><code>crypto/cms/cms_enc.c</code></li>
+<li><code>include/openssl/evp.h</code></li>
+<li><code>ssl/s3_lib.c</code></li>
+<li><code>ssl/t1_lib.c</code></li>
+</ul>
+</li>
+<li>Distribution versions: https://qa.debian.org/madison.php?package=openssl and https://people.canonical.com/~ubuntu-archive/madison.cgi?package=openssl</li>
+<li>IANA registry: https://www.iana.org/assignments/tls-parameters/tls-parameters.xml</li>
+<li>gost-engine: https://github.com/gost-engine/engine (PR #482, <code>patches/openssl-tls1.3.patch</code>)</li>
+<li>oqs-provider: https://github.com/open-quantum-safe/oqs-provider</li>
+<li>dstu-engine: https://github.com/dstucrypt/dstu-engine</li>
+</ul>
+<p><strong>PKCS#11 (§2)</strong></p>
+<ul>
+<li>Spec v3.1: https://docs.oasis-open.org/pkcs11/pkcs11-spec/v3.1/os/pkcs11-spec-v3.1-os.html</li>
+<li>Profiles: https://docs.oasis-open.org/pkcs11/pkcs11-profiles/v3.1/os/pkcs11-profiles-v3.1-os.html</li>
+<li>v3.2 directory: https://docs.oasis-open.org/pkcs11/pkcs11-spec/v3.2/os/</li>
+<li>NSS: https://github.com/nss-dev/nss (<code>cryptohi/keythi.h</code>, <code>pk11wrap/pk11akey.c</code>, <code>pk11wrap/pk11obj.c</code>)</li>
+<li>SunPKCS11: https://docs.oracle.com/en/java/javase/25/security/pkcs11-reference-guide1.html</li>
+<li>pkcs11-provider: https://github.com/latchset/pkcs11-provider</li>
+<li>GnuTLS: https://gitlab.com/gnutls/gnutls (<code>lib/pkcs11_privkey.c</code>)</li>
+<li>p11-kit: https://github.com/p11-glue/p11-kit (<code>rpc-client.c</code>, <code>rpc-message.c</code>)</li>
+<li>Windows: https://learn.microsoft.com/en-us/windows/win32/seccng/key-storage-and-retrieval</li>
+<li>UA constant headers:
+<ul>
+<li>https://github.com/specinfo-ua/UAPKI (<code>library/common/cryptoki/pkcs11t-ua.h</code>, <code>cm-pkcs11/src/storage/cryptoki-storage.cpp</code>)</li>
+<li>https://github.com/edenlabllc/digital_signature.lib (<code>c_src/h/uacryptoki.h</code>)</li>
+</ul>
+</li>
+<li>Avtor SecureToken-337 datasheet: https://fbp.com.ua/docs/software/eTrade/SecureToken337.pdf</li>
+<li>kryoptic: https://github.com/latchset/kryoptic (issue #250)</li>
+<li>native-pkcs11: https://github.com/google/native-pkcs11</li>
+<li>NVD CVE entries: CVE-2021-3798, CVE-2026-40253, CVE-2026-23893, CVE-2024-0914</li>
+</ul>
+<p><strong>CMS, formats, legal (§3)</strong></p>
+<ul>
+<li>Law 2155-VIII: https://zakon.rada.gov.ua/laws/show/2155-19</li>
+<li>CMU 1298 (2023): https://zakon.rada.gov.ua/laws/show/1298-2023-%D0%BF</li>
+<li>CMU 920 (2026): https://zakon.rada.gov.ua/laws/show/920-2026-%D0%BF</li>
+<li>CMU 764 (2024): https://zakon.rada.gov.ua/laws/show/764-2024-%D0%BF</li>
+<li>CMU 991 (2020): https://zakon.rada.gov.ua/laws/show/991-2020-%D0%BF</li>
+<li>Law 80/94-ВР: https://zakon.rada.gov.ua/laws/show/80/94-%D0%B2%D1%80</li>
+<li>Repealed orders: https://zakon.rada.gov.ua/laws/show/z1039-20 (repealed by z0375-24) and https://zakon.rada.gov.ua/laws/show/z2227-13</li>
+<li>czo.gov.ua: https://czo.gov.ua/testexamples (public TEST artefacts) and https://czo.gov.ua/faq</li>
+<li>UAPKI expertise record: https://data.gov.ua/dataset/7b0d45fe-75eb-4d14-9792-59e440305678</li>
+<li>Bouncy Castle: https://github.com/bcgit/bc-java (<code>core/src/main/java/org/bouncycastle/asn1/ua/UAObjectIdentifiers.java</code>, <code>DSTU4145NamedCurves.java</code>). The local <code>oracles/bouncycastle-java</code> copy has <code>crypto/signers/DSTU4145Signer.java</code>.</li>
+<li>UAPKI: https://github.com/specinfo-ua/UAPKI (<code>library/common/pkix/oids.h</code>, <code>cm-pkcs12/src/crypto/pkcs5.c</code>)</li>
+<li>jkurwa: https://github.com/dstucrypt/jkurwa</li>
+<li>RFCs: 5652, 5280, 5958 and 7292 (https://www.rfc-editor.org/)</li>
+<li>News, secondary only [S]: dtkt.ua, 2026-08-07, on the Kupyna switch dates</li>
+</ul>
+<p><strong>Browser (§4)</strong></p>
+<ul>
+<li>IANA CSVs: https://www.iana.org/assignments/tls-parameters/tls-parameters-4.csv and <code>tls-signaturescheme.csv</code></li>
+<li>NSS: https://raw.githubusercontent.com/nss-dev/nss/master/lib/ssl/sslt.h</li>
+<li>Chromium: https://chromium.googlesource.com/chromium/src/+/main/net/ssl/ssl_private_key.cc</li>
+<li>Chromium-Gost: https://github.com/deemru/Chromium-Gost</li>
+<li>Native messaging:
+<ul>
+<li>Chrome: https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging</li>
+<li>Firefox: https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Native_manifests</li>
+<li>Edge: https://learn.microsoft.com/en-us/microsoft-edge/extensions/developer-guide/native-messaging</li>
+</ul>
+</li>
+<li>Chrome MV3 policy: https://developer.chrome.com/docs/webstore/program-policies/mv3-requirements</li>
+<li>Safari extension messaging: https://developer.apple.com/documentation/safariservices/messaging-between-the-app-and-javascript-in-a-safari-web-extension</li>
+<li>id.gov.ua: https://id.gov.ua/sign (widget <code>/js/sign-widget/eusign.js</code>, worker <code>sign-widget/v20260209/js/euscp.worker.ex.js</code>)</li>
+<li>IIT extension: Chrome Web Store listing “ІІТ Користувач ЦСК-1. Бібл. підп. (web-р.)”, ID <code>jffafkigfgmjafhpkoibhfefeaebmccg</code>, 800,000 users</li>
+<li>IIT downloads: https://iit.com.ua/downloads</li>
+<li>Web Crypto: https://www.w3.org/TR/WebCryptoAPI/ (Level 2 FPWD, 2025-04-22)</li>
+<li>WebAssembly proposals: https://github.com/WebAssembly/proposals (README.md, inactive-proposals.md) and https://github.com/WebAssembly/wide-arithmetic</li>
+<li>CT-Wasm: https://doi.org/10.1145/3290390</li>
+<li>getrandom: https://docs.rs/getrandom/0.3.4/getrandom/</li>
+<li>wasm org sunset: https://blog.rust-lang.org/inside-rust/2025/07/21/sunsetting-the-rustwasm-github-org/</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="docssecuritymd"><a class="header" href="#docssecuritymd">docs/SECURITY.md</a></h1>
 <p>Threat model, hard constraints, and dependency vetting for this project. Applies from the first
@@ -19951,6 +20644,9 @@ the review covers, not about excluding the source. Also rejected: keeping the fu
 Pruned for the same reason cryptonite/Bouncy Castle were — this project needs the crypto
 primitives, not the ASN.1/PKCS#11/browser-integration layers around them.</p>
 <h2 id="d-17-reviewed-project-positioning-against-uapki--no-overlap-no-scope-change"><a class="header" href="#d-17-reviewed-project-positioning-against-uapki--no-overlap-no-scope-change">D-17: Reviewed project positioning against UAPKI — no overlap, no scope change</a></h2>
+<blockquote>
+<p><strong>Status (2026-10-24, D-265):</strong> still in force. Its table’s DSTU 9041 row (“planned, hard-blocked”) is stale - implemented since T-177/T-192/T-297. The ecosystem-integration research (<code>docs/ecosystem-integration.md</code>) proposes options for amending this entry (T-320); none is decided.</p>
+</blockquote>
 <p>Finding UAPKI (D-16) raised the obvious question directly: is this project reimplementing
 something UAPKI already provides? Answer, after reading its actual scope rather than assuming from
 the algorithm list: <strong>no — different layer, different language ecosystem, different platform
@@ -34343,6 +35039,132 @@ tests hit 99, and a source audit found no unprefixed invocation. Tests: <code>te
 (old names, near miss, <code>hazmat</code> listing, per-command help without warning, unknown words, warning
 on a successful and a failing run, top-level help free of the eight), unit tests for the table
 agreement, hazmat dispatch arms and subcommands, and the man page section.</p>
+<h2 id="d-265-ecosystem-integration-research---recommended-verify-only-dstu-4145--kupyna-first-openssl-deferred-no-pkcs11-soft-token-or-browser-signing-2026-10-24-owner-to-confirm-in-t-320"><a class="header" href="#d-265-ecosystem-integration-research---recommended-verify-only-dstu-4145--kupyna-first-openssl-deferred-no-pkcs11-soft-token-or-browser-signing-2026-10-24-owner-to-confirm-in-t-320">D-265: Ecosystem integration research - recommended: verify-only DSTU 4145 + Kupyna first; OpenSSL deferred; no PKCS#11 soft token or browser signing (2026-10-24, owner to confirm in T-320)</a></h2>
+<p>Owner asked which “PKCS” to implement to plug dstu-core into OpenSSL or other libraries and reach
+browsers through them. Full research, sources and pitfalls: <code>docs/ecosystem-integration.md</code> (four
+primary-source research tracks, re-checked claims, six role reviews). This entry records the
+recommended verdicts. It is analysis, not a scope change: every verdict and the never-do list
+below are recommendations until the owner confirms them (T-320).</p>
+<p><strong>Findings that drive everything</strong></p>
+<ul>
+<li>
+<p><strong>The rules changed on 2026-09-01.</strong> CMU 920 (15.07.2026) requires DSTU 4145 to be used with
+DSTU 7564 and DSTU 7624 in qualified-signature tools, and drops GOST 34.311. The real czo.gov.ua
+TEST signer certificate and CMS use signature OID <code>1.2.804.2.1.1.1.1.3.6.1.1</code> and Kupyna-256.
+Both were verified this session.</p>
+</li>
+<li>
+<p><strong>The Kupyna-era sample still embeds GOST-era CA certificates.</strong> In its CAdES-X-Long <code>certValues</code>
+attribute, the outer signature OID <code>…1.3.1.1</code> (UAPKI maps that to GOST 34.311) sits directly
+before each certificate’s signature BIT STRING. This was checked with <code>openssl asn1parse</code>.
+Chains therefore need a GOST transition period of unknown length.</p>
+</li>
+<li>
+<p><strong>dstu-core cannot yet verify a real UA signature</strong>, for four reasons:</p>
+<ul>
+<li>it has no m=257 point decompression;</li>
+<li>its wire format differs: 66-byte uncompressed big-endian key and 66-byte big-endian signature,
+against UA’s 33-byte compressed little-endian key and 64-byte reverse(s||r) signature;</li>
+<li>real certificates carry explicit curve parameters;</li>
+<li>the hash-&gt;field convention in UA artefacts is unconfirmed.</li>
+</ul>
+<p>“We implement what the 2026-09 rules mandate” therefore holds at the primitive level only.</p>
+</li>
+<li>
+<p><strong>Bouncy Castle has no combined DSTU 4145 + Kupyna algorithm or OID.</strong> Its
+<code>UAObjectIdentifiers</code> has only <code>1.3.1.1</code> (LE) and <code>1.3.1.1.1.1</code> (BE), checked. Its <code>DSTU4145Signer</code>
+reverses and accepts any hash (<code>hash2FieldElement</code>), so composing it with <code>DSTU7564Digest</code> is a
+candidate second oracle. UAPKI (BSD-2, C) is the only public full implementation of the layer.</p>
+</li>
+<li>
+<p><strong>Signing and verifying differ.</strong> Verification handles public data only, so the constant-time,
+custody, WASM and qualified-device objections apply only to signing.</p>
+</li>
+</ul>
+<p><strong>Recommended verdicts</strong></p>
+<ul>
+<li>
+<p><strong>CMS/CAdES verify-only (DSTU 4145 + Kupyna): recommended direction.</strong> Gated by T-318, T-320 and
+T-321. Its niche:</p>
+<ul>
+<li>memory-safe parsing of untrusted DER/CMS, against UAPKI’s C code;</li>
+<li>a no_std primitive layer;</li>
+<li>reach through the existing bindings.</li>
+</ul>
+<p>Signing CAdES, LT/LTA, TSP/OCSP and key containers (Key-6.dat, UA PKCS#12, JKS) stay out: they
+duplicate UAPKI.</p>
+</li>
+<li>
+<p><strong>OpenSSL provider: deferred.</strong> At most a Kupyna and Kalyna-128 slice, on a named consumer’s
+request. Never wide-block Kalyna through EVP (<code>EVP_MAX_IV_LENGTH</code> 16), never streaming AEAD
+(contradicts D-63/D-65), never libssl patches.</p>
+<ul>
+<li>Correction to what was said in chat: TLS groups have been pluggable since 3.0, and sigalgs
+since 3.2 (TLS 1.3 only). No IANA DSTU codepoints exist.</li>
+</ul>
+</li>
+<li>
+<p><strong>PKCS#11 soft token: recommend not doing it.</strong> No mainstream consumer would use a DSTU key without code
+changes. The real consumers already work with certified hardware tokens, and a soft token yields
+advanced, not qualified, signatures. T-201 stays parked; its “no new work needed” claim is
+corrected (key encoding and fixed curve, not the 32-byte prehash).</p>
+</li>
+<li>
+<p><strong>Browser: recommend never a signing path or a Native Messaging host.</strong> DSTU TLS is impossible in shipping
+browsers. A verify-only WASM package is a possible later spin-off, with no demand shown.</p>
+<ul>
+<li>Correction: Ukrainian government signing uses in-page asm.js for file keys, an extension plus
+native host for tokens, and a smartphone flow for Diia.Підпис. Native Messaging is only one of
+the three.</li>
+</ul>
+</li>
+</ul>
+<p><strong>Recommended never-do list (owner to confirm in T-320; the claim, citation, transcription and
+private-data items restate existing rules - D-25, D-163, D-185 and <code>CLAUDE.md</code>’s no-claims rule)</strong></p>
+<ul>
+<li>Claims: “qualified”/“certified”/“КЕП”/“CMU 920-compliant”/side-channel-resistant wording.</li>
+<li>Verification: a library’s “valid” presented as a qualified verification service.</li>
+<li>Key custody:
+<ul>
+<li>a soft PKCS#11 token as a security product;</li>
+<li>browser signing with keys in IndexedDB;</li>
+<li>a Native Messaging host.</li>
+</ul>
+</li>
+<li>OpenSSL: wide-block Kalyna or streaming AEAD through EVP; libssl patches.</li>
+<li>Legacy and proprietary formats:
+<ul>
+<li>GOST signing;</li>
+<li>caller-supplied DKE or explicit curves on a signing path;</li>
+<li>Key-6.dat reverse engineering;</li>
+<li>invented OIDs.</li>
+</ul>
+</li>
+<li>dstu-core itself:
+<ul>
+<li>no ASN.1 parsing;</li>
+<li><code>crypto_*</code> wire formats are never changed; codecs are added beside them.</li>
+</ul>
+</li>
+<li>Evidence discipline:
+<ul>
+<li>no byte-order “fix” without a citation (D-25);</li>
+<li>no hand-transcribed constants (D-163);</li>
+<li>no third-party or private signatures in the repo. The D-185 <code>.p7s</code> files are private; only
+public czo TEST artefacts may be fixtures.</li>
+</ul>
+</li>
+</ul>
+<p><strong>Caveats</strong></p>
+<ul>
+<li>The six role reviews are one model reading one synthesis: a consistency check, not independent
+opinions.</li>
+<li>Every legal point is an AI reading for a lawyer to confirm. In particular, CMU 1298 item 6 may
+reserve verification of advanced signatures based on qualified certificates to qualified
+providers. That gates the recommended direction (T-321).</li>
+</ul>
+<p><strong>Rejected:</strong> starting with PKCS#11 (the owner’s original framing). Of the four paths it has the
+lowest return per effort and the highest custody risk, and it reaches no browser.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows

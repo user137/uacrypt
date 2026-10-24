@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-287d4a85.js";
+            window.path_to_searchindex_js = "searchindex-9527357c.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-bc9924e8.js"></script>
+        <script src="toc-d4c7990f.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -739,6 +739,9 @@ the review covers, not about excluding the source. Also rejected: keeping the fu
 Pruned for the same reason cryptonite/Bouncy Castle were — this project needs the crypto
 primitives, not the ASN.1/PKCS#11/browser-integration layers around them.</p>
 <h2 id="d-17-reviewed-project-positioning-against-uapki--no-overlap-no-scope-change"><a class="header" href="#d-17-reviewed-project-positioning-against-uapki--no-overlap-no-scope-change">D-17: Reviewed project positioning against UAPKI — no overlap, no scope change</a></h2>
+<blockquote>
+<p><strong>Status (2026-10-24, D-265):</strong> still in force. Its table’s DSTU 9041 row (“planned, hard-blocked”) is stale - implemented since T-177/T-192/T-297. The ecosystem-integration research (<code>docs/ecosystem-integration.md</code>) proposes options for amending this entry (T-320); none is decided.</p>
+</blockquote>
 <p>Finding UAPKI (D-16) raised the obvious question directly: is this project reimplementing
 something UAPKI already provides? Answer, after reading its actual scope rather than assuming from
 the algorithm list: <strong>no — different layer, different language ecosystem, different platform
@@ -15131,6 +15134,132 @@ tests hit 99, and a source audit found no unprefixed invocation. Tests: <code>te
 (old names, near miss, <code>hazmat</code> listing, per-command help without warning, unknown words, warning
 on a successful and a failing run, top-level help free of the eight), unit tests for the table
 agreement, hazmat dispatch arms and subcommands, and the man page section.</p>
+<h2 id="d-265-ecosystem-integration-research---recommended-verify-only-dstu-4145--kupyna-first-openssl-deferred-no-pkcs11-soft-token-or-browser-signing-2026-10-24-owner-to-confirm-in-t-320"><a class="header" href="#d-265-ecosystem-integration-research---recommended-verify-only-dstu-4145--kupyna-first-openssl-deferred-no-pkcs11-soft-token-or-browser-signing-2026-10-24-owner-to-confirm-in-t-320">D-265: Ecosystem integration research - recommended: verify-only DSTU 4145 + Kupyna first; OpenSSL deferred; no PKCS#11 soft token or browser signing (2026-10-24, owner to confirm in T-320)</a></h2>
+<p>Owner asked which “PKCS” to implement to plug dstu-core into OpenSSL or other libraries and reach
+browsers through them. Full research, sources and pitfalls: <code>docs/ecosystem-integration.md</code> (four
+primary-source research tracks, re-checked claims, six role reviews). This entry records the
+recommended verdicts. It is analysis, not a scope change: every verdict and the never-do list
+below are recommendations until the owner confirms them (T-320).</p>
+<p><strong>Findings that drive everything</strong></p>
+<ul>
+<li>
+<p><strong>The rules changed on 2026-09-01.</strong> CMU 920 (15.07.2026) requires DSTU 4145 to be used with
+DSTU 7564 and DSTU 7624 in qualified-signature tools, and drops GOST 34.311. The real czo.gov.ua
+TEST signer certificate and CMS use signature OID <code>1.2.804.2.1.1.1.1.3.6.1.1</code> and Kupyna-256.
+Both were verified this session.</p>
+</li>
+<li>
+<p><strong>The Kupyna-era sample still embeds GOST-era CA certificates.</strong> In its CAdES-X-Long <code>certValues</code>
+attribute, the outer signature OID <code>…1.3.1.1</code> (UAPKI maps that to GOST 34.311) sits directly
+before each certificate’s signature BIT STRING. This was checked with <code>openssl asn1parse</code>.
+Chains therefore need a GOST transition period of unknown length.</p>
+</li>
+<li>
+<p><strong>dstu-core cannot yet verify a real UA signature</strong>, for four reasons:</p>
+<ul>
+<li>it has no m=257 point decompression;</li>
+<li>its wire format differs: 66-byte uncompressed big-endian key and 66-byte big-endian signature,
+against UA’s 33-byte compressed little-endian key and 64-byte reverse(s||r) signature;</li>
+<li>real certificates carry explicit curve parameters;</li>
+<li>the hash-&gt;field convention in UA artefacts is unconfirmed.</li>
+</ul>
+<p>“We implement what the 2026-09 rules mandate” therefore holds at the primitive level only.</p>
+</li>
+<li>
+<p><strong>Bouncy Castle has no combined DSTU 4145 + Kupyna algorithm or OID.</strong> Its
+<code>UAObjectIdentifiers</code> has only <code>1.3.1.1</code> (LE) and <code>1.3.1.1.1.1</code> (BE), checked. Its <code>DSTU4145Signer</code>
+reverses and accepts any hash (<code>hash2FieldElement</code>), so composing it with <code>DSTU7564Digest</code> is a
+candidate second oracle. UAPKI (BSD-2, C) is the only public full implementation of the layer.</p>
+</li>
+<li>
+<p><strong>Signing and verifying differ.</strong> Verification handles public data only, so the constant-time,
+custody, WASM and qualified-device objections apply only to signing.</p>
+</li>
+</ul>
+<p><strong>Recommended verdicts</strong></p>
+<ul>
+<li>
+<p><strong>CMS/CAdES verify-only (DSTU 4145 + Kupyna): recommended direction.</strong> Gated by T-318, T-320 and
+T-321. Its niche:</p>
+<ul>
+<li>memory-safe parsing of untrusted DER/CMS, against UAPKI’s C code;</li>
+<li>a no_std primitive layer;</li>
+<li>reach through the existing bindings.</li>
+</ul>
+<p>Signing CAdES, LT/LTA, TSP/OCSP and key containers (Key-6.dat, UA PKCS#12, JKS) stay out: they
+duplicate UAPKI.</p>
+</li>
+<li>
+<p><strong>OpenSSL provider: deferred.</strong> At most a Kupyna and Kalyna-128 slice, on a named consumer’s
+request. Never wide-block Kalyna through EVP (<code>EVP_MAX_IV_LENGTH</code> 16), never streaming AEAD
+(contradicts D-63/D-65), never libssl patches.</p>
+<ul>
+<li>Correction to what was said in chat: TLS groups have been pluggable since 3.0, and sigalgs
+since 3.2 (TLS 1.3 only). No IANA DSTU codepoints exist.</li>
+</ul>
+</li>
+<li>
+<p><strong>PKCS#11 soft token: recommend not doing it.</strong> No mainstream consumer would use a DSTU key without code
+changes. The real consumers already work with certified hardware tokens, and a soft token yields
+advanced, not qualified, signatures. T-201 stays parked; its “no new work needed” claim is
+corrected (key encoding and fixed curve, not the 32-byte prehash).</p>
+</li>
+<li>
+<p><strong>Browser: recommend never a signing path or a Native Messaging host.</strong> DSTU TLS is impossible in shipping
+browsers. A verify-only WASM package is a possible later spin-off, with no demand shown.</p>
+<ul>
+<li>Correction: Ukrainian government signing uses in-page asm.js for file keys, an extension plus
+native host for tokens, and a smartphone flow for Diia.Підпис. Native Messaging is only one of
+the three.</li>
+</ul>
+</li>
+</ul>
+<p><strong>Recommended never-do list (owner to confirm in T-320; the claim, citation, transcription and
+private-data items restate existing rules - D-25, D-163, D-185 and <code>CLAUDE.md</code>’s no-claims rule)</strong></p>
+<ul>
+<li>Claims: “qualified”/“certified”/“КЕП”/“CMU 920-compliant”/side-channel-resistant wording.</li>
+<li>Verification: a library’s “valid” presented as a qualified verification service.</li>
+<li>Key custody:
+<ul>
+<li>a soft PKCS#11 token as a security product;</li>
+<li>browser signing with keys in IndexedDB;</li>
+<li>a Native Messaging host.</li>
+</ul>
+</li>
+<li>OpenSSL: wide-block Kalyna or streaming AEAD through EVP; libssl patches.</li>
+<li>Legacy and proprietary formats:
+<ul>
+<li>GOST signing;</li>
+<li>caller-supplied DKE or explicit curves on a signing path;</li>
+<li>Key-6.dat reverse engineering;</li>
+<li>invented OIDs.</li>
+</ul>
+</li>
+<li>dstu-core itself:
+<ul>
+<li>no ASN.1 parsing;</li>
+<li><code>crypto_*</code> wire formats are never changed; codecs are added beside them.</li>
+</ul>
+</li>
+<li>Evidence discipline:
+<ul>
+<li>no byte-order “fix” without a citation (D-25);</li>
+<li>no hand-transcribed constants (D-163);</li>
+<li>no third-party or private signatures in the repo. The D-185 <code>.p7s</code> files are private; only
+public czo TEST artefacts may be fixtures.</li>
+</ul>
+</li>
+</ul>
+<p><strong>Caveats</strong></p>
+<ul>
+<li>The six role reviews are one model reading one synthesis: a consistency check, not independent
+opinions.</li>
+<li>Every legal point is an AI reading for a lawyer to confirm. In particular, CMU 1298 item 6 may
+reserve verification of advanced signatures based on qualified certificates to qualified
+providers. That gates the recommended direction (T-321).</li>
+</ul>
+<p><strong>Rejected:</strong> starting with PKCS#11 (the owner’s original framing). Of the four paths it has the
+lowest return per effort and the highest custody risk, and it reaches no browser.</p>
 
                     </main>
 
