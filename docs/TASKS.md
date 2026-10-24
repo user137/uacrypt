@@ -10339,7 +10339,7 @@ targets), T-249 (D-256, findings T-312..T-316), T-264 (completions + `uacrypt ma
 (incl. 28 `fuzz-smoke` jobs, macOS bash 3.2 + `zsh -n`, Linux `pwsh` completion tests) and `miri`
 still queued - **first: `gh run list` / `gh run view` both for `3432912`**. D-258 and the CI-shells change were pushed together. Owner delegated the open forks (D-258): no reviewer subagent for
 T-249/T-310; **T-312..T-316 join 0.8.0** - next in order T-312, T-313, T-315, T-314, T-316, then
-step 6 (release 0.8.0). **T-312 done 2026-10-23 (D-259), T-313 done (D-260), T-315 done (D-261), T-314 done (D-262), T-316 done (D-263); next: step 6, release 0.8.0.** `3432912`'s `rust`/`miri` were
+step 6 (release 0.8.0). **T-312 done 2026-10-23 (D-259), T-313 done (D-260), T-315 done (D-261), T-314 done (D-262), T-316 done (D-263); T-315 independent review: no defect, follow-ups `30b88f1`. Step 6 started 2026-10-24 and **paused** the same day (owner: hold 0.8.0 until T-317 is done); the local bump was reverted, nothing pushed or tagged. Next: T-317 (plan mode), then step 6 again (owner already chose Python/Node.js/Ruby 0.5.1).** `3432912`'s `rust`/`miri` were
 cancelled by the next push (`cancel-in-progress`); the T-312 push carries everything since, so read its `rust`/`miri` runs (incl. `asm-check`'s 16 builds and `smoke_completions`). CI's Linux `test` job now installs zsh/fish/mandoc/groff
 and requires them (`UACRYPT_REQUIRE_SHELLS=1`, D-257 addendum) - the fish completer's first real
 run is there: check `smoke_completions` in the `rust` run of the push after `df62897`. `.git/worktrees/old_wt` is an
@@ -10409,9 +10409,25 @@ from `crates/dstu-core`. Pi: Kani per harness under `ulimit -v`, never `gf2m512`
    test-checked against `run`'s dispatch) - flags taken from each help text's `--flag` tokens, with
    a test that every flag the parser accepts appears there. If that does not hold, a per-command
    flag table first (its own plan step, plan mode).
-6. **Release 0.8.0**: version pins (7 places) + lockfiles, binding minors only if republished,
+6. **Release 0.8.0** (paused 2026-10-24 until T-317; redo then: pins in `dstu-core`/`uacrypt`/capi and
+   the five Rust bindings' `Cargo.toml`, lockfiles via a real build / `cargo update -p dstu-core`,
+   Python/Node.js/Ruby 0.5.1 - `pyproject.toml`, `package.json` + the two root entries of
+   `package-lock.json`, `version.rb`, `Gemfile.lock` - and a CHANGELOG "Changed" line saying so):
+   version pins (7 places) + lockfiles, binding minors only if republished,
    CHANGELOG, README marker, gh-pages marker pushed **before** the tag (CI `docs-check` reads it),
    `release.yml` dry run, green Miri on the tag commit, winget 0.8.0, GHSA only if T-249 finds one.
+
+**Before step 6 (owner 2026-10-24: "призупинимо реліз 0.8.0 поки її не зробимо"):**
+- [ ] **T-317** (Medium, CLI misuse resistance; breaking) Move the `hazmat`-scoped commands
+  (`kalyna-block`, `kalyna-ccm`, `kalyna-gcm`, `kalyna-gmac`, `kalyna-kw`, `kalyna-xts`,
+  `kupyna-digest`, `strumok-crypt`) under `uacrypt hazmat <command>`: out of the top-level help,
+  completions and man page's main list (own section there), a one-line stderr warning on each run
+  naming the safe command to use instead. Today they sit beside `encrypt`/`box-*` with equal
+  standing, and `strumok-crypt` (no tag, caller IV), `kalyna-block` (ECB-like) and the
+  caller-nonce `kalyna-gcm`/`kalyna-ccm` are the CLI's one footgun channel. Plan mode first (the
+  `COMMANDS` table drives the parser, help, completions and man page, D-257); `bench-compare` and
+  `docs/PERFORMANCE.md` invoke these names; old names fail with a usage error that names the new
+  one; D-entry, CHANGELOG (breaking), `docs/CLI.md`.
 
 **T-164 track - deferred out of this wave (owner 2026-10-23: "skip the other bindings for now").**
 Kept as the starting notes for when it is picked up (research first, each registry checked live against the runbook memory; CI lands
