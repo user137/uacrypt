@@ -10749,6 +10749,25 @@ verify-only DSTU 4145 + Kupyna CMS first. OpenSSL deferred; PKCS#11 soft token a
 not done. Order: T-318, then T-319; T-320 and T-321 can run in parallel; T-322 only after all of
 them. None of this blocks 0.8.0.
 
+**Plan after 0.8.0 (owner 2026-10-24: "add T-318, T-319 and T-322 to the plan").** The next wave,
+in order:
+1. **T-318**, the spike. Its kill criterion still stands: if the real samples do not verify after
+   three cited attempts, stop and bring the finding to the owner before going on.
+2. **T-319**, promoting the primitives.
+3. **T-322**, the verify-only CMS verifier. Before it starts, the owner decides the T-320 design
+   inputs it needs:
+   - where it lives (a separate workspace in this repo, or a sibling repo);
+   - the D-17 option (A/B);
+   - GOST 34.311 legacy verify in or out;
+   - confirming D-265's never-do list.
+
+   T-321 (lawyer on CMU 1298 item 6, user discovery) is recommended alongside but is not a gate:
+   the owner put T-322 in the plan. Its answer decides the wording and audience, and must be in
+   before T-322 is published or announced.
+
+Each task gets its own plan (plan mode plus advisor for T-319 and T-322) and test-first work. T-318
+and T-319 are crypto/interop changes, so an independent reviewer subagent is offered at each close.
+
 - [ ] **T-318** (M, this repo, test-only; prerequisite for every signature path) **Spike: verify
   real public Kupyna-era signatures with dstu-core.**
   - **Fixtures:** at least 3 independent czo.gov.ua TEST `.p7s` samples (DSTU 4145 m=257, digest
