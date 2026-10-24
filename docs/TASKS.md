@@ -10412,7 +10412,11 @@ from `crates/dstu-core`. Pi: Kani per harness under `ulimit -v`, never `gf2m512`
 6. **Release 0.8.0** (paused 2026-10-24 until T-317; redo then: pins in `dstu-core`/`uacrypt`/capi and
    the five Rust bindings' `Cargo.toml`, lockfiles via a real build / `cargo update -p dstu-core`,
    Python/Node.js/Ruby 0.5.1 - `pyproject.toml`, `package.json` + the two root entries of
-   `package-lock.json`, `version.rb`, `Gemfile.lock` - and a CHANGELOG "Changed" line saying so):
+   `package-lock.json`, `version.rb`, `Gemfile.lock` - and the bindings sentence folded into the
+   existing `[Unreleased]` "Changed" section, not a second heading; do not `git apply` the old
+   patch's CHANGELOG hunks; gh-pages: the marker commit also rewords `index.html`'s "mid-level
+   `kalyna-ccm`" (lines ~506/515) for `hazmat`, T-317; confirm CI's `smoke_completions` (zsh/fish,
+   mandoc/groff) passed on the T-317 push before bumping):
    version pins (7 places) + lockfiles, binding minors only if republished,
    CHANGELOG, README marker, gh-pages marker pushed **before** the tag (CI `docs-check` reads it),
    `release.yml` dry run, green Miri on the tag commit, winget 0.8.0, GHSA only if T-249 finds one.
