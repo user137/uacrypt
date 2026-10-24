@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b7691db3.js";
+            window.path_to_searchindex_js = "searchindex-287d4a85.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -240,8 +240,8 @@ uacrypt encrypt --passphrase --in message.bin --out sealed.bin   # asks twice, n
 uacrypt decrypt --in sealed.bin --out decrypted.bin              # asks for the passphrase
 </code></pre>
 <p>See <a href="https://github.com/user137/uacrypt/blob/master/docs/CLI.md"><code>docs/CLI.md</code></a> for the full
-command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the lower-level <code>kalyna-block</code>/
-<code>kalyna-ccm</code> tools) and for verifying a downloaded release (signed checksums, provenance), and
+command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the low-level <code>uacrypt hazmat</code>
+tools) and for verifying a downloaded release (signed checksums, provenance), and
 <a href="https://docs.rs/dstu-core">docs.rs</a> for the full library API.</p>
 <h2 id="language-bindings"><a class="header" href="#language-bindings">Language bindings</a></h2>
 <p>The full <code>crypto_*</code> surface (<code>secretbox</code>/<code>secretstream</code>/<code>sign</code>/<code>auth</code>/<code>kdf</code>/<code>generichash</code>/<code>stream</code>/

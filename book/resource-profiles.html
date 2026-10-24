@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b7691db3.js";
+            window.path_to_searchindex_js = "searchindex-287d4a85.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -338,7 +338,7 @@ same factor. Strumok’s <code>T</code>-substitution is only one part of its per
 <code>mul_alpha</code>, state update all stay identical either way) — the parts that don’t change dilute the
 slowdown from the part that does.</p>
 <p><strong>Reproducing</strong>: <code>cargo build -p uacrypt --release [--features dstu-core/small-tables]</code>, then the
-same <code>kalyna-block</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> commands <code>docs/PERFORMANCE.md</code>’s “Reproducing” notes
+same <code>hazmat kalyna-block</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> commands <code>docs/PERFORMANCE.md</code>’s “Reproducing” notes
 document.</p>
 <h2 id="dstu-4145-verify-the-same-flag-a-different-kind-of-trade-t-151d-108"><a class="header" href="#dstu-4145-verify-the-same-flag-a-different-kind-of-trade-t-151d-108">DSTU 4145 <code>verify</code>: the same flag, a different kind of trade (T-151/D-108)</a></h2>
 <p>Everything above this point is a flash/ROM-<code>const</code>-table trade. <code>hazmat::dstu4145::curve163</code>’s

@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b7691db3.js";
+            window.path_to_searchindex_js = "searchindex-287d4a85.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -512,7 +512,7 @@ cached (schedule-cached, real-usage) case</strong> — this project trails by ro
 leads by ~1.4-1.9x. The <em>raw</em> (schedule-redone-every-call) case doesn’t flip on either machine:
 UAPKI’s raw numbers are dramatically worse everywhere (its per-call key setup is expensive), so
 this project wins raw on both platforms regardless of the cached-case reversal.</p>
-<p><strong>Reproducing</strong>: <code>cargo build -p uacrypt --release</code>, then <code>target/release/uacrypt kalyna-block encrypt --variant &lt;variant&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt; [--raw-schedule]</code>. The UAPKI comparison CLI is a one-off C wrapper (same file interface and flags)
+<p><strong>Reproducing</strong>: <code>cargo build -p uacrypt --release</code>, then <code>target/release/uacrypt hazmat kalyna-block encrypt --variant &lt;variant&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt; [--raw-schedule]</code>. The UAPKI comparison CLI is a one-off C wrapper (same file interface and flags)
 built the same way as this file’s other C comparisons — not committed; built fresh on each machine
 against <code>library/uapkic</code>’s pinned commit (<code>docs/ORACLES.md</code>).</p>
 <p><strong>Updated 2026-07-26 (<code>docs/TASKS.md</code> T-121, <code>docs/DECISIONS.md</code> D-71)</strong>: expanded to all 5 variants (was 2),
@@ -667,7 +667,7 @@ UAPKI’s CCM <code>cipher_data</code> output bundles an extra CTR-encrypted tag
 than returning tag separately (a different wire convention, not a bug), so this timing is
 UAPKI-self-consistent (its own encrypt round-trips through its own decrypt) rather than compared
 against our exact output shape the way the other modes below are.</p>
-<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-ccm encrypt --variant &lt;v&gt; --key &lt;path&gt; --nonce &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --tag &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt hazmat kalyna-ccm encrypt --variant &lt;v&gt; --key &lt;path&gt; --nonce &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --tag &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
 <p><strong>Updated 2026-07-26, re-run after T-128</strong>, 64 B, N = 5000, both directions:</p>
 <div class="table-wrapper">
 <table>
@@ -782,7 +782,7 @@ flip from trailing to <em>leading</em> (~1.35-1.44x), and 512-512’s lead widen
 ~1.15x). Kalyna-GMAC (same field arithmetic, one multiply per block) improved by the same
 mechanism — re-measured at the existing 1-block scale, this project’s own throughput roughly
 doubled on every variant (e.g. 512-512: 4.76 → 12.91 MB/s), widening an already-large lead further.</p>
-<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-gcm encrypt --variant &lt;v&gt; --key &lt;path&gt; --nonce &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --tag &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt hazmat kalyna-gcm encrypt --variant &lt;v&gt; --key &lt;path&gt; --nonce &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --tag &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
 <p><strong>Updated 2026-07-26, 10 MiB, N = 50</strong> (T-128’s const-generic round-function fix,
 not a new GCM-specific change — GCM’s own field multiply still dominates per-block cost, so the
 improvement here is smaller than T-128’s own block-only numbers); do not compare these numbers
@@ -873,7 +873,7 @@ scratch-only per this section’s methodology, same <code>dstu7564_init</code>/<
 <em>inside</em> the timed loop every iteration - matching <code>uacrypt</code>’s own <code>bench_in_memory!</code> macro, which
 constructs a fresh <code>Kupyna*Hasher</code> every iteration too, so there is no schedule/setup cost to
 exclude here the way Kalyna’s key expansion needs excluding). Byte-identity verified against
-<code>uacrypt kupyna-digest</code> at <code>--iterations 1</code> before trusting any timing, both variants:</p>
+<code>uacrypt hazmat kupyna-digest</code> at <code>--iterations 1</code> before trusting any timing, both variants:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -970,7 +970,7 @@ it flips, not done here.</p>
 <p><strong>Updated 2026-07-27 (<code>docs/TASKS.md</code> T-135, <code>docs/DECISIONS.md</code> D-86)</strong>: <code>apply_keystream</code>’s batched/
 fixed-index bulk path re-measured against outspace directly at 10 MiB, <code>--iterations 50</code> (this
 project’s established 10 MiB convention, matching the 10 MiB re-measurement pass below). Timer
-placement mirrors <code>uacrypt strumok-crypt</code>’s own cached-schedule convention exactly (one-time
+placement mirrors <code>uacrypt hazmat strumok-crypt</code>’s own cached-schedule convention exactly (one-time
 <code>dstu8845_init</code> inside the timed window, amortized over iterations), so the two numbers are
 directly comparable. Two runs each, Ryzen only (outspace wrapper is scratch-only per the
 “Reproducing” note above, not re-run on the Pi this pass):</p>
@@ -1172,7 +1172,7 @@ mechanism as GCM, at the existing 1-block scale:</p>
 <p>This project’s own throughput roughly doubled or better on every variant (e.g. 512-512: 4.76 →
 12.91 MB/s), widening an already-large lead (~10-19x now, up from ~4-8x) — UAPKI’s own numbers held
 steady, as expected (nothing changed on its side).</p>
-<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-gmac compute --variant &lt;v&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt hazmat kalyna-gmac compute --variant &lt;v&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
 <p><strong>Updated 2026-07-26, re-run after T-128</strong>, 1 block, N = 5000, both directions:</p>
 <div class="table-wrapper">
 <table>
@@ -1285,7 +1285,7 @@ it - confirming the schedule-redo cost was a real, measurable, partial contribut
 the sole cause. The residual gap (~1.4-2.2x) is consistent with D-76’s finding #1 (a genuine
 core-round-function speed difference, ~1.3-2.7x depending on variant) - not investigated further
 as a KW-specific cause beyond that.</p>
-<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-kw wrap --variant &lt;v&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt hazmat kalyna-kw wrap --variant &lt;v&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
 <p><strong>Updated 2026-07-26, re-run after T-128</strong>, 2 blocks of key material, N = 5000, both directions:</p>
 <div class="table-wrapper">
 <table>
@@ -1392,7 +1392,7 @@ the per-field-multiply heap allocation cost found in <code>gf2m_mul</code> (<cod
 per call) dominating UAPKI’s own XTS throughput at scale, worse for smaller blocks (more of them per
 message), the opposite direction from this project’s now-fixed per-multiply cost (which no longer
 depends on block count at all, only on <code>m</code>).</p>
-<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-xts encrypt --variant &lt;v&gt; --key &lt;path&gt; --tweak &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt hazmat kalyna-xts encrypt --variant &lt;v&gt; --key &lt;path&gt; --tweak &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
 <p><strong>T-282 (2026-09-26): <code>double()</code>’s reduction moved from <code>if top_bit == 1</code> to a mask.</strong> A
 constant-time hygiene change, not a speed change. Release <code>uacrypt</code> before and after (the only
 difference is this change), 100 MiB random input, <code>--iterations 3</code>, runs interleaved
@@ -1872,7 +1872,7 @@ cargo bench -p dstu-core --bench kalyna -- --baseline t172-stage-b  # to check
 </tbody>
 </table>
 </div>
-<p>Cross-checked binary-level (<code>uacrypt kalyna-block</code>, D-34’s mandatory methodology, not just
+<p>Cross-checked binary-level (<code>uacrypt hazmat kalyna-block</code>, D-34’s mandatory methodology, not just
 in-process <code>criterion</code>): 128-128 encrypt −16.7%, 512-512 encrypt +2.0%, 512-512 decrypt −24.0% —
 same direction and rough magnitude as the criterion numbers above. <code>small-tables</code>’s own numbers are
 unaffected (it never reaches the unrolled code path) — its <code>.text</code> size grew independently by
@@ -2565,7 +2565,7 @@ reasoning about it.</p>
 <p><strong>Method</strong>: dev machine, 100 MiB payload (not 1 GiB — light enough to avoid the Raspberry Pi’s own
 disk-space ceiling hit while collecting these numbers, still ≥250x the ~40 ms spawn-overhead floor
 established above, so still fully spawn-neutralized), same <code>-binary</code>/<code>cmp</code>-round-trip discipline.
-<code>uacrypt encrypt</code>/<code>decrypt</code> is <code>crypto_secretstream</code> alone, no KEM at all (D-68); <code>uacrypt kalyna-gcm ... --variant 256-256</code> is Kalyna-GCM alone, no streaming framing (D-56); <code>openssl enc -aes-256-cbc -K &lt;hex&gt; -iv &lt;hex&gt;</code> is raw AES-256-CBC alone, no CMS/ASN.1/certificate envelope.</p>
+<code>uacrypt encrypt</code>/<code>decrypt</code> is <code>crypto_secretstream</code> alone, no KEM at all (D-68); <code>uacrypt hazmat kalyna-gcm ... --variant 256-256</code> is Kalyna-GCM alone, no streaming framing (D-56); <code>openssl enc -aes-256-cbc -K &lt;hex&gt; -iv &lt;hex&gt;</code> is raw AES-256-CBC alone, no CMS/ASN.1/certificate envelope.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -2739,11 +2739,11 @@ KEY=$(openssl rand -hex 32); IV=$(openssl rand -hex 16)
 openssl enc -aes-256-cbc -K $KEY -iv $IV -in payload.bin -out payload.aesenc
 openssl enc -d -aes-256-cbc -K $KEY -iv $IV -in payload.aesenc -out payload.aesdec
 # Kalyna-GCM alone, no streaming framing:
-target/release/uacrypt kalyna-gcm encrypt --variant 256-256 --key gcmkey.bin --nonce nonce.bin --in payload.bin --out payload.enc --tag tag.bin --iterations 5
-target/release/uacrypt kalyna-gcm decrypt --variant 256-256 --key gcmkey.bin --nonce nonce.bin --in payload.enc --out payload.dec --tag tag.bin --iterations 5
+target/release/uacrypt hazmat kalyna-gcm encrypt --variant 256-256 --key gcmkey.bin --nonce nonce.bin --in payload.bin --out payload.enc --tag tag.bin --iterations 5
+target/release/uacrypt hazmat kalyna-gcm decrypt --variant 256-256 --key gcmkey.bin --nonce nonce.bin --in payload.enc --out payload.dec --tag tag.bin --iterations 5
 # Kalyna-XTS alone, no tag/MAC at all - isolates the bare cipher from GCM's own tag-multiply cost:
-target/release/uacrypt kalyna-xts encrypt --variant 256-256 --key xtskey.bin --tweak tweak.bin --in payload.bin --out payload.xtsenc --iterations 5
-target/release/uacrypt kalyna-xts decrypt --variant 256-256 --key xtskey.bin --tweak tweak.bin --in payload.xtsenc --out payload.xtsdec --iterations 5
+target/release/uacrypt hazmat kalyna-xts encrypt --variant 256-256 --key xtskey.bin --tweak tweak.bin --in payload.bin --out payload.xtsenc --iterations 5
+target/release/uacrypt hazmat kalyna-xts decrypt --variant 256-256 --key xtskey.bin --tweak tweak.bin --in payload.xtsenc --out payload.xtsdec --iterations 5
 # crypto_secretstream alone, no KEM:
 target/release/uacrypt keygen --out sym.key
 target/release/uacrypt encrypt --key sym.key --in payload.bin --out payload.enc

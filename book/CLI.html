@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b7691db3.js";
+            window.path_to_searchindex_js = "searchindex-287d4a85.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -250,7 +250,7 @@ is reported as <code>FAILED (not a local regular file ...)</code> without being 
 or <code>\??\</code> path is refused before any file-system call, so no connection is made; on Windows the
 type check itself opens a device with no access rights, which reads nothing.</li>
 <li>Every other path flag (<code>--key</code>, <code>--sig</code>, <code>key-import --in</code>, and all paths of
-the lower-level <code>kalyna-*</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> commands) refuses <code>-</code> as a usage
+the <code>hazmat</code> commands) refuses <code>-</code> as a usage
 error, so <code>-</code> never silently names a file. A file really named <code>-</code> is <code>./-</code>.</li>
 <li><code>--force</code> with <code>--out -</code> is a usage error: there is no file to replace.</li>
 <li><strong><code>decrypt --out -</code> can print part of a message.</strong> Each chunk is written once its tag verifies,
@@ -279,7 +279,7 @@ stderr, such as <code>uacrypt: 1.2 GiB / 4.0 GiB (30%)</code>. It is redrawn at 
 erased before the command prints its result or its error. For stdin, where the size is unknown, it
 is a byte counter (<code>uacrypt: 96.0 MiB read</code>) that appears once 64 MiB have been read. There is no
 flag: with stderr redirected or piped (<code>2&gt;file</code>, <code>2&gt;&amp;1 | ...</code>, a script, CI) nothing is printed at
-all. <code>box-seal</code>/<code>box-open</code> show the same line since 0.7.0 (T-265), and the lower-level <code>kalyna-*</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> commands never do. Known cosmetic limit:
+all. <code>box-seal</code>/<code>box-open</code> show the same line since 0.7.0 (T-265), and the <code>hazmat</code> commands never do. Known cosmetic limit:
 in <code>decrypt --out - | more</code> on a large file, the line is drawn over the pager’s screen, because
 both share the terminal (do not silence it with <code>2&gt;/dev/null</code> - that hides the INCOMPLETE warning
 too). Ctrl-C leaves the last line on screen without a newline.</p>
@@ -415,26 +415,32 @@ uacrypt box-open --key box512.key --in message.bin.box512 --out opened512.bin
 <p>Up to 0.4, the non-keygen commands had curve twins (<code>sign-pubkey257</code>, <code>sign257</code>, <code>box-pubkey512</code>,
 <code>box-seal512</code>, <code>box-open512</code>). They are gone in 0.5.0; each name now fails as a usage error
 (exit 2) that names the command to use instead.</p>
-<p>What exists below this level: <code>kalyna-block</code>, <code>kupyna-digest</code>, and <code>strumok-crypt</code>, all
-<code>hazmat</code>-scoped commands added for binary-level performance comparisons
-(<code>docs/PERFORMANCE.md</code>, <code>docs/DECISIONS.md</code> D-31/D-34) rather than everyday use - <code>hash</code> and
-<code>encrypt</code>/<code>decrypt</code> above are what most users want.</p>
+<p>What exists below this level: the <code>uacrypt hazmat</code> commands (<code>kalyna-block</code>, <code>kalyna-ccm</code>,
+<code>kalyna-gcm</code>, <code>kalyna-gmac</code>, <code>kalyna-kw</code>, <code>kalyna-xts</code>, <code>kupyna-digest</code>, <code>strumok-crypt</code>), raw
+primitives added for binary-level performance comparisons and interop with other DSTU
+implementations (<code>docs/PERFORMANCE.md</code>, <code>docs/DECISIONS.md</code> D-31/D-34) rather than everyday use -
+<code>hash</code> and <code>encrypt</code>/<code>decrypt</code> above are what most users want. They have no misuse protection (you
+choose the nonce, IV and key bytes; some detect no tampering), so since 0.8.0 they are reachable
+only as <code>uacrypt hazmat &lt;command&gt;</code>: <code>uacrypt hazmat</code> lists them, the everyday help and the shell
+completions do not offer them, and every run prints a one-line warning to stderr naming the
+command to use instead. Their old top-level names (<code>uacrypt kalyna-block</code>, …) fail as a usage
+error (exit 2) that names the new form (T-317, <code>docs/DECISIONS.md</code> D-264).</p>
 <p><code>kalyna-block</code> is a single block (no mode, no padding):</p>
-<pre><code>uacrypt kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out ct.bin
-uacrypt kalyna-block decrypt --variant 128-128 --key key.bin --in ct.bin --out pt.bin
+<pre><code>uacrypt hazmat kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out ct.bin
+uacrypt hazmat kalyna-block decrypt --variant 128-128 --key key.bin --in ct.bin --out pt.bin
 </code></pre>
 <p><code>--key</code>/<code>--in</code>/<code>--out</code> are raw binary files of the variant’s exact byte length (16/32/64 bytes
 depending on variant — see <code>--variant</code>’s five values).</p>
 <p><code>kupyna-digest</code> hashes with a selectable variant (<code>hash</code> above is simpler for everyday use - fixed
 to Kupyna-256, no <code>--variant</code> flag):</p>
-<pre><code>uacrypt kupyna-digest --variant 512 --in report.pdf --out report.pdf.kupyna512
+<pre><code>uacrypt hazmat kupyna-digest --variant 512 --in report.pdf --out report.pdf.kupyna512
 </code></pre>
 <p><code>strumok-crypt</code> is the bare Strumok keystream cipher (XOR-based) - <strong>not authenticated</strong>: a
 tampered output decrypts silently into wrong plaintext, there is no tag to detect it. Never reuse
 the same <code>--key</code>/<code>--iv</code> pair for two different messages - doing so lets an attacker recover both
 messages by XORing the two ciphertexts together. Use <code>encrypt</code>/<code>decrypt</code> instead for a file cipher
 that detects tampering:</p>
-<pre><code>uacrypt strumok-crypt --variant 256 --key key.bin --iv iv.bin --in message.bin --out sealed.bin
+<pre><code>uacrypt hazmat strumok-crypt --variant 256 --key key.bin --iv iv.bin --in message.bin --out sealed.bin
 </code></pre>
 <p><code>--variant</code> is the key size in bits (256 or 512); <code>--iv</code> is always exactly 32 bytes regardless of
 variant.</p>
@@ -443,8 +449,8 @@ messages (plaintext and <code>--aad</code> each capped at 255 bytes, see <code>h
 using Kalyna-CCM as DSTU 7624:2014 §13 defines it. An empty <code>--in</code> is rejected: the standard does not
 define CCM for an empty message. Tags differ from UAPKI’s and Bouncy Castle’s on some inputs, for
 example when <code>--aad</code> is omitted (see <a href="COMPATIBILITY.html">COMPATIBILITY.md</a>):</p>
-<pre><code>uacrypt kalyna-ccm encrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in msg.bin --out ct.bin --tag tag.bin
-uacrypt kalyna-ccm decrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in ct.bin --out pt.bin --tag tag.bin
+<pre><code>uacrypt hazmat kalyna-ccm encrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in msg.bin --out ct.bin --tag tag.bin
+uacrypt hazmat kalyna-ccm decrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in ct.bin --out pt.bin --tag tag.bin
 </code></pre>
 <p><code>--nonce</code> is a raw file of exactly the variant’s block length (16/32/64 bytes) — but it’s an
 <strong>output</strong> on <code>encrypt</code>, not an input: <code>encrypt</code> generates a fresh random nonce itself (via the OS

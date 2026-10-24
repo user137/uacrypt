@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b7691db3.js";
+            window.path_to_searchindex_js = "searchindex-287d4a85.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -11968,8 +11968,8 @@ uacrypt encrypt --passphrase --in message.bin --out sealed.bin   # asks twice, n
 uacrypt decrypt --in sealed.bin --out decrypted.bin              # asks for the passphrase
 </code></pre>
 <p>See <a href="https://github.com/user137/uacrypt/blob/master/docs/CLI.md"><code>docs/CLI.md</code></a> for the full
-command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the lower-level <code>kalyna-block</code>/
-<code>kalyna-ccm</code> tools) and for verifying a downloaded release (signed checksums, provenance), and
+command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the low-level <code>uacrypt hazmat</code>
+tools) and for verifying a downloaded release (signed checksums, provenance), and
 <a href="https://docs.rs/dstu-core">docs.rs</a> for the full library API.</p>
 <h2 id="language-bindings"><a class="header" href="#language-bindings">Language bindings</a></h2>
 <p>The full <code>crypto_*</code> surface (<code>secretbox</code>/<code>secretstream</code>/<code>sign</code>/<code>auth</code>/<code>kdf</code>/<code>generichash</code>/<code>stream</code>/
@@ -15095,6 +15095,42 @@ turns <code>pwhash</code> on.</p>
 everywhere it was stated. What it rests on: the S-box/MDS (four sources, D-256), and <code>g(z)</code> as
 printed in the designers’ paper (<code>docs/papers/Strumok.pdf</code> section 2), not the DSTU scan; the
 official vectors (D-197) tie both to the standard.</p>
+<h2 id="d-264-t-317---the-low-level-commands-live-under-uacrypt-hazmat-2026-10-24"><a class="header" href="#d-264-t-317---the-low-level-commands-live-under-uacrypt-hazmat-2026-10-24">D-264: T-317 - the low-level commands live under <code>uacrypt hazmat</code> (2026-10-24)</a></h2>
+<p>The eight raw-primitive commands (<code>kalyna-block</code>, <code>kalyna-ccm</code>, <code>kalyna-gcm</code>, <code>kalyna-gmac</code>,
+<code>kalyna-kw</code>, <code>kalyna-xts</code>, <code>kupyna-digest</code>, <code>strumok-crypt</code>; D-31/D-71) sat beside <code>encrypt</code> and
+<code>box-*</code> with equal standing in the help, completions and man page, although several are footguns
+(<code>strumok-crypt</code>: no tag, caller IV; <code>kalyna-block</code>: ECB-like; <code>kalyna-gcm</code>/<code>kalyna-ccm</code>: caller
+nonce). Owner, 2026-10-24: fence them off before 0.8.0. D-47’s tie-breaker (libsodium’s shape, safe
+entry points only) applies to the CLI’s surface too, and libsodium keeps its primitives out of the
+high-level namespace.</p>
+<ul>
+<li><code>HAZMAT_COMMANDS</code> holds the eight entries unchanged; <code>COMMANDS</code> gains one <code>hazmat</code> entry whose
+subcommands are their names (<code>HAZMAT_NAMES</code>, unit-tested equal to the table). <code>run</code> dispatches
+<code>hazmat</code> to <code>run_hazmat_command</code>, which holds the eight former top-level arms verbatim.</li>
+<li>Every run of a hazmat command prints one stderr line first: <code>uacrypt: warning: 'hazmat &lt;name&gt;' is a low-level primitive with no misuse protection - &lt;everyday command to use instead&gt;</code>. Not for
+<code>--help</code> (a help flag anywhere still means help), and no flag silences it: a silencing knob is
+exactly the configuration surface D-47 removes. <code>bench-compare</code> parses only <code>key=value</code> tokens
+from stderr, so the line does not disturb it.</li>
+<li>Old names: <code>CliError::MovedToHazmat</code>, exit 2 (usage), naming <code>uacrypt hazmat &lt;name&gt;</code>; the same for
+<code>uacrypt help &lt;old name&gt;</code>. A near miss of an old name (<code>kalyna-blok</code>) suggests
+<code>hazmat kalyna-block</code>. <code>uacrypt hazmat kalyna-cmac</code> keeps the forgeable-CMAC message (D-247).</li>
+<li>Help lookup: <code>uacrypt help</code> reads <code>COMMANDS</code> only; <code>print_command_help</code> falls back to
+<code>HAZMAT_COMMANDS</code>, so <code>hazmat &lt;name&gt; --help</code> prints that command’s own text (tested for all
+eight - without the fallback it would silently print the top-level help).</li>
+<li>Completions offer <code>hazmat</code> and, after it, the eight names, but no flags after
+<code>hazmat &lt;name&gt;</code>: deeper completion would need a word-offset change in all four generators, and
+low discoverability is the point here. Man page: a <code>LOW-LEVEL COMMANDS (uacrypt hazmat)</code> section
+after <code>COMMANDS</code>.</li>
+</ul>
+<p>Rejected: keeping the old names as working aliases (the surface would not shrink); a
+<code>--i-know-what-i-am-doing</code> style flag instead of the namespace (a knob, and still listed beside
+<code>encrypt</code>); full nested completion (above).</p>
+<p>Sweep check: while the test call sites were re-prefixed, <code>MovedToHazmat</code> exited 99 instead of 2,
+so a missed call in a test that only expects exit 2 could not pass silently; only the new old-name
+tests hit 99, and a source audit found no unprefixed invocation. Tests: <code>tests/smoke_hazmat.rs</code>
+(old names, near miss, <code>hazmat</code> listing, per-command help without warning, unknown words, warning
+on a successful and a failing run, top-level help free of the eight), unit tests for the table
+agreement, hazmat dispatch arms and subcommands, and the man page section.</p>
 
                     </main>
 

@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b7691db3.js";
+            window.path_to_searchindex_js = "searchindex-287d4a85.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-bc9924e8.js"></script>
@@ -238,8 +238,8 @@ uacrypt encrypt --passphrase --in message.bin --out sealed.bin   # asks twice, n
 uacrypt decrypt --in sealed.bin --out decrypted.bin              # asks for the passphrase
 </code></pre>
 <p>See <a href="https://github.com/user137/uacrypt/blob/master/docs/CLI.md"><code>docs/CLI.md</code></a> for the full
-command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the lower-level <code>kalyna-block</code>/
-<code>kalyna-ccm</code> tools) and for verifying a downloaded release (signed checksums, provenance), and
+command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the low-level <code>uacrypt hazmat</code>
+tools) and for verifying a downloaded release (signed checksums, provenance), and
 <a href="https://docs.rs/dstu-core">docs.rs</a> for the full library API.</p>
 <h2 id="language-bindings"><a class="header" href="#language-bindings">Language bindings</a></h2>
 <p>The full <code>crypto_*</code> surface (<code>secretbox</code>/<code>secretstream</code>/<code>sign</code>/<code>auth</code>/<code>kdf</code>/<code>generichash</code>/<code>stream</code>/
@@ -362,7 +362,7 @@ is reported as <code>FAILED (not a local regular file ...)</code> without being 
 or <code>\??\</code> path is refused before any file-system call, so no connection is made; on Windows the
 type check itself opens a device with no access rights, which reads nothing.</li>
 <li>Every other path flag (<code>--key</code>, <code>--sig</code>, <code>key-import --in</code>, and all paths of
-the lower-level <code>kalyna-*</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> commands) refuses <code>-</code> as a usage
+the <code>hazmat</code> commands) refuses <code>-</code> as a usage
 error, so <code>-</code> never silently names a file. A file really named <code>-</code> is <code>./-</code>.</li>
 <li><code>--force</code> with <code>--out -</code> is a usage error: there is no file to replace.</li>
 <li><strong><code>decrypt --out -</code> can print part of a message.</strong> Each chunk is written once its tag verifies,
@@ -391,7 +391,7 @@ stderr, such as <code>uacrypt: 1.2 GiB / 4.0 GiB (30%)</code>. It is redrawn at 
 erased before the command prints its result or its error. For stdin, where the size is unknown, it
 is a byte counter (<code>uacrypt: 96.0 MiB read</code>) that appears once 64 MiB have been read. There is no
 flag: with stderr redirected or piped (<code>2&gt;file</code>, <code>2&gt;&amp;1 | ...</code>, a script, CI) nothing is printed at
-all. <code>box-seal</code>/<code>box-open</code> show the same line since 0.7.0 (T-265), and the lower-level <code>kalyna-*</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> commands never do. Known cosmetic limit:
+all. <code>box-seal</code>/<code>box-open</code> show the same line since 0.7.0 (T-265), and the <code>hazmat</code> commands never do. Known cosmetic limit:
 in <code>decrypt --out - | more</code> on a large file, the line is drawn over the pager’s screen, because
 both share the terminal (do not silence it with <code>2&gt;/dev/null</code> - that hides the INCOMPLETE warning
 too). Ctrl-C leaves the last line on screen without a newline.</p>
@@ -527,26 +527,32 @@ uacrypt box-open --key box512.key --in message.bin.box512 --out opened512.bin
 <p>Up to 0.4, the non-keygen commands had curve twins (<code>sign-pubkey257</code>, <code>sign257</code>, <code>box-pubkey512</code>,
 <code>box-seal512</code>, <code>box-open512</code>). They are gone in 0.5.0; each name now fails as a usage error
 (exit 2) that names the command to use instead.</p>
-<p>What exists below this level: <code>kalyna-block</code>, <code>kupyna-digest</code>, and <code>strumok-crypt</code>, all
-<code>hazmat</code>-scoped commands added for binary-level performance comparisons
-(<code>docs/PERFORMANCE.md</code>, <code>docs/DECISIONS.md</code> D-31/D-34) rather than everyday use - <code>hash</code> and
-<code>encrypt</code>/<code>decrypt</code> above are what most users want.</p>
+<p>What exists below this level: the <code>uacrypt hazmat</code> commands (<code>kalyna-block</code>, <code>kalyna-ccm</code>,
+<code>kalyna-gcm</code>, <code>kalyna-gmac</code>, <code>kalyna-kw</code>, <code>kalyna-xts</code>, <code>kupyna-digest</code>, <code>strumok-crypt</code>), raw
+primitives added for binary-level performance comparisons and interop with other DSTU
+implementations (<code>docs/PERFORMANCE.md</code>, <code>docs/DECISIONS.md</code> D-31/D-34) rather than everyday use -
+<code>hash</code> and <code>encrypt</code>/<code>decrypt</code> above are what most users want. They have no misuse protection (you
+choose the nonce, IV and key bytes; some detect no tampering), so since 0.8.0 they are reachable
+only as <code>uacrypt hazmat &lt;command&gt;</code>: <code>uacrypt hazmat</code> lists them, the everyday help and the shell
+completions do not offer them, and every run prints a one-line warning to stderr naming the
+command to use instead. Their old top-level names (<code>uacrypt kalyna-block</code>, …) fail as a usage
+error (exit 2) that names the new form (T-317, <code>docs/DECISIONS.md</code> D-264).</p>
 <p><code>kalyna-block</code> is a single block (no mode, no padding):</p>
-<pre><code>uacrypt kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out ct.bin
-uacrypt kalyna-block decrypt --variant 128-128 --key key.bin --in ct.bin --out pt.bin
+<pre><code>uacrypt hazmat kalyna-block encrypt --variant 128-128 --key key.bin --in block.bin --out ct.bin
+uacrypt hazmat kalyna-block decrypt --variant 128-128 --key key.bin --in ct.bin --out pt.bin
 </code></pre>
 <p><code>--key</code>/<code>--in</code>/<code>--out</code> are raw binary files of the variant’s exact byte length (16/32/64 bytes
 depending on variant — see <code>--variant</code>’s five values).</p>
 <p><code>kupyna-digest</code> hashes with a selectable variant (<code>hash</code> above is simpler for everyday use - fixed
 to Kupyna-256, no <code>--variant</code> flag):</p>
-<pre><code>uacrypt kupyna-digest --variant 512 --in report.pdf --out report.pdf.kupyna512
+<pre><code>uacrypt hazmat kupyna-digest --variant 512 --in report.pdf --out report.pdf.kupyna512
 </code></pre>
 <p><code>strumok-crypt</code> is the bare Strumok keystream cipher (XOR-based) - <strong>not authenticated</strong>: a
 tampered output decrypts silently into wrong plaintext, there is no tag to detect it. Never reuse
 the same <code>--key</code>/<code>--iv</code> pair for two different messages - doing so lets an attacker recover both
 messages by XORing the two ciphertexts together. Use <code>encrypt</code>/<code>decrypt</code> instead for a file cipher
 that detects tampering:</p>
-<pre><code>uacrypt strumok-crypt --variant 256 --key key.bin --iv iv.bin --in message.bin --out sealed.bin
+<pre><code>uacrypt hazmat strumok-crypt --variant 256 --key key.bin --iv iv.bin --in message.bin --out sealed.bin
 </code></pre>
 <p><code>--variant</code> is the key size in bits (256 or 512); <code>--iv</code> is always exactly 32 bytes regardless of
 variant.</p>
@@ -555,8 +561,8 @@ messages (plaintext and <code>--aad</code> each capped at 255 bytes, see <code>h
 using Kalyna-CCM as DSTU 7624:2014 §13 defines it. An empty <code>--in</code> is rejected: the standard does not
 define CCM for an empty message. Tags differ from UAPKI’s and Bouncy Castle’s on some inputs, for
 example when <code>--aad</code> is omitted (see <a href="#compatibility-with-other-dstu-implementations">COMPATIBILITY.md</a>):</p>
-<pre><code>uacrypt kalyna-ccm encrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in msg.bin --out ct.bin --tag tag.bin
-uacrypt kalyna-ccm decrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in ct.bin --out pt.bin --tag tag.bin
+<pre><code>uacrypt hazmat kalyna-ccm encrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in msg.bin --out ct.bin --tag tag.bin
+uacrypt hazmat kalyna-ccm decrypt --variant 128-128 --key key.bin --nonce nonce.bin --aad aad.bin --in ct.bin --out pt.bin --tag tag.bin
 </code></pre>
 <p><code>--nonce</code> is a raw file of exactly the variant’s block length (16/32/64 bytes) — but it’s an
 <strong>output</strong> on <code>encrypt</code>, not an input: <code>encrypt</code> generates a fresh random nonce itself (via the OS
@@ -5575,8 +5581,8 @@ uacrypt encrypt --passphrase --in message.bin --out sealed.bin   # asks twice, n
 uacrypt decrypt --in sealed.bin --out decrypted.bin              # asks for the passphrase
 </code></pre>
 <p>See <a href="https://github.com/user137/uacrypt/blob/master/docs/CLI.md"><code>docs/CLI.md</code></a> for the full
-command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the lower-level <code>kalyna-block</code>/
-<code>kalyna-ccm</code> tools) and for verifying a downloaded release (signed checksums, provenance), and
+command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the low-level <code>uacrypt hazmat</code>
+tools) and for verifying a downloaded release (signed checksums, provenance), and
 <a href="https://docs.rs/dstu-core">docs.rs</a> for the full library API.</p>
 <h2 id="language-bindings-1"><a class="header" href="#language-bindings-1">Language bindings</a></h2>
 <p>The full <code>crypto_*</code> surface (<code>secretbox</code>/<code>secretstream</code>/<code>sign</code>/<code>auth</code>/<code>kdf</code>/<code>generichash</code>/<code>stream</code>/
@@ -11445,7 +11451,7 @@ targets), T-249 (D-256, findings T-312..T-316), T-264 (completions + <code>uacry
 (incl. 28 <code>fuzz-smoke</code> jobs, macOS bash 3.2 + <code>zsh -n</code>, Linux <code>pwsh</code> completion tests) and <code>miri</code>
 still queued - <strong>first: <code>gh run list</code> / <code>gh run view</code> both for <code>3432912</code></strong>. D-258 and the CI-shells change were pushed together. Owner delegated the open forks (D-258): no reviewer subagent for
 T-249/T-310; <strong>T-312..T-316 join 0.8.0</strong> - next in order T-312, T-313, T-315, T-314, T-316, then
-step 6 (release 0.8.0). <strong>T-312 done 2026-10-23 (D-259), T-313 done (D-260), T-315 done (D-261), T-314 done (D-262), T-316 done (D-263); next: step 6, release 0.8.0.</strong> <code>3432912</code>’s <code>rust</code>/<code>miri</code> were
+step 6 (release 0.8.0). <strong>T-312 done 2026-10-23 (D-259), T-313 done (D-260), T-315 done (D-261), T-314 done (D-262), T-316 done (D-263); T-315 independent review: no defect, follow-ups <code>30b88f1</code>. Step 6 started 2026-10-24 and <strong>paused</strong> the same day (owner: hold 0.8.0 until T-317 is done); the local bump was reverted, nothing pushed or tagged. T-317 done 2026-10-24 (D-264); next: step 6 again (owner already chose Python/Node.js/Ruby 0.5.1).</strong> <code>3432912</code>’s <code>rust</code>/<code>miri</code> were
 cancelled by the next push (<code>cancel-in-progress</code>); the T-312 push carries everything since, so read its <code>rust</code>/<code>miri</code> runs (incl. <code>asm-check</code>’s 16 builds and <code>smoke_completions</code>). CI’s Linux <code>test</code> job now installs zsh/fish/mandoc/groff
 and requires them (<code>UACRYPT_REQUIRE_SHELLS=1</code>, D-257 addendum) - the fish completer’s first real
 run is there: check <code>smoke_completions</code> in the <code>rust</code> run of the push after <code>df62897</code>. <code>.git/worktrees/old_wt</code> is an
@@ -11517,10 +11523,31 @@ new dependency. Source: the existing <code>COMMANDS</code> table (<code>lib.rs</
 test-checked against <code>run</code>’s dispatch) - flags taken from each help text’s <code>--flag</code> tokens, with
 a test that every flag the parser accepts appears there. If that does not hold, a per-command
 flag table first (its own plan step, plan mode).</li>
-<li><strong>Release 0.8.0</strong>: version pins (7 places) + lockfiles, binding minors only if republished,
+<li><strong>Release 0.8.0</strong> (paused 2026-10-24 until T-317; redo then: pins in <code>dstu-core</code>/<code>uacrypt</code>/capi and
+the five Rust bindings’ <code>Cargo.toml</code>, lockfiles via a real build / <code>cargo update -p dstu-core</code>,
+Python/Node.js/Ruby 0.5.1 - <code>pyproject.toml</code>, <code>package.json</code> + the two root entries of
+<code>package-lock.json</code>, <code>version.rb</code>, <code>Gemfile.lock</code> - and the bindings sentence folded into the
+existing <code>[Unreleased]</code> “Changed” section, not a second heading; do not <code>git apply</code> the old
+patch’s CHANGELOG hunks; gh-pages: the marker commit also rewords <code>index.html</code>’s “mid-level
+<code>kalyna-ccm</code>” (lines ~506/515) for <code>hazmat</code>, T-317; confirm CI’s <code>smoke_completions</code> (zsh/fish,
+mandoc/groff) passed on the T-317 push before bumping):
+version pins (7 places) + lockfiles, binding minors only if republished,
 CHANGELOG, README marker, gh-pages marker pushed <strong>before</strong> the tag (CI <code>docs-check</code> reads it),
 <code>release.yml</code> dry run, green Miri on the tag commit, winget 0.8.0, GHSA only if T-249 finds one.</li>
 </ol>
+<p><strong>Before step 6 (owner 2026-10-24: “призупинимо реліз 0.8.0 поки її не зробимо”):</strong></p>
+<ul>
+<li><input disabled="" type="checkbox" checked=""> <strong>T-317</strong> (done 2026-10-24, D-264: <code>hazmat</code> table + dispatch, warning, man section, “moved” usage error) (Medium, CLI misuse resistance; breaking) Move the <code>hazmat</code>-scoped commands
+(<code>kalyna-block</code>, <code>kalyna-ccm</code>, <code>kalyna-gcm</code>, <code>kalyna-gmac</code>, <code>kalyna-kw</code>, <code>kalyna-xts</code>,
+<code>kupyna-digest</code>, <code>strumok-crypt</code>) under <code>uacrypt hazmat &lt;command&gt;</code>: out of the top-level help,
+completions and man page’s main list (own section there), a one-line stderr warning on each run
+naming the safe command to use instead. Today they sit beside <code>encrypt</code>/<code>box-*</code> with equal
+standing, and <code>strumok-crypt</code> (no tag, caller IV), <code>kalyna-block</code> (ECB-like) and the
+caller-nonce <code>kalyna-gcm</code>/<code>kalyna-ccm</code> are the CLI’s one footgun channel. Plan mode first (the
+<code>COMMANDS</code> table drives the parser, help, completions and man page, D-257); <code>bench-compare</code> and
+<code>docs/PERFORMANCE.md</code> invoke these names; old names fail with a usage error that names the new
+one; D-entry, CHANGELOG (breaking), <code>docs/CLI.md</code>.</li>
+</ul>
 <p><strong>T-164 track - deferred out of this wave (owner 2026-10-23: “skip the other bindings for now”).</strong>
 Kept as the starting notes for when it is picked up (research first, each registry checked live against the runbook memory; CI lands
 dormant behind an environment gate with required reviewers, first publish rides the 0.8.0 tag):</p>
@@ -15078,7 +15105,7 @@ same factor. Strumok’s <code>T</code>-substitution is only one part of its per
 <code>mul_alpha</code>, state update all stay identical either way) — the parts that don’t change dilute the
 slowdown from the part that does.</p>
 <p><strong>Reproducing</strong>: <code>cargo build -p uacrypt --release [--features dstu-core/small-tables]</code>, then the
-same <code>kalyna-block</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> commands <code>docs/PERFORMANCE.md</code>’s “Reproducing” notes
+same <code>hazmat kalyna-block</code>/<code>kupyna-digest</code>/<code>strumok-crypt</code> commands <code>docs/PERFORMANCE.md</code>’s “Reproducing” notes
 document.</p>
 <h2 id="dstu-4145-verify-the-same-flag-a-different-kind-of-trade-t-151d-108"><a class="header" href="#dstu-4145-verify-the-same-flag-a-different-kind-of-trade-t-151d-108">DSTU 4145 <code>verify</code>: the same flag, a different kind of trade (T-151/D-108)</a></h2>
 <p>Everything above this point is a flash/ROM-<code>const</code>-table trade. <code>hazmat::dstu4145::curve163</code>’s
@@ -15480,7 +15507,7 @@ cached (schedule-cached, real-usage) case</strong> — this project trails by ro
 leads by ~1.4-1.9x. The <em>raw</em> (schedule-redone-every-call) case doesn’t flip on either machine:
 UAPKI’s raw numbers are dramatically worse everywhere (its per-call key setup is expensive), so
 this project wins raw on both platforms regardless of the cached-case reversal.</p>
-<p><strong>Reproducing</strong>: <code>cargo build -p uacrypt --release</code>, then <code>target/release/uacrypt kalyna-block encrypt --variant &lt;variant&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt; [--raw-schedule]</code>. The UAPKI comparison CLI is a one-off C wrapper (same file interface and flags)
+<p><strong>Reproducing</strong>: <code>cargo build -p uacrypt --release</code>, then <code>target/release/uacrypt hazmat kalyna-block encrypt --variant &lt;variant&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt; [--raw-schedule]</code>. The UAPKI comparison CLI is a one-off C wrapper (same file interface and flags)
 built the same way as this file’s other C comparisons — not committed; built fresh on each machine
 against <code>library/uapkic</code>’s pinned commit (<code>docs/ORACLES.md</code>).</p>
 <p><strong>Updated 2026-07-26 (<code>docs/TASKS.md</code> T-121, <code>docs/DECISIONS.md</code> D-71)</strong>: expanded to all 5 variants (was 2),
@@ -15635,7 +15662,7 @@ UAPKI’s CCM <code>cipher_data</code> output bundles an extra CTR-encrypted tag
 than returning tag separately (a different wire convention, not a bug), so this timing is
 UAPKI-self-consistent (its own encrypt round-trips through its own decrypt) rather than compared
 against our exact output shape the way the other modes below are.</p>
-<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-ccm encrypt --variant &lt;v&gt; --key &lt;path&gt; --nonce &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --tag &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt hazmat kalyna-ccm encrypt --variant &lt;v&gt; --key &lt;path&gt; --nonce &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --tag &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
 <p><strong>Updated 2026-07-26, re-run after T-128</strong>, 64 B, N = 5000, both directions:</p>
 <div class="table-wrapper">
 <table>
@@ -15750,7 +15777,7 @@ flip from trailing to <em>leading</em> (~1.35-1.44x), and 512-512’s lead widen
 ~1.15x). Kalyna-GMAC (same field arithmetic, one multiply per block) improved by the same
 mechanism — re-measured at the existing 1-block scale, this project’s own throughput roughly
 doubled on every variant (e.g. 512-512: 4.76 → 12.91 MB/s), widening an already-large lead further.</p>
-<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-gcm encrypt --variant &lt;v&gt; --key &lt;path&gt; --nonce &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --tag &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt hazmat kalyna-gcm encrypt --variant &lt;v&gt; --key &lt;path&gt; --nonce &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --tag &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
 <p><strong>Updated 2026-07-26, 10 MiB, N = 50</strong> (T-128’s const-generic round-function fix,
 not a new GCM-specific change — GCM’s own field multiply still dominates per-block cost, so the
 improvement here is smaller than T-128’s own block-only numbers); do not compare these numbers
@@ -15841,7 +15868,7 @@ scratch-only per this section’s methodology, same <code>dstu7564_init</code>/<
 <em>inside</em> the timed loop every iteration - matching <code>uacrypt</code>’s own <code>bench_in_memory!</code> macro, which
 constructs a fresh <code>Kupyna*Hasher</code> every iteration too, so there is no schedule/setup cost to
 exclude here the way Kalyna’s key expansion needs excluding). Byte-identity verified against
-<code>uacrypt kupyna-digest</code> at <code>--iterations 1</code> before trusting any timing, both variants:</p>
+<code>uacrypt hazmat kupyna-digest</code> at <code>--iterations 1</code> before trusting any timing, both variants:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -15938,7 +15965,7 @@ it flips, not done here.</p>
 <p><strong>Updated 2026-07-27 (<code>docs/TASKS.md</code> T-135, <code>docs/DECISIONS.md</code> D-86)</strong>: <code>apply_keystream</code>’s batched/
 fixed-index bulk path re-measured against outspace directly at 10 MiB, <code>--iterations 50</code> (this
 project’s established 10 MiB convention, matching the 10 MiB re-measurement pass below). Timer
-placement mirrors <code>uacrypt strumok-crypt</code>’s own cached-schedule convention exactly (one-time
+placement mirrors <code>uacrypt hazmat strumok-crypt</code>’s own cached-schedule convention exactly (one-time
 <code>dstu8845_init</code> inside the timed window, amortized over iterations), so the two numbers are
 directly comparable. Two runs each, Ryzen only (outspace wrapper is scratch-only per the
 “Reproducing” note above, not re-run on the Pi this pass):</p>
@@ -16140,7 +16167,7 @@ mechanism as GCM, at the existing 1-block scale:</p>
 <p>This project’s own throughput roughly doubled or better on every variant (e.g. 512-512: 4.76 →
 12.91 MB/s), widening an already-large lead (~10-19x now, up from ~4-8x) — UAPKI’s own numbers held
 steady, as expected (nothing changed on its side).</p>
-<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-gmac compute --variant &lt;v&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt hazmat kalyna-gmac compute --variant &lt;v&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
 <p><strong>Updated 2026-07-26, re-run after T-128</strong>, 1 block, N = 5000, both directions:</p>
 <div class="table-wrapper">
 <table>
@@ -16253,7 +16280,7 @@ it - confirming the schedule-redo cost was a real, measurable, partial contribut
 the sole cause. The residual gap (~1.4-2.2x) is consistent with D-76’s finding #1 (a genuine
 core-round-function speed difference, ~1.3-2.7x depending on variant) - not investigated further
 as a KW-specific cause beyond that.</p>
-<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-kw wrap --variant &lt;v&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt hazmat kalyna-kw wrap --variant &lt;v&gt; --key &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
 <p><strong>Updated 2026-07-26, re-run after T-128</strong>, 2 blocks of key material, N = 5000, both directions:</p>
 <div class="table-wrapper">
 <table>
@@ -16360,7 +16387,7 @@ the per-field-multiply heap allocation cost found in <code>gf2m_mul</code> (<cod
 per call) dominating UAPKI’s own XTS throughput at scale, worse for smaller blocks (more of them per
 message), the opposite direction from this project’s now-fixed per-multiply cost (which no longer
 depends on block count at all, only on <code>m</code>).</p>
-<p><strong>Reproducing</strong>: <code>target/release/uacrypt kalyna-xts encrypt --variant &lt;v&gt; --key &lt;path&gt; --tweak &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
+<p><strong>Reproducing</strong>: <code>target/release/uacrypt hazmat kalyna-xts encrypt --variant &lt;v&gt; --key &lt;path&gt; --tweak &lt;path&gt; --in &lt;path&gt; --out &lt;path&gt; --iterations &lt;N&gt;</code>.</p>
 <p><strong>T-282 (2026-09-26): <code>double()</code>’s reduction moved from <code>if top_bit == 1</code> to a mask.</strong> A
 constant-time hygiene change, not a speed change. Release <code>uacrypt</code> before and after (the only
 difference is this change), 100 MiB random input, <code>--iterations 3</code>, runs interleaved
@@ -16840,7 +16867,7 @@ cargo bench -p dstu-core --bench kalyna -- --baseline t172-stage-b  # to check
 </tbody>
 </table>
 </div>
-<p>Cross-checked binary-level (<code>uacrypt kalyna-block</code>, D-34’s mandatory methodology, not just
+<p>Cross-checked binary-level (<code>uacrypt hazmat kalyna-block</code>, D-34’s mandatory methodology, not just
 in-process <code>criterion</code>): 128-128 encrypt −16.7%, 512-512 encrypt +2.0%, 512-512 decrypt −24.0% —
 same direction and rough magnitude as the criterion numbers above. <code>small-tables</code>’s own numbers are
 unaffected (it never reaches the unrolled code path) — its <code>.text</code> size grew independently by
@@ -17533,7 +17560,7 @@ reasoning about it.</p>
 <p><strong>Method</strong>: dev machine, 100 MiB payload (not 1 GiB — light enough to avoid the Raspberry Pi’s own
 disk-space ceiling hit while collecting these numbers, still ≥250x the ~40 ms spawn-overhead floor
 established above, so still fully spawn-neutralized), same <code>-binary</code>/<code>cmp</code>-round-trip discipline.
-<code>uacrypt encrypt</code>/<code>decrypt</code> is <code>crypto_secretstream</code> alone, no KEM at all (D-68); <code>uacrypt kalyna-gcm ... --variant 256-256</code> is Kalyna-GCM alone, no streaming framing (D-56); <code>openssl enc -aes-256-cbc -K &lt;hex&gt; -iv &lt;hex&gt;</code> is raw AES-256-CBC alone, no CMS/ASN.1/certificate envelope.</p>
+<code>uacrypt encrypt</code>/<code>decrypt</code> is <code>crypto_secretstream</code> alone, no KEM at all (D-68); <code>uacrypt hazmat kalyna-gcm ... --variant 256-256</code> is Kalyna-GCM alone, no streaming framing (D-56); <code>openssl enc -aes-256-cbc -K &lt;hex&gt; -iv &lt;hex&gt;</code> is raw AES-256-CBC alone, no CMS/ASN.1/certificate envelope.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -17707,11 +17734,11 @@ KEY=$(openssl rand -hex 32); IV=$(openssl rand -hex 16)
 openssl enc -aes-256-cbc -K $KEY -iv $IV -in payload.bin -out payload.aesenc
 openssl enc -d -aes-256-cbc -K $KEY -iv $IV -in payload.aesenc -out payload.aesdec
 # Kalyna-GCM alone, no streaming framing:
-target/release/uacrypt kalyna-gcm encrypt --variant 256-256 --key gcmkey.bin --nonce nonce.bin --in payload.bin --out payload.enc --tag tag.bin --iterations 5
-target/release/uacrypt kalyna-gcm decrypt --variant 256-256 --key gcmkey.bin --nonce nonce.bin --in payload.enc --out payload.dec --tag tag.bin --iterations 5
+target/release/uacrypt hazmat kalyna-gcm encrypt --variant 256-256 --key gcmkey.bin --nonce nonce.bin --in payload.bin --out payload.enc --tag tag.bin --iterations 5
+target/release/uacrypt hazmat kalyna-gcm decrypt --variant 256-256 --key gcmkey.bin --nonce nonce.bin --in payload.enc --out payload.dec --tag tag.bin --iterations 5
 # Kalyna-XTS alone, no tag/MAC at all - isolates the bare cipher from GCM's own tag-multiply cost:
-target/release/uacrypt kalyna-xts encrypt --variant 256-256 --key xtskey.bin --tweak tweak.bin --in payload.bin --out payload.xtsenc --iterations 5
-target/release/uacrypt kalyna-xts decrypt --variant 256-256 --key xtskey.bin --tweak tweak.bin --in payload.xtsenc --out payload.xtsdec --iterations 5
+target/release/uacrypt hazmat kalyna-xts encrypt --variant 256-256 --key xtskey.bin --tweak tweak.bin --in payload.bin --out payload.xtsenc --iterations 5
+target/release/uacrypt hazmat kalyna-xts decrypt --variant 256-256 --key xtskey.bin --tweak tweak.bin --in payload.xtsenc --out payload.xtsdec --iterations 5
 # crypto_secretstream alone, no KEM:
 target/release/uacrypt keygen --out sym.key
 target/release/uacrypt encrypt --key sym.key --in payload.bin --out payload.enc
@@ -31153,8 +31180,8 @@ uacrypt encrypt --passphrase --in message.bin --out sealed.bin   # asks twice, n
 uacrypt decrypt --in sealed.bin --out decrypted.bin              # asks for the passphrase
 </code></pre>
 <p>See <a href="https://github.com/user137/uacrypt/blob/master/docs/CLI.md"><code>docs/CLI.md</code></a> for the full
-command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the lower-level <code>kalyna-block</code>/
-<code>kalyna-ccm</code> tools) and for verifying a downloaded release (signed checksums, provenance), and
+command reference (<code>sign</code>/<code>verify</code>, <code>box-seal</code>/<code>box-open</code>, and the low-level <code>uacrypt hazmat</code>
+tools) and for verifying a downloaded release (signed checksums, provenance), and
 <a href="https://docs.rs/dstu-core">docs.rs</a> for the full library API.</p>
 <h2 id="language-bindings-2"><a class="header" href="#language-bindings-2">Language bindings</a></h2>
 <p>The full <code>crypto_*</code> surface (<code>secretbox</code>/<code>secretstream</code>/<code>sign</code>/<code>auth</code>/<code>kdf</code>/<code>generichash</code>/<code>stream</code>/
@@ -34280,6 +34307,42 @@ turns <code>pwhash</code> on.</p>
 everywhere it was stated. What it rests on: the S-box/MDS (four sources, D-256), and <code>g(z)</code> as
 printed in the designers’ paper (<code>docs/papers/Strumok.pdf</code> section 2), not the DSTU scan; the
 official vectors (D-197) tie both to the standard.</p>
+<h2 id="d-264-t-317---the-low-level-commands-live-under-uacrypt-hazmat-2026-10-24"><a class="header" href="#d-264-t-317---the-low-level-commands-live-under-uacrypt-hazmat-2026-10-24">D-264: T-317 - the low-level commands live under <code>uacrypt hazmat</code> (2026-10-24)</a></h2>
+<p>The eight raw-primitive commands (<code>kalyna-block</code>, <code>kalyna-ccm</code>, <code>kalyna-gcm</code>, <code>kalyna-gmac</code>,
+<code>kalyna-kw</code>, <code>kalyna-xts</code>, <code>kupyna-digest</code>, <code>strumok-crypt</code>; D-31/D-71) sat beside <code>encrypt</code> and
+<code>box-*</code> with equal standing in the help, completions and man page, although several are footguns
+(<code>strumok-crypt</code>: no tag, caller IV; <code>kalyna-block</code>: ECB-like; <code>kalyna-gcm</code>/<code>kalyna-ccm</code>: caller
+nonce). Owner, 2026-10-24: fence them off before 0.8.0. D-47’s tie-breaker (libsodium’s shape, safe
+entry points only) applies to the CLI’s surface too, and libsodium keeps its primitives out of the
+high-level namespace.</p>
+<ul>
+<li><code>HAZMAT_COMMANDS</code> holds the eight entries unchanged; <code>COMMANDS</code> gains one <code>hazmat</code> entry whose
+subcommands are their names (<code>HAZMAT_NAMES</code>, unit-tested equal to the table). <code>run</code> dispatches
+<code>hazmat</code> to <code>run_hazmat_command</code>, which holds the eight former top-level arms verbatim.</li>
+<li>Every run of a hazmat command prints one stderr line first: <code>uacrypt: warning: 'hazmat &lt;name&gt;' is a low-level primitive with no misuse protection - &lt;everyday command to use instead&gt;</code>. Not for
+<code>--help</code> (a help flag anywhere still means help), and no flag silences it: a silencing knob is
+exactly the configuration surface D-47 removes. <code>bench-compare</code> parses only <code>key=value</code> tokens
+from stderr, so the line does not disturb it.</li>
+<li>Old names: <code>CliError::MovedToHazmat</code>, exit 2 (usage), naming <code>uacrypt hazmat &lt;name&gt;</code>; the same for
+<code>uacrypt help &lt;old name&gt;</code>. A near miss of an old name (<code>kalyna-blok</code>) suggests
+<code>hazmat kalyna-block</code>. <code>uacrypt hazmat kalyna-cmac</code> keeps the forgeable-CMAC message (D-247).</li>
+<li>Help lookup: <code>uacrypt help</code> reads <code>COMMANDS</code> only; <code>print_command_help</code> falls back to
+<code>HAZMAT_COMMANDS</code>, so <code>hazmat &lt;name&gt; --help</code> prints that command’s own text (tested for all
+eight - without the fallback it would silently print the top-level help).</li>
+<li>Completions offer <code>hazmat</code> and, after it, the eight names, but no flags after
+<code>hazmat &lt;name&gt;</code>: deeper completion would need a word-offset change in all four generators, and
+low discoverability is the point here. Man page: a <code>LOW-LEVEL COMMANDS (uacrypt hazmat)</code> section
+after <code>COMMANDS</code>.</li>
+</ul>
+<p>Rejected: keeping the old names as working aliases (the surface would not shrink); a
+<code>--i-know-what-i-am-doing</code> style flag instead of the namespace (a knob, and still listed beside
+<code>encrypt</code>); full nested completion (above).</p>
+<p>Sweep check: while the test call sites were re-prefixed, <code>MovedToHazmat</code> exited 99 instead of 2,
+so a missed call in a test that only expects exit 2 could not pass silently; only the new old-name
+tests hit 99, and a source audit found no unprefixed invocation. Tests: <code>tests/smoke_hazmat.rs</code>
+(old names, near miss, <code>hazmat</code> listing, per-command help without warning, unknown words, warning
+on a successful and a failing run, top-level help free of the eight), unit tests for the table
+agreement, hazmat dispatch arms and subcommands, and the man page section.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows
@@ -34291,6 +34354,16 @@ official vectors (D-197) tie both to the standard.</p>
 <code>docs/DECISIONS.md</code> D-257): a tab-completion script for each shell and the <code>uacrypt(1)</code> manual
 page, both generated from the table the argument parser uses, so they offer exactly the flags
 each command accepts. See <code>docs/CLI.md</code> “Shell completions and the man page”.</li>
+</ul>
+<h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
+<ul>
+<li><strong>Breaking - the low-level commands moved under <code>uacrypt hazmat</code></strong> (T-317, <code>docs/DECISIONS.md</code>
+D-264): <code>kalyna-block</code>, <code>kalyna-ccm</code>, <code>kalyna-gcm</code>, <code>kalyna-gmac</code>, <code>kalyna-kw</code>, <code>kalyna-xts</code>,
+<code>kupyna-digest</code> and <code>strumok-crypt</code> are now <code>uacrypt hazmat &lt;command&gt;</code>, with the same flags and
+output. They have no misuse protection, so they left the everyday help and the top level of the shell
+completions (<code>uacrypt hazmat</code> lists them; the man page has its own section for them) and every run prints a
+one-line warning to stderr naming the command to use instead. The old names fail as a usage
+error (exit 2) that names the new form; scripts need the <code>hazmat</code> word added.</li>
 </ul>
 <h3 id="removed"><a class="header" href="#removed">Removed</a></h3>
 <ul>
@@ -34370,7 +34443,7 @@ empty passphrase is refused.</li>
 <code>NewBoxEncryptWriter</code>/<code>NewPassphraseDecryptReader</code>), tested against shared vectors and
 <code>uacrypt</code> in both directions.</li>
 </ul>
-<h3 id="changed"><a class="header" href="#changed">Changed</a></h3>
+<h3 id="changed-1"><a class="header" href="#changed-1">Changed</a></h3>
 <ul>
 <li>
 <p><strong>Breaking: <code>uacrypt kalyna-cmac</code> removed</strong> (T-298, <code>docs/DECISIONS.md</code> D-247): DSTU 7624 §9’s
@@ -34452,7 +34525,7 @@ of input. New constants <code>CHUNK_BYTES</code>, <code>FILE_PREFIX_BYTES</code>
 <code>DSTU_ERR_BAD_CHUNK_LENGTH</code> (16), <code>DSTU_ERR_TRAILING_DATA</code> (17).</li>
 <li>New fuzz target <code>crypto_secretstream_file</code>.</li>
 </ul>
-<h3 id="changed-1"><a class="header" href="#changed-1">Changed</a></h3>
+<h3 id="changed-2"><a class="header" href="#changed-2">Changed</a></h3>
 <ul>
 <li><code>uacrypt</code> and all 8 language bindings read and write stream files through the codec. Their
 error messages for a malformed file are now the core’s, the same in every language.</li>
@@ -34756,7 +34829,7 @@ was stated. <code>docs/CLI.md</code> was also missing 9 of <code>uacrypt</code>�
 full finding-class breakdown.</p>
 </li>
 </ul>
-<h3 id="changed-2"><a class="header" href="#changed-2">Changed</a></h3>
+<h3 id="changed-3"><a class="header" href="#changed-3">Changed</a></h3>
 <ul>
 <li>
 <p><strong>Breaking: Kalyna GCM, GMAC, CCM and CMAC now follow the DSTU 7624:2014 text</strong> (checked against
@@ -35064,7 +35137,7 @@ streaming path opened <code>--out</code> via <code>File::create</code> (truncati
 Found by T-200’s own <code>--in</code>==<code>--out</code> smoke-test probe of the real binary, fixed with the same
 temp-file-then-rename discipline <code>encrypt</code>/<code>decrypt</code> already use (<code>docs/DECISIONS.md</code> D-187).</li>
 </ul>
-<h3 id="changed-3"><a class="header" href="#changed-3">Changed</a></h3>
+<h3 id="changed-4"><a class="header" href="#changed-4">Changed</a></h3>
 <ul>
 <li><code>hazmat::gf2m_wide</code>/<code>hazmat::dstu4145::gf2m163</code>: <code>multiply()</code> now dispatches to a hardware
 carry-less-multiply implementation (<code>PCLMULQDQ</code>/<code>PMULL</code>) at runtime when the CPU supports it and
@@ -35097,7 +35170,7 @@ order - reachable in-contract at exactly one boundary value (<code>k == n-1</cod
 (confirmed via an independent Bouncy Castle cross-check), but a genuine correctness bug every
 <code>sign</code>/<code>verify</code> call went through. See <code>docs/DECISIONS.md</code> D-110.</li>
 </ul>
-<h3 id="changed-4"><a class="header" href="#changed-4">Changed</a></h3>
+<h3 id="changed-5"><a class="header" href="#changed-5">Changed</a></h3>
 <ul>
 <li>Performance: DSTU 4145 <code>sign</code> ~2.6x faster, <code>verify</code> ~4.4x faster (cumulative) - bit-interleave
 GF(2^163) squaring and an Itoh-Tsujii addition-chain field inversion, plus a projective/Shamir’s-
@@ -35151,7 +35224,7 @@ profile for constrained targets. Cross-compilation confirmed for <code>thumbv7em
 <li>Official DSTU test vectors for Kalyna, Kupyna, and DSTU 4145; dual-oracle verification
 (Bouncy Castle Java/.NET harnesses) for Kalyna and Kupyna.</li>
 </ul>
-<h3 id="changed-5"><a class="header" href="#changed-5">Changed</a></h3>
+<h3 id="changed-6"><a class="header" href="#changed-6">Changed</a></h3>
 <ul>
 <li><code>uacrypt encrypt</code>/<code>decrypt</code>’s on-disk wire format changed twice pre-release: originally a
 single-shot <code>crypto_secretbox</code> blob (255-byte cap), then migrated to uncapped <code>crypto_secretbox</code>
