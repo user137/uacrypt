@@ -5,6 +5,8 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-24
+
 ### Added
 
 - **`uacrypt completions bash|zsh|fish|powershell` and `uacrypt man`** (T-264,
@@ -21,6 +23,8 @@ All notable changes to this project are documented in this file. Format follows
   completions (`uacrypt hazmat` lists them; the man page has its own section for them) and every run prints a
   one-line warning to stderr naming the command to use instead. The old names fail as a usage
   error (exit 2) that names the new form; scripts need the `hazmat` word added.
+- The Python, Node.js and Ruby packages are 0.5.1: the same API, built on `dstu-core` 0.8.0, so
+  they carry the fixes below.
 
 ### Removed
 
