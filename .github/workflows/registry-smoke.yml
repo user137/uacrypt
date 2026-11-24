@@ -96,8 +96,6 @@ jobs:
         with:
           ruby-version: "3.3"
       - name: RubyGems - gem install dstu_core
-        # No working Windows gem yet (D-268, T-331): a known gap, shown as a failed step.
-        continue-on-error: ${{ runner.os == 'Windows' }}
         # Every registry reports on every run, even after another one failed.
         if: ${{ !cancelled() }}
         run: |

@@ -260,22 +260,19 @@ jobs:
   # D-268: the cross-built gems put the extension under lib/dstu_core/<ruby minor>/, a layout no CI
   # job ever loaded - 0.1.0 to 0.5.1 were published unloadable. Install each built gem on its own
   # OS, as a user would, and require it before anything is pushed.
-  #
-  # x64-mingw-ucrt is not in this matrix: its extension fails with `127: The specified procedure
-  # could not be found` (D-268, T-331), and `publish-rubygems` skips it by name. It is still built
-  # and load-tested in `load-ruby-gem-windows`, which no publish job needs.
   load-ruby-gems:
     name: load ruby gem (${{ matrix.platform }}, ruby ${{ matrix.ruby }})
     needs: build-ruby-gems
     strategy:
       fail-fast: false
       matrix:
-        platform: [x86_64-linux, aarch64-linux, arm64-darwin]
+        platform: [x86_64-linux, aarch64-linux, arm64-darwin, x64-mingw-ucrt]
         ruby: ["3.1", "3.2", "3.3", "3.4"]
         include:
           - { platform: x86_64-linux, os: ubuntu-latest }
           - { platform: aarch64-linux, os: ubuntu-24.04-arm }
           - { platform: arm64-darwin, os: macos-latest }
+          - { platform: x64-mingw-ucrt, os: windows-latest }
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -287,33 +284,6 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: ruby-gem-${{ matrix.platform }}
-          path: gems
-      - name: Install the built gem and run its selftest outside the repo
-        run: |
-          set -euo pipefail
-          gem install --local --no-document gems/*.gem
-          cd "$RUNNER_TEMP"
-          ruby -e 'require "dstu_core"; DstuCore.self_test; puts "dstu_core #{DstuCore::VERSION} loads on ruby #{RUBY_VERSION}"'
-
-  # Evidence for T-331, not a gate: no publish job needs this.
-  load-ruby-gem-windows:
-    name: load ruby gem (x64-mingw-ucrt, ruby ${{ matrix.ruby }}) - known gap T-331
-    needs: build-ruby-gems
-    strategy:
-      fail-fast: false
-      matrix:
-        ruby: ["3.1", "3.2", "3.3", "3.4"]
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: ${{ matrix.ruby }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: ruby-gem-x64-mingw-ucrt
           path: gems
       - name: Install the built gem and run its selftest outside the repo
         run: |
@@ -688,9 +658,6 @@ jobs:
       - name: Push gems (tolerating a genuine already-published conflict)
         run: |
           for gem in gems/*.gem; do
-            case "$gem" in
-              *x64-mingw-ucrt*) echo "== Skipping $gem - does not load on Windows (D-268, T-331) =="; continue ;;
-            esac
             echo "== Pushing $gem =="
             set +e
             output=$(gem push "$gem" 2>&1)

@@ -16670,12 +16670,16 @@ two builds, not a gem that never worked. (b) Asking the Windows loader (`ctypes.
 export them; hence `127`.
 
 **Cause.** Rust 1.100's std links those through a plain `-lsynchronization` (the same change that
-broke the Go link, D-266), placed after `-lkernel32`. The MinGW in rb-sys-dock's Windows image
-lists them in `libkernel32.a`, so the linker resolved them there. A local build with the Ruby
-DevKit's MinGW on 1.100 binds them correctly - not reproducible outside that image.
+broke the Go link, D-266), placed after `-lkernel32`. Why the linker bound them to KERNEL32 is
+a hypothesis, not verified: the MinGW in rb-sys-dock's Windows image probably lists them in
+`libkernel32.a`. A local build with the Ruby DevKit's MinGW on 1.100 binds them correctly, so
+it is not reproducible outside that image; what is verified is that the fix below works there.
 
 **Fix.** `bindings/ruby/ext/dstu_core_rb/build.rs` emits `cargo:rustc-link-lib=dylib=synchronization`
 for `windows`/`gnu` targets, putting it before std's libraries. Checked locally: builds, loads,
-clippy/fmt clean; the binding inside rb-sys-dock is checked by the release dry run's
-`load-ruby-gem-windows`. The Windows gem rejoins `load-ruby-gems` and `publish-rubygems` only once
-those cells are green.
+clippy/fmt clean. Release dry run 45401473509 (built in rb-sys-dock): the Windows gem installs,
+loads and passes `self_test` on Ruby 3.1, 3.2, 3.3 and 3.4. So the D-269 addendum's skip is
+reverted: x64-mingw-ucrt is back in `load-ruby-gems` (16 cells again) and `publish-rubygems`,
+`load-ruby-gem-windows` is gone, `registry-smoke`'s Windows Ruby step is a gate again. The yank
+goes back to D-269's original form: 0.1.0..0.5.1 on every platform once 0.5.2 loads on all three
+OSes in `registry-smoke`.

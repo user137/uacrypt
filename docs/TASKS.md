@@ -10931,7 +10931,9 @@ owner's. Pushes batched (`rust`/`miri` are `cancel-in-progress`).
   the registry smoke's PyPI step on Windows (selftest ok), YAML of every workflow. Not verifiable
   before a run: `scheduled-failure.yml` (first Sunday), `verify`/`load-ruby-gems` (next release
   or dry run), `registry-smoke.yml` (next release or dispatch).
-- [ ] **T-331** (S; root cause found D-271, fix in `build.rs`, awaiting the dry run) **Windows Ruby gem: `127: The specified procedure
+- [x] **T-331** (S; fixed D-271: `build.rs` links `synchronization`; release dry run 45401473509
+  loads the Windows gem on Ruby 3.1-3.4, so it is back in `load-ruby-gems`/`publish-rubygems`)
+  **Windows Ruby gem: `127: The specified procedure
   could not be found`** (D-268, D-269 addendum). Same `.so` fails on Windows 11 and the Server
   runner. Proposed discriminators, no export parsing: (a) install the 0.5.0 `x64-mingw-ucrt` gem,
   copy in the new `dstu_core.rb`, `require` - loads => drift since 2026-10-23 (D-266's
