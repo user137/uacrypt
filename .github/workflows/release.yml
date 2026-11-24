@@ -550,7 +550,8 @@ jobs:
         run: |
           set -euo pipefail
           dist="$PWD/npm-dist"
-          app="$RUNNER_TEMP/app"
+          # POSIX path: GNU tar reads the `D:` of a Windows $RUNNER_TEMP as a remote host.
+          app="$PWD/npm-app"
           mkdir -p "$app/node_modules/dstu-core"
           tar -xzf "$dist"/dstu-core-[0-9]*.tgz -C "$app/node_modules/dstu-core" --strip-components=1
           if [ -n "$PLATFORM" ]; then

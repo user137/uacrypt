@@ -16658,3 +16658,24 @@ the Linux/macOS gems 0.1.0..0.5.1 once 0.5.2 loads there in `registry-smoke`; th
 0.1.0..0.5.1 in the same step as the 0.5.2 publish - otherwise `gem install dstu_core` on Windows
 resolves to the broken 0.5.1. npm cannot unpublish 0.2.0..0.5.1: `npm deprecate` them once 0.5.2
 loads (D-270). The tag itself waits for the owner's explicit yes.
+
+## D-271: T-331 root cause - the Windows gem bound `WaitOnAddress` to KERNEL32.dll (2026-11-24)
+
+Fourth attempt, owner-approved. (a) The published 0.5.0 `x64-mingw-ucrt` gem with D-268's loader
+loads and passes `self_test` on Windows 11 / Ruby 3.3.12; 0.5.1 does not - a regression between the
+two builds, not a gem that never worked. (b) Asking the Windows loader (`ctypes.WinDLL` +
+`getattr` for every import of `lib/dstu_core/3.3/dstu_core_rb.so`): 0.5.0 - nothing missing, with
+`WaitOnAddress`/`WakeByAddress*` imported from `api-ms-win-core-synch-l1-2-0.dll`; 0.5.1 - exactly
+`KERNEL32.dll!WaitOnAddress`, `!WakeByAddressAll`, `!WakeByAddressSingle` missing. KERNEL32 does not
+export them; hence `127`.
+
+**Cause.** Rust 1.100's std links those through a plain `-lsynchronization` (the same change that
+broke the Go link, D-266), placed after `-lkernel32`. The MinGW in rb-sys-dock's Windows image
+lists them in `libkernel32.a`, so the linker resolved them there. A local build with the Ruby
+DevKit's MinGW on 1.100 binds them correctly - not reproducible outside that image.
+
+**Fix.** `bindings/ruby/ext/dstu_core_rb/build.rs` emits `cargo:rustc-link-lib=dylib=synchronization`
+for `windows`/`gnu` targets, putting it before std's libraries. Checked locally: builds, loads,
+clippy/fmt clean; the binding inside rb-sys-dock is checked by the release dry run's
+`load-ruby-gem-windows`. The Windows gem rejoins `load-ruby-gems` and `publish-rubygems` only once
+those cells are green.
