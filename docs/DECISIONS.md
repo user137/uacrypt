@@ -16591,8 +16591,11 @@ gems (`oxidize-rb/actions/cross-gem`, `ruby-versions: 3.1,3.2,3.3,3.4`) ship one
 minor under `lib/dstu_core/<minor>/dstu_core_rb.so`; `lib/dstu_core.rb` required the flat
 `dstu_core/dstu_core_rb`, the layout of a source build. Layout and loader read in the published
 `x86_64-linux` 0.1.0, 0.5.0 and 0.5.1 gems and the `x64-mingw-ucrt` 0.5.1 gem; the load failure
-itself observed on Windows. RubyGems lists 0.1.0, 0.5.0 and 0.5.1 for the same four platforms;
-`registry-smoke.yml`'s first run gives the Linux/macOS load result.
+itself observed on Windows. RubyGems lists 0.1.0, 0.5.0 and 0.5.1 for the same four platforms.
+`registry-smoke`'s first run (45389301742) gave no Linux/macOS Ruby result - its npm step failed
+first (D-270) and the job stopped; since then every registry step runs regardless. The fixed
+loader loads freshly built gems on x86_64/aarch64 Linux and macOS, Ruby 3.1-3.4 (release dry run
+45389297215, 12 of 12 cells).
 `bindings-ruby.yml` only ever loaded a source build, and D-191's live-page check reads metadata,
 not an install.
 
@@ -16642,3 +16645,16 @@ assembles and packs the root and platform packages and checks the root tarball's
 `selfTest()`; `publish-npm` publishes those tarballs. The win32 `.node` also ships in the root's
 `native/` - napi's loader tries a sibling `.node` first - so Windows works without the npm-blocked
 platform package (D-189). Unverified until a run: `npm publish <tarball> --provenance` on a tag.
+
+**D-269 addendum (same day): the Windows gem is left out of 0.8.1.** The dry run's four
+`x64-mingw-ucrt` cells fail with the same `127` on a fresh build (Ruby 3.3.14, Windows Server
+runner) as locally (Windows 11), so it is not an OS-too-old issue. Three local attempts to find the
+missing procedure from `objdump` output each had a broken parser and are not evidence either way;
+stopped there (three-attempts rule), next steps proposed to the owner (T-331). `publish-rubygems`
+skips `*x64-mingw-ucrt*` by name, as `publish-npm` skips the blocked win32 package (D-189); the gem
+is still built and load-tested in `load-ruby-gem-windows`, which no publish job needs, so the
+evidence keeps coming. `load-ruby-gems` gates on 12 cells, not 16. **Yank, restated per platform:**
+the Linux/macOS gems 0.1.0..0.5.1 once 0.5.2 loads there in `registry-smoke`; the Windows gems
+0.1.0..0.5.1 in the same step as the 0.5.2 publish - otherwise `gem install dstu_core` on Windows
+resolves to the broken 0.5.1. npm cannot unpublish 0.2.0..0.5.1: `npm deprecate` them once 0.5.2
+loads (D-270). The tag itself waits for the owner's explicit yes.

@@ -51,6 +51,8 @@ jobs:
           EOF
       - uses: dtolnay/rust-toolchain@stable
       - name: crates.io - cargo install uacrypt
+        # Every registry reports on every run, even after another one failed.
+        if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
           . "$RUNNER_TEMP/retry.sh"
@@ -59,9 +61,12 @@ jobs:
           echo "$out"
           case "$out" in *"$CRATE_V"*) ;; *) echo "expected $CRATE_V"; exit 1 ;; esac
       - uses: actions/setup-python@v5
+        if: ${{ !cancelled() }}
         with:
           python-version: "3.12"
       - name: PyPI - pip install dstu-core
+        # Every registry reports on every run, even after another one failed.
+        if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
           . "$RUNNER_TEMP/retry.sh"
@@ -70,9 +75,12 @@ jobs:
           retry "$py" -m pip install --no-cache-dir --only-binary=:all: "dstu-core==$PY_V"
           "$py" -c "import dstu_core; dstu_core.selftest(); print('python selftest ok')"
       - uses: actions/setup-node@v4
+        if: ${{ !cancelled() }}
         with:
           node-version: "20"
       - name: npm - npm install dstu-core
+        # Every registry reports on every run, even after another one failed.
+        if: ${{ !cancelled() }}
         # The Windows platform package is blocked by npm's spam filter (D-189): a known gap, shown
         # as a failed step without failing the job.
         continue-on-error: ${{ runner.os == 'Windows' }}
@@ -84,9 +92,14 @@ jobs:
           retry npm install --no-audit --no-fund "dstu-core@$JS_V"
           node -e "require('dstu-core').selfTest(); console.log('node selftest ok')"
       - uses: ruby/setup-ruby@v1
+        if: ${{ !cancelled() }}
         with:
           ruby-version: "3.3"
       - name: RubyGems - gem install dstu_core
+        # No working Windows gem yet (D-268, T-331): a known gap, shown as a failed step.
+        continue-on-error: ${{ runner.os == 'Windows' }}
+        # Every registry reports on every run, even after another one failed.
+        if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
           . "$RUNNER_TEMP/retry.sh"

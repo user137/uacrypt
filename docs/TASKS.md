@@ -10895,7 +10895,7 @@ owner's. Pushes batched (`rust`/`miri` are `cancel-in-progress`).
   heuristic goes. A missing artifact or failed build prints `asm-check: TOOL ERROR ...`, distinct
   from a constant-time `FAILED` (both stay a failed layer in `ci()`'s `fn() -> bool` table). Unit
   test of the JSON parsing: artifact present, artifact absent.
-- [ ] **T-323** (S) **Release gate on the uacrypt/crates toolchain.** `release.yml` gets a `verify`
+- [x] **T-323** (S) **Release gate on the uacrypt/crates toolchain.** `release.yml` gets a `verify`
   job (also in the `workflow_dispatch` dry run): `cargo xtask test` + `cargo xtask asm-check` on the
   same `dtolnay/rust-toolchain@stable` as `build-binary`/`publish-crates`, asm-check's targets
   copied from `rust.yml`; `publish-release` and every `publish-*` need it. Every build job prints
@@ -10923,11 +10923,22 @@ owner's. Pushes batched (`rust`/`miri` are `cancel-in-progress`).
   gems once 0.5.2 is live.
 - **State 2026-11-24 (D-267):** T-325, T-326, T-327 done; T-323/T-328 implemented, ticked only
   once their first runs are read (release dry run, `registry-smoke` for `v0.8.0`); T-324 pending
-  its first scheduled run. Verified locally - xtask tests (3 new for the Cargo JSON
+  its first scheduled run. `verify` green in dry run 45389297215 (T-323 ticked). `registry-smoke`
+  45389301742 for `v0.8.0`: crates.io and PyPI install and run on all three OSes; the npm root
+  package fails everywhere (D-270); Ruby not reached on Linux/macOS (fixed: every step runs).
+  Verified locally - xtask tests (3 new for the Cargo JSON
   parsing), `asm-check` on rustc 1.99 and 1.100, `cargo xtask go` with the link-lib diagnostic,
   the registry smoke's PyPI step on Windows (selftest ok), YAML of every workflow. Not verifiable
   before a run: `scheduled-failure.yml` (first Sunday), `verify`/`load-ruby-gems` (next release
   or dry run), `registry-smoke.yml` (next release or dispatch).
+- [ ] **T-331** (S, owner OK for a 4th attempt) **Windows Ruby gem: `127: The specified procedure
+  could not be found`** (D-268, D-269 addendum). Same `.so` fails on Windows 11 and the Server
+  runner. Proposed discriminators, no export parsing: (a) install the 0.5.0 `x64-mingw-ucrt` gem,
+  copy in the new `dstu_core.rb`, `require` - loads => drift since 2026-10-23 (D-266's
+  `WaitOnAddress`/`WakeByAddress*` first suspect), fails => never worked; (b) Python
+  `ctypes.WinDLL(dll)` + `getattr` per imported name (or just `WaitOnAddress`,
+  `WakeByAddressSingle`, `WakeByAddressAll`, `ProcessPrng`) - the one that raises is it. Until then
+  `publish-rubygems` skips the Windows gem; `load-ruby-gem-windows` keeps reporting.
 - [x] **T-329** (decided D-269: keep per-alert dismissal) **CodeQL `rust/cleartext-logging` in test code.** Third wave of
   false positives (D-254 + addendum). Options: keep dismissing one by one (current); a CodeQL
   config that excludes `#[cfg(test)]`/`tests/` paths for that one query. Not started without the
