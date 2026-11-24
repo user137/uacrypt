@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1bd89617.js";
+            window.path_to_searchindex_js = "searchindex-6d75f069.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d4c7990f.js"></script>
@@ -15398,6 +15398,23 @@ the Linux/macOS gems 0.1.0..0.5.1 once 0.5.2 loads there in <code>registry-smoke
 0.1.0..0.5.1 in the same step as the 0.5.2 publish - otherwise <code>gem install dstu_core</code> on Windows
 resolves to the broken 0.5.1. npm cannot unpublish 0.2.0..0.5.1: <code>npm deprecate</code> them once 0.5.2
 loads (D-270). The tag itself waits for the owner’s explicit yes.</p>
+<h2 id="d-271-t-331-root-cause---the-windows-gem-bound-waitonaddress-to-kernel32dll-2026-11-24"><a class="header" href="#d-271-t-331-root-cause---the-windows-gem-bound-waitonaddress-to-kernel32dll-2026-11-24">D-271: T-331 root cause - the Windows gem bound <code>WaitOnAddress</code> to KERNEL32.dll (2026-11-24)</a></h2>
+<p>Fourth attempt, owner-approved. (a) The published 0.5.0 <code>x64-mingw-ucrt</code> gem with D-268’s loader
+loads and passes <code>self_test</code> on Windows 11 / Ruby 3.3.12; 0.5.1 does not - a regression between the
+two builds, not a gem that never worked. (b) Asking the Windows loader (<code>ctypes.WinDLL</code> +
+<code>getattr</code> for every import of <code>lib/dstu_core/3.3/dstu_core_rb.so</code>): 0.5.0 - nothing missing, with
+<code>WaitOnAddress</code>/<code>WakeByAddress*</code> imported from <code>api-ms-win-core-synch-l1-2-0.dll</code>; 0.5.1 - exactly
+<code>KERNEL32.dll!WaitOnAddress</code>, <code>!WakeByAddressAll</code>, <code>!WakeByAddressSingle</code> missing. KERNEL32 does not
+export them; hence <code>127</code>.</p>
+<p><strong>Cause.</strong> Rust 1.100’s std links those through a plain <code>-lsynchronization</code> (the same change that
+broke the Go link, D-266), placed after <code>-lkernel32</code>. The MinGW in rb-sys-dock’s Windows image
+lists them in <code>libkernel32.a</code>, so the linker resolved them there. A local build with the Ruby
+DevKit’s MinGW on 1.100 binds them correctly - not reproducible outside that image.</p>
+<p><strong>Fix.</strong> <code>bindings/ruby/ext/dstu_core_rb/build.rs</code> emits <code>cargo:rustc-link-lib=dylib=synchronization</code>
+for <code>windows</code>/<code>gnu</code> targets, putting it before std’s libraries. Checked locally: builds, loads,
+clippy/fmt clean; the binding inside rb-sys-dock is checked by the release dry run’s
+<code>load-ruby-gem-windows</code>. The Windows gem rejoins <code>load-ruby-gems</code> and <code>publish-rubygems</code> only once
+those cells are green.</p>
 
                     </main>
 

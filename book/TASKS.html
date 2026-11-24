@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-1bd89617.js";
+            window.path_to_searchindex_js = "searchindex-6d75f069.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d4c7990f.js"></script>
@@ -11493,7 +11493,7 @@ parsing), <code>asm-check</code> on rustc 1.99 and 1.100, <code>cargo xtask go</
 the registry smoke’s PyPI step on Windows (selftest ok), YAML of every workflow. Not verifiable
 before a run: <code>scheduled-failure.yml</code> (first Sunday), <code>verify</code>/<code>load-ruby-gems</code> (next release
 or dry run), <code>registry-smoke.yml</code> (next release or dispatch).</li>
-<li><input disabled="" type="checkbox"> <strong>T-331</strong> (S, owner OK for a 4th attempt) <strong>Windows Ruby gem: <code>127: The specified procedure could not be found</code></strong> (D-268, D-269 addendum). Same <code>.so</code> fails on Windows 11 and the Server
+<li><input disabled="" type="checkbox"> <strong>T-331</strong> (S; root cause found D-271, fix in <code>build.rs</code>, awaiting the dry run) <strong>Windows Ruby gem: <code>127: The specified procedure could not be found</code></strong> (D-268, D-269 addendum). Same <code>.so</code> fails on Windows 11 and the Server
 runner. Proposed discriminators, no export parsing: (a) install the 0.5.0 <code>x64-mingw-ucrt</code> gem,
 copy in the new <code>dstu_core.rb</code>, <code>require</code> - loads =&gt; drift since 2026-10-23 (D-266’s
 <code>WaitOnAddress</code>/<code>WakeByAddress*</code> first suspect), fails =&gt; never worked; (b) Python
