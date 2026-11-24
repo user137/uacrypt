@@ -10928,7 +10928,7 @@ owner's. Pushes batched (`rust`/`miri` are `cancel-in-progress`).
   the registry smoke's PyPI step on Windows (selftest ok), YAML of every workflow. Not verifiable
   before a run: `scheduled-failure.yml` (first Sunday), `verify`/`load-ruby-gems` (next release
   or dry run), `registry-smoke.yml` (next release or dispatch).
-- [ ] **T-329** (owner decision) **CodeQL `rust/cleartext-logging` in test code.** Third wave of
+- [x] **T-329** (decided D-269: keep per-alert dismissal) **CodeQL `rust/cleartext-logging` in test code.** Third wave of
   false positives (D-254 + addendum). Options: keep dismissing one by one (current); a CodeQL
   config that excludes `#[cfg(test)]`/`tests/` paths for that one query. Not started without the
   owner's answer.

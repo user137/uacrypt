@@ -16609,3 +16609,36 @@ x64-mingw-ucrt. Not diagnosed (a local import comparison was inconclusive and is
 either way); `load-ruby-gems`' Windows cells will show whether a fresh build has it. Until they
 pass, a tag cannot publish to RubyGems for any platform. A fixed gem needs a release (0.5.2) -
 owner's call (T-330).
+
+## D-269: owner-delegated forks of the CI-drift wave - CodeQL stays per-alert; Ruby fixed via a 0.8.1 patch release (2026-11-24)
+
+Owner: "the questions are yours". Decided by project rules > safety > common-tool compatibility
+(the delegated-forks practice).
+
+- **T-329: keep dismissing `rust/cleartext-logging` test alerts one by one**, each with its reason
+  and a D-entry pointer. A path exclusion for the query would be quieter but would also hide a real
+  secret printed by a test or a test helper copied into production code; three waves of noise is
+  the cheaper cost.
+- **T-330: Ruby ships through a normal tagged patch release, `v0.8.1`**, not a Ruby-only
+  side channel: `release.yml` publishes every registry from one tag, and a second mechanism for one
+  registry is new surface for one use. `dstu-core`/`uacrypt` 0.8.1 carry the Go link fix; the
+  bindings move to 0.5.2 together (Python/Node.js/Ruby), as they did for 0.5.1, so one tag maps to
+  one bindings version. Preconditions: the release dry run's `load-ruby-gems` green on all 16 cells
+  (the Windows `127` of D-268 resolved), CI green on the release commit.
+- **Yank the unloadable gems** (0.1.0, 0.5.0, 0.5.1, all four platforms) once 0.5.2 is live and
+  `registry-smoke` loads it on all three OSes: they can never work, and an install of a version that
+  cannot `require` is worse than a resolver error. Not before - a yank is permanent on RubyGems.
+
+## D-270: every npm root package published so far cannot be required (2026-11-24)
+
+**Finding** (`registry-smoke` run 45389301742, ubuntu/macOS): `require('dstu-core')` 0.5.1 fails with
+`Cannot find module '../native/index.js'`. The root tarballs of 0.2.0..0.5.1 contain only `js/`,
+`package.json`, `README.md`: `native/` (napi's generated loader + typings) is gitignored and
+`publish-npm` never ran `napi build`, so `files: ["native/index.js", ...]` matched nothing.
+
+**Fix (release.yml).** The ubuntu build leg uploads `native/index.js`/`index.d.ts`; `pack-npm`
+assembles and packs the root and platform packages and checks the root tarball's contents;
+`load-npm-package` unpacks those exact tarballs on linux x64/arm64, macOS and Windows and runs
+`selfTest()`; `publish-npm` publishes those tarballs. The win32 `.node` also ships in the root's
+`native/` - napi's loader tries a sibling `.node` first - so Windows works without the npm-blocked
+platform package (D-189). Unverified until a run: `npm publish <tarball> --provenance` on a tag.

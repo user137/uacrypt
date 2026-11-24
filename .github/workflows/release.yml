@@ -190,6 +190,14 @@ jobs:
         with:
           name: node-native-${{ matrix.os }}
           path: bindings/nodejs/native/*.node
+      # napi's generated JS loader and typings - the same on every OS; taken from one leg (D-270).
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: node-loader
+          path: |
+            bindings/nodejs/native/index.js
+            bindings/nodejs/native/index.d.ts
 
   build-ruby-gems:
     name: build ruby gem (${{ matrix.platform }})
@@ -406,6 +414,123 @@ jobs:
           # wheels PyPI already has (confirmed the hard way, v0.3.1 -> v0.3.2, T-164/T-203).
           skip-existing: true
 
+  # D-270: every npm `dstu-core` root package published so far lacked `native/index.js` (napi's
+  # generated loader, gitignored, built by `npm run build`), so `require('dstu-core')` failed on every
+  # OS. Packaging now happens here, in the dry run too, and `load-npm-package` installs the exact
+  # tarballs on each OS before `publish-npm` pushes those same files.
+  #
+  # napi-rs's own documented recipe (napi.rs/docs/deep-dive/release): `create-npm-dir` scaffolds one
+  # subpackage directory per configured triple (gitignored, regenerated fresh here every run - see
+  # .gitignore's /bindings/nodejs/npm/ entry), `artifacts` copies the downloaded per-OS `.node`
+  # binaries into the matching subpackage. napi artifacts' default source dir is `artifacts/`, not
+  # `native/` - getting that wrong leaves every subpackage silently empty.
+  #
+  # The win32 `.node` also goes into the root package's own `native/`: `dstu-core-win32-x64-msvc` is
+  # blocked by npm's spam detection (D-189), and napi's loader tries a `.node` beside itself before
+  # the platform package, so Windows works from the root package alone (D-270).
+  pack-npm:
+    name: pack npm packages
+    needs: build-nodejs-artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install
+        working-directory: bindings/nodejs
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: node-native-*
+          path: bindings/nodejs/artifacts
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: node-loader
+          path: bindings/nodejs/native
+      - run: npx napi create-npm-dir -t .
+        working-directory: bindings/nodejs
+      - run: npx napi artifacts
+        working-directory: bindings/nodejs
+      - name: Win32 addon into the root package (D-189, D-270)
+        working-directory: bindings/nodejs
+        run: cp npm/win32-x64-msvc/dstu-core.win32-x64-msvc.node native/
+      # Root package's optionalDependencies is the one other thing `napi prepublish` did besides
+      # publishing each subpackage - replicated here since the publish loop doesn't use that command.
+      - name: Set root package optionalDependencies
+        working-directory: bindings/nodejs
+        run: |
+          node -e '
+            const fs = require("fs");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            const platforms = ["linux-x64-gnu", "darwin-arm64", "win32-x64-msvc", "linux-arm64-gnu"];
+            pkg.optionalDependencies = Object.fromEntries(
+              platforms.map((p) => [`${pkg.name}-${p}`, pkg.version])
+            );
+            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2));
+          '
+      - name: Pack root and platform packages, check the root's contents
+        working-directory: bindings/nodejs
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/npm-dist/platforms"
+          root=$(npm pack --silent --pack-destination "$GITHUB_WORKSPACE/npm-dist")
+          for dir in npm/*/; do
+            (cd "$dir" && npm pack --silent --pack-destination "$GITHUB_WORKSPACE/npm-dist/platforms")
+          done
+          ls -R "$GITHUB_WORKSPACE/npm-dist"
+          contents=$(tar -tzf "$GITHUB_WORKSPACE/npm-dist/$root")
+          echo "$contents"
+          for f in package/js/index.js package/native/index.js package/native/index.d.ts \
+                   package/native/dstu-core.win32-x64-msvc.node; do
+            echo "$contents" | grep -qx "$f" || { echo "root package lacks $f"; exit 1; }
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarballs
+          path: npm-dist
+
+  load-npm-package:
+    name: load npm package (${{ matrix.os }})
+    needs: pack-npm
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, platform: linux-x64-gnu }
+          - { os: ubuntu-24.04-arm, platform: linux-arm64-gnu }
+          - { os: macos-latest, platform: darwin-arm64 }
+          # No platform package: Windows must load from the root package alone (D-270).
+          - { os: windows-latest, platform: "" }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-tarballs
+          path: npm-dist
+      - name: Unpack the tarballs into a clean node_modules and run the selftest
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          dist="$PWD/npm-dist"
+          app="$RUNNER_TEMP/app"
+          mkdir -p "$app/node_modules/dstu-core"
+          tar -xzf "$dist"/dstu-core-[0-9]*.tgz -C "$app/node_modules/dstu-core" --strip-components=1
+          if [ -n "$PLATFORM" ]; then
+            mkdir -p "$app/node_modules/dstu-core-$PLATFORM"
+            tar -xzf "$dist"/platforms/dstu-core-"$PLATFORM"-*.tgz \
+              -C "$app/node_modules/dstu-core-$PLATFORM" --strip-components=1
+          fi
+          cd "$app"
+          node -e "require('dstu-core').selfTest(); console.log('dstu-core loads on ' + process.platform + '-' + process.arch)"
+
   publish-npm:
     # Same `environment: npm` manual-approval gate as publish-pypi above (both environments got
     # real `required_reviewers` protection added via the GitHub API on 2026-08-12, after the v0.3.1
@@ -424,114 +549,62 @@ jobs:
     # remove both `NODE_AUTH_TOKEN` below and the `NPM_TOKEN` secret - every release after the first
     # should be OIDC-only, matching publish-pypi.
     #
-    # napi-rs's own documented recipe (napi.rs/docs/deep-dive/release, checked this session):
-    # `create-npm-dir` scaffolds one subpackage directory per configured triple (gitignored,
-    # regenerated fresh here every run - see .gitignore's /bindings/nodejs/npm/ entry), `artifacts`
-    # copies the downloaded per-OS `.node` binaries into the matching subpackage.
-    #
-    # Deliberately NOT using `napi prepublish` (root `npm publish`'s own `prepublishOnly` hook) to
-    # drive the actual publishing, unlike napi-rs's own documented one-call recipe: its per-platform
-    # loop (`PrePublishCommand.execute` in @napi-rs/cli) aborts the whole command - root package
-    # included - the instant any ONE platform's `npm publish` fails, with no tolerance for "this
-    # version already exists". Confirmed the hard way, 2026-08-12: a retry after npm's own
-    # spam-detection blocked the 3rd platform package died instead on the 1st (already-published
-    # from the prior attempt), never reaching the 3rd or the root package at all. A retry of a
-    # partially-succeeded publish is the normal case here (npm's spam heuristic and rate limits are
-    # both real, external, and not something this workflow controls), so every step below is written
-    # to tolerate "already published" and pick up wherever the previous attempt stopped.
+    # Publishes the tarballs `pack-npm` built and `load-npm-package` loaded, not a fresh build.
+    # Deliberately NOT `napi prepublish`: its per-platform loop aborts the whole command - root
+    # package included - the instant any ONE platform's `npm publish` fails, with no tolerance for
+    # "this version already exists" (confirmed 2026-08-12). A retry of a partially-succeeded publish
+    # is the normal case here (npm's spam heuristic and rate limits are real and external), so every
+    # step below tolerates "already published" and picks up where the previous attempt stopped.
     name: publish to npm
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [build-nodejs-artifacts, verify]
+    needs: [load-npm-package, verify]
     runs-on: ubuntu-latest
     environment: npm
     permissions:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           # Trusted Publishing (OIDC) needs a recent npm CLI, and `npm@latest` itself now requires
-          # Node >=22 (confirmed the hard way, 2026-08-12: `npm install -g npm@latest` failed on
-          # Node 20 with EBADENGINE) - Node 20 is still fine for the rest of this project's own
-          # bindings-nodejs.yml (`engines.node: >= 18`), this job alone needs the newer runtime.
+          # Node >=22 (confirmed 2026-08-12: `npm install -g npm@latest` failed on Node 20 with
+          # EBADENGINE).
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
       - run: npm install -g npm@latest
-      - run: npm install
-        working-directory: bindings/nodejs
-      # napi artifacts' own default source dir is `artifacts/` (relative to its cwd), not
-      # `native/` - confirmed by reading @napi-rs/cli's ArtifactsCommand source this session
-      # (its `-d,--dir` flag defaults to `'artifacts'`). Getting this wrong would leave every
-      # platform subpackage silently empty - `napi artifacts` doesn't error when it finds zero
-      # matching files, it just publishes packages with no binary inside.
       - uses: actions/download-artifact@v4
         with:
-          pattern: node-native-*
-          path: bindings/nodejs/artifacts
-          merge-multiple: true
-      - run: npx napi create-npm-dir -t .
-        working-directory: bindings/nodejs
-      - run: npx napi artifacts
-        working-directory: bindings/nodejs
-      # Root package's optionalDependencies is the one other thing `napi prepublish` did besides
-      # publishing each subpackage (docs/DECISIONS.md note above) - replicated here directly so it
-      # keeps happening even though the publish loop itself no longer goes through that command.
-      - name: Set root package optionalDependencies
-        working-directory: bindings/nodejs
-        run: |
-          node -e '
-            const fs = require("fs");
-            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-            const platforms = ["linux-x64-gnu", "darwin-arm64", "win32-x64-msvc", "linux-arm64-gnu"];
-            pkg.optionalDependencies = Object.fromEntries(
-              platforms.map((p) => [`${pkg.name}-${p}`, pkg.version])
-            );
-            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2));
-          '
-      - name: Publish platform subpackages (tolerating already-published)
-        working-directory: bindings/nodejs
+          name: npm-tarballs
+          path: npm-dist
+      - name: Publish platform packages, then the root (tolerating already-published)
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        # dstu-core-win32-x64-msvc is deliberately skipped here, not attempted-and-tolerated like
-        # the "already published" case below: it's blocked by npm's own spam detection (external,
-        # not time-based - confirmed by a 3+ hour wait reproducing the identical block), and no
-        # retry from this job can fix that. docs/DECISIONS.md D-189 has the full incident and the
-        # real fix (npm support). Remove this skip once support clears the name - the napi `triples`
-        # config still builds this platform every release, so it's ready to publish immediately.
+        # dstu-core-win32-x64-msvc is skipped, not attempted-and-tolerated: npm's spam detection
+        # blocks the name (external, not time-based, D-189); the root package carries that addon
+        # instead (D-270). Remove the skip once npm support clears the name.
         run: |
-          for dir in npm/*/; do
-            if [ "$dir" = "npm/win32-x64-msvc/" ]; then
-              echo "== Skipping $dir - blocked by npm spam detection, see docs/DECISIONS.md D-189 =="
-              continue
-            fi
-            echo "== Publishing $dir =="
+          set -euo pipefail
+          publish() {
             set +e
-            output=$(cd "$dir" && npm publish --provenance 2>&1)
+            output=$(npm publish "$1" --provenance --ignore-scripts 2>&1)
             status=$?
             set -e
             echo "$output"
-            if [ $status -ne 0 ]; then
-              if echo "$output" | grep -q "cannot publish over the previously published versions"; then
-                echo "Already published, continuing: $dir"
-              else
-                exit $status
-              fi
+            if [ $status -ne 0 ] && ! echo "$output" | grep -q "cannot publish over the previously published versions"; then
+              exit $status
             fi
+          }
+          for tgz in npm-dist/platforms/*.tgz; do
+            case "$tgz" in
+              *dstu-core-win32-x64-msvc-*) echo "== Skipping $tgz (D-189) =="; continue ;;
+            esac
+            echo "== Publishing $tgz =="
+            publish "$tgz"
           done
-      - name: Publish root package (tolerating already-published)
-        working-directory: bindings/nodejs
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          set +e
-          output=$(npm publish --provenance --ignore-scripts 2>&1)
-          status=$?
-          set -e
-          echo "$output"
-          if [ $status -ne 0 ] && ! echo "$output" | grep -q "cannot publish over the previously published versions"; then
-            exit $status
-          fi
+          for tgz in npm-dist/dstu-core-[0-9]*.tgz; do
+            echo "== Publishing root $tgz =="
+            publish "$tgz"
+          done
 
   publish-rubygems:
     # Trusted Publishing (OIDC), same "environment gate + no static secret" posture as
