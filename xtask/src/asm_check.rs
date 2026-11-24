@@ -874,13 +874,24 @@ mod tests {
 
     // Trimmed from real `cargo build --message-format=json` output, Cargo 1.99 and 1.100 (T-325).
     const DEP: &str = r#"{"reason":"compiler-artifact","target":{"name":"subtle"},"filenames":["t/release/deps/libsubtle-aa.rmeta"],"fresh":true}"#;
-    const OLD: &str = r#"{"reason":"compiler-artifact","target":{"kind":["lib"],"name":"dstu_core"},"filenames":["C:\\t\\release\\libdstu_core.rlib","C:\\t\\release\\deps\\libdstu_core-cb47cd8d527b7b96.rmeta"],"fresh":false}"#;
+    const OLD: &str = r#"{"reason":"compiler-artifact","target":{"kind":["lib"],"name":"dstu_core"},"filenames":["/t/release/libdstu_core.rlib","/t/release/deps/libdstu_core-cb47cd8d527b7b96.rmeta"],"fresh":false}"#;
+    // `Path` splits on `\` only on Windows, so this fixture is checked only there.
+    #[cfg(windows)]
+    const OLD_WINDOWS: &str = r#"{"reason":"compiler-artifact","target":{"kind":["lib"],"name":"dstu_core"},"filenames":["C:\\t\\release\\libdstu_core.rlib","C:\\t\\release\\deps\\libdstu_core-cb47cd8d527b7b96.rmeta"],"fresh":false}"#;
     const NEW: &str = r#"{"reason":"compiler-artifact","target":{"kind":["lib"],"name":"dstu_core"},"filenames":["/t/release/libdstu_core.rlib","/t/release/build/dstu-core/5a226aa5393e347f/out/libdstu_core-5a226aa5393e347f.rmeta"],"fresh":true}"#;
 
     #[test]
     fn artifact_found_in_both_cargo_layouts() {
         assert_eq!(
             dstu_core_artifact(&format!("{DEP}\n{OLD}\n")),
+            Some((
+                PathBuf::from("/t/release/deps"),
+                "cb47cd8d527b7b96".to_owned()
+            ))
+        );
+        #[cfg(windows)]
+        assert_eq!(
+            dstu_core_artifact(OLD_WINDOWS),
             Some((
                 PathBuf::from(r"C:\t\release\deps"),
                 "cb47cd8d527b7b96".to_owned()
