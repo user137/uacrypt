@@ -587,7 +587,8 @@ jobs:
           set -euo pipefail
           publish() {
             set +e
-            output=$(npm publish "$1" --provenance --ignore-scripts 2>&1)
+            # `./`: npm reads a bare `dir/file.tgz` as a GitHub `owner/repo` spec (EALLOWGIT, v0.8.1).
+            output=$(npm publish "./$1" --provenance --ignore-scripts 2>&1)
             status=$?
             set -e
             echo "$output"
