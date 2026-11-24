@@ -25,7 +25,8 @@ go build ./...
 
 On Windows, `cgo` needs a MinGW-w64 `gcc` toolchain (it cannot link against an MSVC-built import
 library) — see `docs/DECISIONS.md` D-155 for the exact `-Wl,-Bstatic ... -lws2_32 -luserenv
--lntdll` flags this required, found by actually linking, not assumed.
+-lntdll` flags this required, found by actually linking, not assumed; Rust 1.100 added
+`-lsynchronization` (D-266).
 
 ```go
 import "github.com/user137/uacrypt/bindings/go/dstu"

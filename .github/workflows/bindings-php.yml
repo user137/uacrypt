@@ -53,6 +53,17 @@ jobs:
         with:
           toolchain: ${{ matrix.os == 'windows-latest' && 'nightly-x86_64-pc-windows-msvc' || 'nightly' }}
           components: clippy, rustfmt
+      # ubuntu-26.04 ships clang 20, 21 and 22. ext-php-rs's bindgen found the headers of one LLVM
+      # and loaded the libclang of another, which failed on their x86 intrinsics (D-266). Point
+      # both at the LLVM of the `clang` on PATH.
+      - name: Match libclang and clang to one LLVM
+        if: runner.os == 'Linux'
+        run: |
+          major=$(clang -dumpversion | cut -d. -f1)
+          llvm=/usr/lib/llvm-$major
+          ls "$llvm"/lib/libclang*.so* "$llvm/bin/clang"
+          echo "LIBCLANG_PATH=$llvm/lib" >> "$GITHUB_ENV"
+          echo "CLANG_PATH=$llvm/bin/clang" >> "$GITHUB_ENV"
       # ubuntu-only, matching rust.yml's own fmt job and every other binding's own workflow:
       # actions/checkout on a Windows/macOS runner applies git's autocrlf translation, which makes
       # every LF-checked-in file look like "Incorrect newline style" to `cargo fmt --check` - a

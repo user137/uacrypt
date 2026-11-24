@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Go binding on Windows links with Rust 1.100** (`docs/DECISIONS.md` D-266): the cgo link line
+  adds `-lsynchronization`, needed by the Rust standard library's `WaitOnAddress` on
+  `windows-gnu`.
+
 ## [0.8.0] - 2026-10-24
 
 ### Added

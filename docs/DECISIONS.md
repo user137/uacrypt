@@ -16517,3 +16517,27 @@ private-data items restate existing rules - D-25, D-163, D-185 and `CLAUDE.md`'s
 
 **Rejected:** starting with PKCS#11 (the owner's original framing). Of the four paths it has the
 lowest return per effort and the highest custody risk, and it reaches no browser.
+
+## D-266: CI after the 0.8.0 tag - Rust 1.100 on windows-gnu, ubuntu-26.04's three clangs, RUSTSEC-2026-0548 (2026-11-24)
+
+Three failures on `9564730` (docs-only after `e968cf6`), none from this repo's code; the toolchains
+moved in the month the tag waited.
+
+- **`bindings-go`, windows.** Rust 1.100's `std` on `x86_64-pc-windows-gnu` parks threads with
+  `WaitOnAddress`/`WakeByAddress*`, which live in `api-ms-win-core-synch-l1-2-0`; MinGW's import
+  library for it is `libsynchronization.a`. The static `libdstu_core_capi.a` carries those
+  references, so cgo's link needs `-lsynchronization` next to D-155's `-lws2_32 -luserenv -lntdll`
+  (`bindings/go/dstu/dstu.go`). Harmless on an older toolchain, which leaves the references out.
+- **`bindings-php`, ubuntu.** `ubuntu-latest` became ubuntu-26.04, with clang 20, 21 and 22
+  installed. `ext-php-rs`'s bindgen took the intrinsic headers from `/usr/lib/llvm-21` and,
+  judging by the errors (`xmmintrin.h:245: invalid conversion between vector type '__m128' ... and
+  'int'` - an intrinsic builtin unknown to the parser), a libclang of another major. The workflow
+  sets `LIBCLANG_PATH` and `CLANG_PATH` to the LLVM of `clang -dumpversion`, failing if absent; the
+  diagnosis is from the CI log only (not reproducible on Windows) and stands or falls with that run.
+- **`bindings-php` supply chain.** RUSTSEC-2026-0548 in `zip` 9.0.4, a build dependency of
+  `ext-php-rs` that never extracts an untrusted archive here. Fixed version 9.0.5 via
+  `cargo update -p zip --precise 9.0.5` - the oldest fix, 5 weeks old; the newest (9.8.2) is a day
+  old and drags five more crates along.
+
+**Rejected:** pinning the PHP job to `ubuntu-24.04` - it hides the mismatch until that image goes.
+The `canary` job did not catch any of this: it covers the root workspace on Linux only (T-226).

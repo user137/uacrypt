@@ -10419,6 +10419,10 @@ from `crates/dstu-core`. Pi: Kani per harness under `ulimit -v`, never `gf2m512`
    validate` OK); the 0.7.0 PR #460150 got no moderator review in a month. No GHSA (T-249 found
    none). CodeQL #102-#104 dismissed (D-254 addendum).
 
+   CI on the docs push after the tag (`9564730`) broke from toolchain drift, not code (D-266):
+   `bindings-go` windows (Rust 1.100 needs `-lsynchronization`), `bindings-php` ubuntu-26.04
+   (libclang/clang major mismatch), `bindings-php` supply chain (`zip` 9.0.5, RUSTSEC-2026-0548).
+
    Next: the post-0.8.0 plan: T-318, T-319, T-322 (section "Ecosystem integration" at the end).
 
    (Earlier history: paused 2026-10-24 until T-317; redo then: pins in `dstu-core`/`uacrypt`/capi and
