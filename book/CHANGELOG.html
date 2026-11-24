@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f5454457.js";
+            window.path_to_searchindex_js = "searchindex-1bd89617.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d4c7990f.js"></script>
@@ -184,6 +184,11 @@
 <p>All notable changes to this project are documented in this file. Format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased"><a class="header" href="#unreleased">[Unreleased]</a></h2>
+<h2 id="081---2026-11-24"><a class="header" href="#081---2026-11-24">[0.8.1] - 2026-11-24</a></h2>
+<ul>
+<li>The Python, Node.js and Ruby packages are 0.5.2, built on <code>dstu-core</code> 0.8.1. No API change; the
+Node.js and Ruby packages now actually load (below).</li>
+</ul>
 <h3 id="fixed"><a class="header" href="#fixed">Fixed</a></h3>
 <ul>
 <li><strong>Go binding on Windows links with Rust 1.100</strong> (<code>docs/DECISIONS.md</code> D-266): the cgo link line
@@ -192,7 +197,12 @@ adds <code>-lsynchronization</code>, needed by the Rust standard library’s <co
 <li><strong>Ruby: the precompiled gems load</strong> (<code>docs/DECISIONS.md</code> D-268): the platform gems keep one
 extension per Ruby minor under <code>lib/dstu_core/&lt;minor&gt;/</code>, but <code>lib/dstu_core.rb</code> looked only
 in <code>lib/dstu_core/</code>, so <code>require "dstu_core"</code> failed; it now loads from there. The release now installs and
-loads each built gem on its own OS before pushing it.</li>
+loads each built gem on its own OS before pushing it. The Windows gem is not published until it
+loads (<code>127: The specified procedure could not be found</code>, T-331).</li>
+<li><strong>Node.js: <code>require('dstu-core')</code> works</strong> (<code>docs/DECISIONS.md</code> D-270): the published root
+package never contained napi’s loader (<code>native/index.js</code>), so it failed on every OS. The release
+now packs, installs and loads the exact tarballs on each OS before publishing them, and ships
+the Windows addon in the root package, so Windows works without the npm-blocked platform package.</li>
 </ul>
 <h2 id="080---2026-10-24"><a class="header" href="#080---2026-10-24">[0.8.0] - 2026-10-24</a></h2>
 <h3 id="added"><a class="header" href="#added">Added</a></h3>

@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f5454457.js";
+            window.path_to_searchindex_js = "searchindex-1bd89617.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d4c7990f.js"></script>
@@ -4896,7 +4896,7 @@ mdBook for the existing <code>docs/*.md</code> corpus, plus a mandatory <code>ca
 encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
 OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
 (<code>uacrypt</code>), and bindings for eight languages.</p>
-<!-- uacrypt-version: 0.8.0 -->
+<!-- uacrypt-version: 0.8.1 -->
 <p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
 <a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python, Node.js, and Ruby bindings are on
 <a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a>/
@@ -11457,7 +11457,7 @@ violation.</strong> The rlib comes from <code>cargo build --message-format=json<
 heuristic goes. A missing artifact or failed build prints <code>asm-check: TOOL ERROR ...</code>, distinct
 from a constant-time <code>FAILED</code> (both stay a failed layer in <code>ci()</code>’s <code>fn() -&gt; bool</code> table). Unit
 test of the JSON parsing: artifact present, artifact absent.</li>
-<li><input disabled="" type="checkbox"> <strong>T-323</strong> (S) <strong>Release gate on the uacrypt/crates toolchain.</strong> <code>release.yml</code> gets a <code>verify</code>
+<li><input disabled="" type="checkbox" checked=""> <strong>T-323</strong> (S) <strong>Release gate on the uacrypt/crates toolchain.</strong> <code>release.yml</code> gets a <code>verify</code>
 job (also in the <code>workflow_dispatch</code> dry run): <code>cargo xtask test</code> + <code>cargo xtask asm-check</code> on the
 same <code>dtolnay/rust-toolchain@stable</code> as <code>build-binary</code>/<code>publish-crates</code>, asm-check’s targets
 copied from <code>rust.yml</code>; <code>publish-release</code> and every <code>publish-*</code> need it. Every build job prints
@@ -11485,11 +11485,21 @@ gap, not a pass.</li>
 gems once 0.5.2 is live.</li>
 <li><strong>State 2026-11-24 (D-267):</strong> T-325, T-326, T-327 done; T-323/T-328 implemented, ticked only
 once their first runs are read (release dry run, <code>registry-smoke</code> for <code>v0.8.0</code>); T-324 pending
-its first scheduled run. Verified locally - xtask tests (3 new for the Cargo JSON
+its first scheduled run. <code>verify</code> green in dry run 45389297215 (T-323 ticked). <code>registry-smoke</code>
+45389301742 for <code>v0.8.0</code>: crates.io and PyPI install and run on all three OSes; the npm root
+package fails everywhere (D-270); Ruby not reached on Linux/macOS (fixed: every step runs).
+Verified locally - xtask tests (3 new for the Cargo JSON
 parsing), <code>asm-check</code> on rustc 1.99 and 1.100, <code>cargo xtask go</code> with the link-lib diagnostic,
 the registry smoke’s PyPI step on Windows (selftest ok), YAML of every workflow. Not verifiable
 before a run: <code>scheduled-failure.yml</code> (first Sunday), <code>verify</code>/<code>load-ruby-gems</code> (next release
 or dry run), <code>registry-smoke.yml</code> (next release or dispatch).</li>
+<li><input disabled="" type="checkbox"> <strong>T-331</strong> (S, owner OK for a 4th attempt) <strong>Windows Ruby gem: <code>127: The specified procedure could not be found</code></strong> (D-268, D-269 addendum). Same <code>.so</code> fails on Windows 11 and the Server
+runner. Proposed discriminators, no export parsing: (a) install the 0.5.0 <code>x64-mingw-ucrt</code> gem,
+copy in the new <code>dstu_core.rb</code>, <code>require</code> - loads =&gt; drift since 2026-10-23 (D-266’s
+<code>WaitOnAddress</code>/<code>WakeByAddress*</code> first suspect), fails =&gt; never worked; (b) Python
+<code>ctypes.WinDLL(dll)</code> + <code>getattr</code> per imported name (or just <code>WaitOnAddress</code>,
+<code>WakeByAddressSingle</code>, <code>WakeByAddressAll</code>, <code>ProcessPrng</code>) - the one that raises is it. Until then
+<code>publish-rubygems</code> skips the Windows gem; <code>load-ruby-gem-windows</code> keeps reporting.</li>
 <li><input disabled="" type="checkbox" checked=""> <strong>T-329</strong> (decided D-269: keep per-alert dismissal) <strong>CodeQL <code>rust/cleartext-logging</code> in test code.</strong> Third wave of
 false positives (D-254 + addendum). Options: keep dismissing one by one (current); a CodeQL
 config that excludes <code>#[cfg(test)]</code>/<code>tests/</code> paths for that one query. Not started without the
