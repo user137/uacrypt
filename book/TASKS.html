@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-fb3a0546.js";
+            window.path_to_searchindex_js = "searchindex-e3e1065d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d4c7990f.js"></script>
@@ -11436,6 +11436,69 @@ other implementations (AI-engineer and QA roles; a natural follow-on of T-318/T-
 <code>rustup target add wasm32-unknown-unknown</code>, owner’s yes).</li>
 </ul>
 </li>
+</ul>
+<h3 id="ci-drift-wave-planned-2026-11-24-owner-write-plan-the-wave-implement-retrospective-of-d-266-advisor-checked-decisions-in-d-267"><a class="header" href="#ci-drift-wave-planned-2026-11-24-owner-write-plan-the-wave-implement-retrospective-of-d-266-advisor-checked-decisions-in-d-267">CI-drift wave (planned 2026-11-24, owner: “write, plan the wave, implement”; retrospective of D-266; advisor-checked; decisions in D-267)</a></h3>
+<p>The 0.8.0 tag waited a month after its green CI; the published artifacts were built with rustc
+1.100, on which <code>asm-check</code> had never run, and four CI jobs broke from toolchain/runner drift with no
+push to show it (D-266). This wave closes those gaps. Order = execution order; T-329 is the
+owner’s. Pushes batched (<code>rust</code>/<code>miri</code> are <code>cancel-in-progress</code>).</p>
+<ul>
+<li><input disabled="" type="checkbox"> <strong>T-324</strong> (S) <strong>Weekly scheduled run of <code>rust</code> and every <code>bindings-*</code>, with a report.</strong> A
+staggered weekly <code>schedule:</code> on <code>rust.yml</code> and the eight <code>bindings-*.yml</code>. A failure reaches the
+owner through a new <code>scheduled-failure.yml</code> (<code>workflow_run</code> on those workflows, <code>schedule</code> event,
+<code>failure</code> conclusion): it opens or comments one issue labelled <code>scheduled-failure</code> - GitHub mails
+only the last cron editor for a failed scheduled run, and nobody reads the Actions list.</li>
+<li><input disabled="" type="checkbox" checked=""> <strong>T-326</strong> (S) <strong><code>canary</code> covers codegen drift.</strong> <code>cargo xtask canary</code> also runs <code>asm-check</code>
+(latest stable, fresh lockfile); <code>canary.yml</code> installs asm-check’s three extra targets, copied
+from <code>rust.yml</code>’s asm-check job. <code>CLAUDE.md</code>/README command lines updated.</li>
+<li><input disabled="" type="checkbox" checked=""> <strong>T-325</strong> (M) <strong><code>asm-check</code> reads artifact paths from Cargo, and tells a tool failure from a
+violation.</strong> The rlib comes from <code>cargo build --message-format=json</code> (<code>compiler-artifact</code> of
+<code>dstu-core</code>, exact <code>filenames</code>, emitted for a cached build too); the <code>.s</code> beside it; the mtime
+heuristic goes. A missing artifact or failed build prints <code>asm-check: TOOL ERROR ...</code>, distinct
+from a constant-time <code>FAILED</code> (both stay a failed layer in <code>ci()</code>’s <code>fn() -&gt; bool</code> table). Unit
+test of the JSON parsing: artifact present, artifact absent.</li>
+<li><input disabled="" type="checkbox"> <strong>T-323</strong> (S) <strong>Release gate on the uacrypt/crates toolchain.</strong> <code>release.yml</code> gets a <code>verify</code>
+job (also in the <code>workflow_dispatch</code> dry run): <code>cargo xtask test</code> + <code>cargo xtask asm-check</code> on the
+same <code>dtolnay/rust-toolchain@stable</code> as <code>build-binary</code>/<code>publish-crates</code>, asm-check’s targets
+copied from <code>rust.yml</code>; <code>publish-release</code> and every <code>publish-*</code> need it. Every build job prints
+<code>rustc -vV</code>, so the log records which rustc built which artifact. Scope: this proves the
+toolchain of the <code>uacrypt</code> binaries and the crates.io sources only - the Python wheels
+(maturin-action, manylinux container), the Ruby gems (rb-sys-dock’s own Rust) and possibly the
+Node addons get rustc elsewhere; recorded as a known gap in D-267, not claimed.</li>
+<li><input disabled="" type="checkbox" checked=""> <strong>T-327</strong> (S) <strong>Go link flags vs rustc, as a diagnostic.</strong> <code>cargo xtask go</code> prints the
+<code>--print native-static-libs</code> of <code>dstu-core-capi</code> next to the <code>#cgo</code> line for the host. Not a
+hard check: the list includes libraries the linker supplies anyway (windows-gnu <code>kernel32</code>,
+<code>msvcrt</code>, <code>mingwex</code>…; Linux <code>gcc_s</code>, <code>util</code>, <code>rt</code>, <code>c</code> - folded into glibc 2.34+), so an exact
+compare false-fails; the weekly run (T-324) catches a real link break.</li>
+<li><input disabled="" type="checkbox"> <strong>T-328</strong> (M) <strong>Post-publish registry smoke.</strong> <code>registry-smoke.yml</code> (<code>workflow_run</code> on a
+completed <code>release.yml</code> + <code>workflow_dispatch</code> with a version input): ubuntu/macos/windows install
+the published version from crates.io (<code>cargo install uacrypt</code>), PyPI, npm and RubyGems into a
+clean environment, with a retry loop (npm served 404 for minutes after publishing on 0.8.0 day),
+and run each one’s selftest. Windows npm lacks the native addon (D-189): recorded as a known
+gap, not a pass.</li>
+<li><input disabled="" type="checkbox"> <strong>T-330</strong> (owner decision, S) <strong>Ruby gem 0.5.2 with the D-268 loader fix.</strong> Every precompiled
+<code>dstu_core</code> gem so far (0.1.0..0.5.1, four platforms) fails <code>require</code> (D-268). Fix landed in
+<code>lib/dstu_core.rb</code>; <code>release.yml</code>’s <code>load-ruby-gems</code> now gates the push. Needs: a bindings-only
+0.5.2 bump (Ruby, and Python/Node.js only if the owner wants versions kept in step), a
+<code>workflow_dispatch</code> dry run to see <code>load-ruby-gems</code> green on all 8 cells (incl. the Windows
+<code>127: procedure could not be found</code> from D-268), then a tag. Optionally yank 0.5.1/0.5.0/0.1.0
+gems once 0.5.2 is live.</li>
+<li><strong>State 2026-11-24 (D-267):</strong> T-325, T-326, T-327 done; T-323/T-328 implemented, ticked only
+once their first runs are read (release dry run, <code>registry-smoke</code> for <code>v0.8.0</code>); T-324 pending
+its first scheduled run. Verified locally - xtask tests (3 new for the Cargo JSON
+parsing), <code>asm-check</code> on rustc 1.99 and 1.100, <code>cargo xtask go</code> with the link-lib diagnostic,
+the registry smoke’s PyPI step on Windows (selftest ok), YAML of every workflow. Not verifiable
+before a run: <code>scheduled-failure.yml</code> (first Sunday), <code>verify</code>/<code>load-ruby-gems</code> (next release
+or dry run), <code>registry-smoke.yml</code> (next release or dispatch).</li>
+<li><input disabled="" type="checkbox"> <strong>T-329</strong> (owner decision) <strong>CodeQL <code>rust/cleartext-logging</code> in test code.</strong> Third wave of
+false positives (D-254 + addendum). Options: keep dismissing one by one (current); a CodeQL
+config that excludes <code>#[cfg(test)]</code>/<code>tests/</code> paths for that one query. Not started without the
+owner’s answer.</li>
+<li><strong>Not taken now (owner can re-add): pinning an exact rustc in <code>rust-toolchain.toml</code>.</strong> The
+retrospective listed it first. T-323 + T-326 cover the main risk (the uacrypt binaries never ship
+from an unchecked rustc; a new rustc’s codegen is checked daily) without a manual bump per Rust
+release. A pin would hold for most jobs (incl. <code>bindings-go</code>‘s Windows <code>rustup default</code>), but not
+for the Ruby/PHP Windows legs’ <code>RUSTUP_TOOLCHAIN</code>, nor the containers in T-323’s gap.</li>
 </ul>
 
                     </main>
