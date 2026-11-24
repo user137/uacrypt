@@ -16021,6 +16021,12 @@ first seen 2026-10-08..19, read against `895f82a` (the `v0.7.0` commit). Same tw
 
 Nothing to change. Dismissed as false positives with a pointer to this entry.
 
+**Addendum (2026-11-24): #102-#104**, read against `e968cf6` (`v0.8.0`), same rule, all `#[cfg(test)]`
+in `crates/uacrypt/src/lib.rs` (now lines 10213/10395/10446): the sink is an `assert!`/`panic!`
+message formatting `run(...)`'s `Result<(), CliError>`, flagged because `run` can reach
+`run_secretstream_command`. No `CliError` variant carries key or passphrase bytes - only paths,
+command/flag names, lengths and static strings. Dismissed the same way.
+
 ## D-255: .NET leak test asserts on the native remainder, after an aggressive GC (T-311, 2026-10-23)
 
 **Finding.** `bindings-dotnet`'s `MemoryLeakTests` failed again on `587c148` (run `39941079817`,
