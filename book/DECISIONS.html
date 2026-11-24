@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4d188b86.js";
+            window.path_to_searchindex_js = "searchindex-fb3a0546.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d4c7990f.js"></script>
@@ -15265,6 +15265,40 @@ providers. That gates the recommended direction (T-321).</li>
 </ul>
 <p><strong>Rejected:</strong> starting with PKCS#11 (the owner’s original framing). Of the four paths it has the
 lowest return per effort and the highest custody risk, and it reaches no browser.</p>
+<h2 id="d-266-ci-after-the-080-tag---rust-1100-on-windows-gnu-ubuntu-2604s-three-clangs-rustsec-2026-0548-2026-11-24"><a class="header" href="#d-266-ci-after-the-080-tag---rust-1100-on-windows-gnu-ubuntu-2604s-three-clangs-rustsec-2026-0548-2026-11-24">D-266: CI after the 0.8.0 tag - Rust 1.100 on windows-gnu, ubuntu-26.04’s three clangs, RUSTSEC-2026-0548 (2026-11-24)</a></h2>
+<p>Three failures on <code>9564730</code> (docs-only after <code>e968cf6</code>), none from this repo’s code; the toolchains
+moved in the month the tag waited.</p>
+<ul>
+<li>
+<p><strong><code>bindings-go</code>, windows.</strong> Rust 1.100’s <code>std</code> on <code>x86_64-pc-windows-gnu</code> parks threads with
+<code>WaitOnAddress</code>/<code>WakeByAddress*</code>, which live in <code>api-ms-win-core-synch-l1-2-0</code>; MinGW’s import
+library for it is <code>libsynchronization.a</code>. The static <code>libdstu_core_capi.a</code> carries those
+references, so cgo’s link needs <code>-lsynchronization</code> next to D-155’s <code>-lws2_32 -luserenv -lntdll</code>
+(<code>bindings/go/dstu/dstu.go</code>). Harmless on an older toolchain, which leaves the references out.</p>
+</li>
+<li>
+<p><strong><code>bindings-php</code>, ubuntu.</strong> <code>ubuntu-latest</code> became ubuntu-26.04, with clang 20, 21 and 22
+installed. <code>ext-php-rs</code>’s bindgen took the intrinsic headers from <code>/usr/lib/llvm-21</code> and,
+judging by the errors (<code>xmmintrin.h:245: invalid conversion between vector type '__m128' ... and 'int'</code> - an intrinsic builtin unknown to the parser), a libclang of another major. The workflow
+sets <code>LIBCLANG_PATH</code> and <code>CLANG_PATH</code> to the LLVM of <code>clang -dumpversion</code>, failing if absent; the
+diagnosis is from the CI log only (not reproducible on Windows) and stands or falls with that run.</p>
+</li>
+<li>
+<p><strong><code>bindings-php</code> supply chain.</strong> RUSTSEC-2026-0548 in <code>zip</code> 9.0.4, a build dependency of
+<code>ext-php-rs</code> that never extracts an untrusted archive here. Fixed version 9.0.5 via
+<code>cargo update -p zip --precise 9.0.5</code> - the oldest fix, 5 weeks old; the newest (9.8.2) is a day
+old and drags five more crates along.</p>
+</li>
+<li>
+<p><strong><code>rust</code> / <code>asm-check</code>.</strong> Cargo 1.100’s build-dir layout puts a library’s rlib and its
+<code>--emit=asm</code> output under <code>release/build/&lt;pkg&gt;/&lt;hash&gt;/out/</code> instead of <code>release/deps/</code>;
+<code>xtask/src/asm_check.rs</code> searched only <code>deps/</code> and found nothing. It now searches both and takes
+the newest rlib’s directory. Checked locally on 1.99 and 1.100: every row holds on both, so the
+new rustc’s codegen did not break a constant-time rule - only the path moved.</p>
+</li>
+</ul>
+<p><strong>Rejected:</strong> pinning the PHP job to <code>ubuntu-24.04</code> - it hides the mismatch until that image goes.
+The <code>canary</code> job did not catch any of this: it covers the root workspace on Linux only (T-226).</p>
 
                     </main>
 

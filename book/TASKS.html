@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4d188b86.js";
+            window.path_to_searchindex_js = "searchindex-fb3a0546.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d4c7990f.js"></script>
@@ -10902,6 +10902,10 @@ dstu-core/uacrypt 0.8.0; PyPI, RubyGems (4 platforms) and npm 0.5.1 (npm without
 <code>win32-x64-msvc</code>, D-189); GitHub release <code>v0.8.0</code> Latest, 18 assets. winget: 0.8.0 PR
 microsoft/winget-pkgs#487847 opened (manifests in <code>.claude/winget/manifests/</code>, <code>winget validate</code> OK); the 0.7.0 PR #460150 got no moderator review in a month. No GHSA (T-249 found
 none). CodeQL #102-#104 dismissed (D-254 addendum).</p>
+<p>CI on the docs push after the tag (<code>9564730</code>) broke from toolchain drift, not code (D-266):
+<code>bindings-go</code> windows (Rust 1.100 needs <code>-lsynchronization</code>), <code>bindings-php</code> ubuntu-26.04
+(libclang/clang major mismatch), <code>bindings-php</code> supply chain (<code>zip</code> 9.0.5, RUSTSEC-2026-0548),
+<code>rust</code>’s <code>asm-check</code> (Cargo 1.100 moved the rlib/<code>.s</code> out of <code>deps/</code>).</p>
 <p>Next: the post-0.8.0 plan: T-318, T-319, T-322 (section “Ecosystem integration” at the end).</p>
 <p>(Earlier history: paused 2026-10-24 until T-317; redo then: pins in <code>dstu-core</code>/<code>uacrypt</code>/capi and
 the five Rust bindings’ <code>Cargo.toml</code>, lockfiles via a real build / <code>cargo update -p dstu-core</code>,
