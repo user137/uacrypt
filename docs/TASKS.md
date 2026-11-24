@@ -10409,24 +10409,17 @@ from `crates/dstu-core`. Pi: Kani per harness under `ulimit -v`, never `gf2m512`
    test-checked against `run`'s dispatch) - flags taken from each help text's `--flag` tokens, with
    a test that every flag the parser accepts appears there. If that does not hold, a per-command
    flag table first (its own plan step, plan mode).
-6. **Release 0.8.0** - **STATE 2026-10-24 (save before /compact):** done:
-   - release commit `e968cf6` pushed to `master` (dstu-core/uacrypt 0.8.0, bindings 0.5.1, CHANGELOG
-     `[0.8.0]`, README marker);
-   - gh-pages marker `d2148d0` pushed;
-   - `release.yml` dry run 40095694246 on `e968cf6` all green (publish jobs skipped).
+6. **Release 0.8.0** - **done 2026-11-24.** Release commit `e968cf6` (dstu-core/uacrypt 0.8.0,
+   bindings 0.5.1, CHANGELOG `[0.8.0]`, README and gh-pages markers). The tag step was lost across
+   the 2026-10-24 `/compact` and done a month late, after CI and `miri` on `e968cf6` were green:
+   tag `v0.8.0` -> `release.yml` run 45353247969, every job green. Live: crates.io
+   dstu-core/uacrypt 0.8.0; PyPI, RubyGems (4 platforms) and npm 0.5.1 (npm without
+   `win32-x64-msvc`, D-189); GitHub release `v0.8.0` Latest, 18 assets. winget: 0.8.0 PR
+   microsoft/winget-pkgs#487847 opened (manifests in `.claude/winget/manifests/`, `winget
+   validate` OK); the 0.7.0 PR #460150 got no moderator review in a month. No GHSA (T-249 found
+   none). CodeQL #102-#104 dismissed (D-254 addendum).
 
-   Waiting on CI for `e968cf6` (rust, bindings, miri). The next steps are below; tag
-   `e968cf6` itself, not a later docs commit. Local commits after `e968cf6` (docs only) are pushed
-   after the tag, so the release commit's runs are not cancelled.
-   1. When CI and `miri` on `e968cf6` are green: `git tag -a v0.8.0 e968cf6 -m "0.8.0"` and
-      `git push origin v0.8.0`.
-   2. Owner approves the pypi/npm/rubygems environments in the run.
-   3. Verify the live registry pages (crates.io dstu-core/uacrypt 0.8.0; PyPI/npm/RubyGems 0.5.1).
-   4. The GitHub release.
-   5. winget 0.8.0 PR (owner runs `wingetcreate`).
-   6. No GHSA (T-249 found none).
-
-   Then the post-0.8.0 plan: T-318, T-319, T-322 (section "Ecosystem integration" at the end).
+   Next: the post-0.8.0 plan: T-318, T-319, T-322 (section "Ecosystem integration" at the end).
 
    (Earlier history: paused 2026-10-24 until T-317; redo then: pins in `dstu-core`/`uacrypt`/capi and
    the five Rust bindings' `Cargo.toml`, lockfiles via a real build / `cargo update -p dstu-core`,
