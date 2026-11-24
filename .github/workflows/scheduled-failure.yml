@@ -1,0 +1,72 @@
+name: scheduled-failure
+
+# Reports a failed *scheduled* run of the workflows below as one GitHub issue per workflow (T-324,
+# D-267). GitHub mails only the last editor of a cron about a failed scheduled run, and the Actions
+# list is read only after a push - the 0.8.0 tag waited a month while four jobs broke unseen
+# (D-266). A later green scheduled run of the same workflow closes its issue. `canary` keeps its
+# own 3-in-a-row reporter (D-196) and is not listed here.
+on:
+  workflow_run:
+    workflows:
+      - rust
+      - miri
+      - bindings-cpp
+      - bindings-dotnet
+      - bindings-go
+      - bindings-java
+      - bindings-nodejs
+      - bindings-php
+      - bindings-python
+      - bindings-ruby
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    if: github.event.workflow_run.event == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      LABEL: scheduled-failure
+      WORKFLOW: ${{ github.event.workflow_run.name }}
+      CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      RUN_URL: ${{ github.event.workflow_run.html_url }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Open, update or close the workflow's issue
+        shell: bash
+        run: |
+          set -euo pipefail
+          title="Scheduled run failing: $WORKFLOW"
+          gh label create "$LABEL" --color b60205 \
+            --description "A scheduled CI run failed (T-324)" >/dev/null 2>&1 || true
+          open_issue="$(gh issue list --label "$LABEL" --state open --search "\"$title\" in:title" \
+            --json number,title --jq "[.[] | select(.title == \"$title\")][0].number // \"\"")"
+          case "$CONCLUSION" in
+            failure|timed_out|startup_failure)
+              body="Scheduled run of \`$WORKFLOW\` ended \`$CONCLUSION\` on \`${HEAD_SHA:0:7}\`: $RUN_URL
+
+          No push was involved, so the likely cause is drift: a new Rust stable/nightly, a runner
+          image change (\`ubuntu-latest\`, \`windows-latest\`...), or a new RUSTSEC advisory. See D-266
+          for the 2026-11 precedent."
+              if [ -n "$open_issue" ]; then
+                gh issue comment "$open_issue" --body "$body"
+              else
+                gh issue create --title "$title" --label "$LABEL" --body "$body"
+              fi
+              ;;
+            success)
+              if [ -n "$open_issue" ]; then
+                gh issue comment "$open_issue" --body "Green again: $RUN_URL - closing."
+                gh issue close "$open_issue"
+              fi
+              ;;
+            *)
+              echo "conclusion '$CONCLUSION' - nothing to report"
+              ;;
+          esac

@@ -52,6 +52,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          # asm-check's targets, same list as rust.yml's asm-check job (T-326).
+          targets: x86_64-unknown-linux-gnu,aarch64-unknown-none,thumbv7em-none-eabihf,riscv32imc-unknown-none-elf
       - run: cargo xtask canary
 
   report-canary-status:
@@ -139,7 +142,7 @@ jobs:
           open_issue="$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number' || true)"
 
           if [ "$streak" = true ]; then
-            body="Canary build (\`cargo xtask canary\` - fresh \`cargo update\` + build + test) has failed 3 scheduled runs in a row:
+            body="Canary build (\`cargo xtask canary\` - fresh \`cargo update\` + build + test + asm-check) has failed 3 scheduled runs in a row:
           - https://github.com/$REPO/actions/runs/$RUN_ID (today: $today)
           - previous: ${prev[0]}, ${prev[1]}
 

@@ -12,7 +12,7 @@
 //! D-259); every cell is built in both profiles. A failure after a rustc bump names the version
 //! change ([`AUDITED_RUSTC`]): read the asm; a row may only be dropped once its new jump has been
 //! read and is public.
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 const AUDITED_RUSTC: &str = "1.97.1";
@@ -351,6 +351,7 @@ pub(crate) fn run() -> bool {
     };
 
     let mut failures = Vec::new();
+    let mut tool_errors = Vec::new();
     for profile in [Profile::Default, Profile::SmallTables] {
         for (target, arch, opt) in CELLS {
             let result = build(target, opt, profile).and_then(|path| {
@@ -363,11 +364,22 @@ pub(crate) fn run() -> bool {
                         .into_iter()
                         .map(|f| format!("{cell}: {f}")),
                 ),
-                Err(e) => failures.push(format!("{cell}: {e}")),
+                Err(e) => tool_errors.push(format!("{cell}: {e}")),
             }
         }
     }
-    if failures.is_empty() {
+    if !tool_errors.is_empty() {
+        for e in &tool_errors {
+            eprintln!("asm-check: TOOL ERROR {e}");
+        }
+        eprintln!(
+            "asm-check: TOOL ERROR in {} of {} cells - those were not checked at all; this is a \
+             build/tooling problem, not a constant-time finding (T-325)",
+            tool_errors.len(),
+            2 * CELLS.len()
+        );
+    }
+    if failures.is_empty() && tool_errors.is_empty() {
         println!(
             "asm-check: {} zero-jump rows, {} + {} small-tables exact-count rows and the hard rules hold (rustc {rustc})",
             ZERO_JUMPS.len(),
@@ -379,7 +391,7 @@ pub(crate) fn run() -> bool {
     for failure in &failures {
         eprintln!("asm-check: {failure}");
     }
-    if rustc != AUDITED_RUSTC {
+    if !failures.is_empty() && rustc != AUDITED_RUSTC {
         eprintln!(
             "asm-check: rustc changed from {AUDITED_RUSTC} to {rustc}: read the failing symbols' \
              asm before changing a row (D-229)"
@@ -401,9 +413,9 @@ fn output(base: &str, args: &[&str]) -> Result<String, String> {
 
 /// D-225's recipe. Each `opt-level` and profile has its own target dir so the sixteen builds stay
 /// cached. A fresh build does not rewrite the `.s`, so deleting it would lose it; instead the `.s`
-/// is the one with the newest `libdstu_core-<hash>.rlib`'s hash (same rustc invocation, and this
-/// target dir only ever sees these `RUSTFLAGS` and features), so a leftover from an older rustc
-/// or the other profile is never read.
+/// is the one beside the `libdstu_core-<hash>.rmeta` that Cargo's own `compiler-artifact` message
+/// names for this very build (emitted for a cached build too), so a leftover from an older rustc
+/// or the other profile is never read, whatever Cargo's directory layout (D-266, T-325).
 fn build(target: &str, opt: &str, profile: Profile) -> Result<PathBuf, String> {
     let (dir_name, features): (String, &[&str]) = match profile {
         Profile::Default => (format!("opt-{opt}"), &[]),
@@ -413,12 +425,11 @@ fn build(target: &str, opt: &str, profile: Profile) -> Result<PathBuf, String> {
         ),
     };
     let dir = PathBuf::from("target").join("asm-check").join(dir_name);
-    let release = dir.join(target).join("release");
     println!(
         "+ cargo build --release -p dstu-core --lib --no-default-features {} --target {target} (opt-level {opt}, --emit=asm)",
         features.join(" ")
     );
-    let ok = Command::new(crate::command_for("cargo"))
+    let out = Command::new(crate::command_for("cargo"))
         .args([
             "build",
             "--release",
@@ -426,23 +437,22 @@ fn build(target: &str, opt: &str, profile: Profile) -> Result<PathBuf, String> {
             "dstu-core",
             "--lib",
             "--no-default-features",
+            "--message-format=json",
         ])
         .args(features)
         .args(["--target", target])
         .env("CARGO_TARGET_DIR", &dir)
         .env("CARGO_PROFILE_RELEASE_OPT_LEVEL", opt)
         .env("RUSTFLAGS", "--emit=asm -C debuginfo=0")
-        .status()
-        .is_ok_and(|s| s.success());
-    if !ok {
-        return Err("cargo build failed".to_owned());
+        .stderr(std::process::Stdio::inherit())
+        .output()
+        .map_err(|e| format!("cargo build could not start: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("cargo build failed ({})", out.status));
     }
-    let (deps, hash) = newest_rlib(&artifact_dirs(&release)).ok_or_else(|| {
-        format!(
-            "no libdstu_core-*.rlib under {} (deps/ or build/dstu-core/*/out/)",
-            release.display()
-        )
-    })?;
+    let messages = String::from_utf8_lossy(&out.stdout);
+    let (deps, hash) = dstu_core_artifact(&messages)
+        .ok_or("cargo reported no dstu_core compiler-artifact with a libdstu_core-<hash>.rmeta")?;
     let asm = deps.join(format!("dstu_core-{hash}.s"));
     if asm.is_file() {
         Ok(asm)
@@ -454,31 +464,56 @@ fn build(target: &str, opt: &str, profile: Profile) -> Result<PathBuf, String> {
     }
 }
 
-/// Where the rlib and `.s` land: `release/deps/` up to Cargo 1.99, `release/build/dstu-core/<hash>/out/`
-/// from Cargo 1.100's build-dir layout (D-266). Both are searched, so a cache from either still works.
-fn artifact_dirs(release: &Path) -> Vec<PathBuf> {
-    let mut dirs = vec![release.join("deps")];
-    if let Ok(entries) = std::fs::read_dir(release.join("build").join("dstu-core")) {
-        dirs.extend(entries.filter_map(Result::ok).map(|e| e.path().join("out")));
-    }
-    dirs
+/// The directory and hash of `dstu_core`'s `.rmeta` from Cargo's `--message-format=json` output.
+/// Its `filenames` hold the uplifted `libdstu_core.rlib` (no hash) and the hashed `.rmeta` in the
+/// directory where rustc also wrote the `.s`: `release/deps/` up to Cargo 1.99,
+/// `release/build/dstu-core/<hash>/out/` from 1.100.
+fn dstu_core_artifact(messages: &str) -> Option<(PathBuf, String)> {
+    messages
+        .lines()
+        .filter(|l| {
+            l.contains(r#""reason":"compiler-artifact""#) && l.contains(r#""name":"dstu_core""#)
+        })
+        .filter_map(|l| json_string_array(l, r#""filenames":["#))
+        .flatten()
+        .find_map(|file| {
+            let path = PathBuf::from(file);
+            let hash = path
+                .file_name()?
+                .to_str()?
+                .strip_prefix("libdstu_core-")?
+                .strip_suffix(".rmeta")?
+                .to_owned();
+            Some((path.parent()?.to_path_buf(), hash))
+        })
 }
 
-fn newest_rlib(dirs: &[PathBuf]) -> Option<(PathBuf, String)> {
-    dirs.iter()
-        .filter_map(|dir| Some((dir, std::fs::read_dir(dir).ok()?)))
-        .flat_map(|(dir, entries)| {
-            entries.filter_map(Result::ok).filter_map(move |e| {
-                let name = e.file_name().into_string().ok()?;
-                let hash = name
-                    .strip_prefix("libdstu_core-")?
-                    .strip_suffix(".rlib")?
-                    .to_owned();
-                Some((e.metadata().ok()?.modified().ok()?, dir.clone(), hash))
-            })
-        })
-        .max()
-        .map(|(_, dir, hash)| (dir, hash))
+/// The strings of the JSON array that starts right after `key`. Only the escapes a path can carry
+/// (`\\`, `\"`, `\/`) are decoded; anything else yields `None`, which surfaces as a tool error.
+fn json_string_array(line: &str, key: &str) -> Option<Vec<String>> {
+    let mut chars = line[line.find(key)? + key.len()..].chars();
+    let mut strings = Vec::new();
+    loop {
+        match chars.next()? {
+            ']' => return Some(strings),
+            ',' | ' ' => {}
+            '"' => {
+                let mut s = String::new();
+                loop {
+                    match chars.next()? {
+                        '"' => break,
+                        '\\' => match chars.next()? {
+                            c @ ('\\' | '"' | '/') => s.push(c),
+                            _ => return None,
+                        },
+                        c => s.push(c),
+                    }
+                }
+                strings.push(s);
+            }
+            _ => return None,
+        }
+    }
 }
 
 fn check_cell(asm: &str, target: &str, arch: Arch, opt: &str, profile: Profile) -> Vec<String> {
@@ -831,9 +866,57 @@ fn find_one<'f, 'a>(functions: &'f [Function<'a>], spec: &str) -> Result<&'f Fun
 #[cfg(test)]
 mod tests {
     use super::{
-        carry_shapes, check_cell, classify, exact_jumps_failure, find_one, in_carry_scope, jumps,
-        mul_calls, parse, symbol_matches, Arch, Function, Insn, Kind, Profile, X86_64,
+        carry_shapes, check_cell, classify, dstu_core_artifact, exact_jumps_failure, find_one,
+        in_carry_scope, json_string_array, jumps, mul_calls, parse, symbol_matches, Arch, Function,
+        Insn, Kind, Profile, X86_64,
     };
+    use std::path::PathBuf;
+
+    // Trimmed from real `cargo build --message-format=json` output, Cargo 1.99 and 1.100 (T-325).
+    const DEP: &str = r#"{"reason":"compiler-artifact","target":{"name":"subtle"},"filenames":["t/release/deps/libsubtle-aa.rmeta"],"fresh":true}"#;
+    const OLD: &str = r#"{"reason":"compiler-artifact","target":{"kind":["lib"],"name":"dstu_core"},"filenames":["C:\\t\\release\\libdstu_core.rlib","C:\\t\\release\\deps\\libdstu_core-cb47cd8d527b7b96.rmeta"],"fresh":false}"#;
+    const NEW: &str = r#"{"reason":"compiler-artifact","target":{"kind":["lib"],"name":"dstu_core"},"filenames":["/t/release/libdstu_core.rlib","/t/release/build/dstu-core/5a226aa5393e347f/out/libdstu_core-5a226aa5393e347f.rmeta"],"fresh":true}"#;
+
+    #[test]
+    fn artifact_found_in_both_cargo_layouts() {
+        assert_eq!(
+            dstu_core_artifact(&format!("{DEP}\n{OLD}\n")),
+            Some((
+                PathBuf::from(r"C:\t\release\deps"),
+                "cb47cd8d527b7b96".to_owned()
+            ))
+        );
+        assert_eq!(
+            dstu_core_artifact(&format!("{DEP}\n{NEW}\n")),
+            Some((
+                PathBuf::from("/t/release/build/dstu-core/5a226aa5393e347f/out"),
+                "5a226aa5393e347f".to_owned()
+            ))
+        );
+    }
+
+    #[test]
+    fn artifact_absent_is_none() {
+        assert_eq!(dstu_core_artifact(""), None);
+        assert_eq!(dstu_core_artifact(DEP), None);
+        let rlib_only = r#"{"reason":"compiler-artifact","target":{"name":"dstu_core"},"filenames":["/t/release/libdstu_core.rlib"]}"#;
+        assert_eq!(dstu_core_artifact(rlib_only), None);
+        let build_finished = r#"{"reason":"build-finished","success":true}"#;
+        assert_eq!(dstu_core_artifact(build_finished), None);
+    }
+
+    #[test]
+    fn json_string_array_rejects_what_it_cannot_decode() {
+        let k = r#""f":["#;
+        assert_eq!(
+            json_string_array(r#"{"f":["a\\b", "c\"d"]}"#, k),
+            Some(vec![r"a\b".to_owned(), "c\"d".to_owned()])
+        );
+        assert_eq!(json_string_array(r#"{"f":[]}"#, k), Some(vec![]));
+        assert_eq!(json_string_array(r#"{"f":["\u00e9"]}"#, k), None);
+        assert_eq!(json_string_array(r#"{"f":["unterminated"#, k), None);
+        assert_eq!(json_string_array(r#"{"g":["a"]}"#, k), None);
+    }
 
     fn kind(arch: Arch, line: &str) -> Kind {
         kind_in(arch, line, false)

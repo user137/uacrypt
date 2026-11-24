@@ -4,6 +4,10 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  # Weekly run with no push, so runner-image/toolchain drift shows (T-324, D-267);
+  # scheduled-failure.yml reports a failure as an issue.
+  schedule:
+    - cron: "0 4 * * 0"
 
 # Workflow-level default: every job here only reads the repo (build/test/lint), so the least-
 # privilege GITHUB_TOKEN scope is read-only contents. `audit` overrides this below since

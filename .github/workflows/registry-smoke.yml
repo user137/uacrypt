@@ -1,0 +1,94 @@
+name: registry-smoke
+
+# T-328 (D-267): install what a release just published - from crates.io, PyPI, npm and RubyGems, the
+# way a user would - on all three OSes, and run it. CI tests the repo; nothing else checks that the
+# published packages install and load (on 0.8.0 day npm served 404 for minutes, and the Windows npm
+# addon has been missing since D-189). Runs after a tag-triggered `release`, or by hand for a version.
+on:
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag whose versions to check (e.g. v0.8.0)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success')
+    name: install from registries (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.workflow_run.head_sha }}
+      - name: Read the versions this tag published
+        run: |
+          set -euo pipefail
+          crate=$(sed -n 's/^version = "\(.*\)"/\1/p' crates/uacrypt/Cargo.toml | head -n1)
+          py=$(sed -n 's/^version = "\(.*\)"/\1/p' bindings/python/pyproject.toml | head -n1)
+          js=$(sed -n 's/^  "version": "\(.*\)",/\1/p' bindings/nodejs/package.json | head -n1)
+          rb=$(sed -n 's/^ *VERSION = "\(.*\)"/\1/p' bindings/ruby/lib/dstu_core/version.rb | head -n1)
+          for v in "$crate" "$py" "$js" "$rb"; do [ -n "$v" ] || { echo "a version is empty"; exit 1; }; done
+          echo "uacrypt $crate, python $py, node $js, ruby $rb"
+          { echo "CRATE_V=$crate"; echo "PY_V=$py"; echo "JS_V=$js"; echo "RB_V=$rb"; } >> "$GITHUB_ENV"
+          # A just-published version can take minutes to be served (npm on 0.8.0 day): retry.
+          cat > "$RUNNER_TEMP/retry.sh" <<'EOF'
+          retry() { for i in 1 2 3 4 5 6 7 8 9 10; do "$@" && return 0; echo "attempt $i failed, retrying in 60s"; sleep 60; done; return 1; }
+          EOF
+      - uses: dtolnay/rust-toolchain@stable
+      - name: crates.io - cargo install uacrypt
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/retry.sh"
+          retry cargo install uacrypt --version "$CRATE_V" --locked --root "$RUNNER_TEMP/cargo"
+          out=$("$RUNNER_TEMP/cargo/bin/uacrypt" --version)
+          echo "$out"
+          case "$out" in *"$CRATE_V"*) ;; *) echo "expected $CRATE_V"; exit 1 ;; esac
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: PyPI - pip install dstu-core
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/retry.sh"
+          python -m venv "$RUNNER_TEMP/venv"
+          if [ "$RUNNER_OS" = Windows ]; then py="$RUNNER_TEMP/venv/Scripts/python"; else py="$RUNNER_TEMP/venv/bin/python"; fi
+          retry "$py" -m pip install --no-cache-dir --only-binary=:all: "dstu-core==$PY_V"
+          "$py" -c "import dstu_core; dstu_core.selftest(); print('python selftest ok')"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: npm - npm install dstu-core
+        # The Windows platform package is blocked by npm's spam filter (D-189): a known gap, shown
+        # as a failed step without failing the job.
+        continue-on-error: ${{ runner.os == 'Windows' }}
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/retry.sh"
+          mkdir -p "$RUNNER_TEMP/npm" && cd "$RUNNER_TEMP/npm"
+          npm init -y >/dev/null
+          retry npm install --no-audit --no-fund "dstu-core@$JS_V"
+          node -e "require('dstu-core').selfTest(); console.log('node selftest ok')"
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - name: RubyGems - gem install dstu_core
+        run: |
+          set -euo pipefail
+          . "$RUNNER_TEMP/retry.sh"
+          retry gem install dstu_core --version "$RB_V" --no-document
+          ruby -e 'require "dstu_core"; DstuCore.self_test; puts "ruby selftest ok"'

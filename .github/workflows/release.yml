@@ -35,6 +35,24 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # T-323 (D-267): the commit's CI can be weeks older than the tag, and a new stable rustc lands in
+  # between (0.8.0 shipped on 1.100 after a green CI on 1.99, D-266). This re-runs the tests and the
+  # constant-time asm check on the toolchain the uacrypt binaries and crates.io sources are built
+  # with, and every publishing job needs it. It does not cover the Python wheels (maturin-action's
+  # manylinux container) or the Ruby gems (rb-sys-dock's own Rust).
+  verify:
+    name: verify on the release toolchain (tests + asm-check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # asm-check's targets, same list as rust.yml's asm-check job.
+          targets: x86_64-unknown-linux-gnu,aarch64-unknown-none,thumbv7em-none-eabihf,riscv32imc-unknown-none-elf
+      - run: rustc -vV
+      - run: cargo xtask test
+      - run: cargo xtask asm-check
+
   build-binary:
     name: build uacrypt (${{ matrix.os }})
     strategy:
@@ -54,6 +72,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - run: rustc -vV
       # cargo-auditable embeds the resolved dependency list in the binary, so `cargo audit bin` can
       # check a downloaded uacrypt against RustSec (T-252). --locked: the release builds exactly
       # the committed Cargo.lock.
@@ -94,6 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - run: rustc -vV
       # Same packaging `cargo publish` would produce (respects Cargo.toml's include/exclude), but
       # without actually publishing - this job's own artifact is the downloadable source-dist
       # attached to the GitHub Release; the real `cargo publish` to crates.io happens later, in
@@ -158,6 +178,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - run: rustc -vV
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -228,12 +249,48 @@ jobs:
           name: ruby-gem-${{ matrix.platform }}
           path: ${{ steps.cross-gem.outputs.gem-path }}
 
+  # D-268: the cross-built gems put the extension under lib/dstu_core/<ruby minor>/, a layout no CI
+  # job ever loaded - 0.1.0 to 0.5.1 were published unloadable. Install each built gem on its own
+  # OS, as a user would, and require it before anything is pushed.
+  load-ruby-gems:
+    name: load ruby gem (${{ matrix.platform }}, ruby ${{ matrix.ruby }})
+    needs: build-ruby-gems
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [x86_64-linux, aarch64-linux, arm64-darwin, x64-mingw-ucrt]
+        ruby: ["3.1", "3.4"]
+        include:
+          - { platform: x86_64-linux, os: ubuntu-latest }
+          - { platform: aarch64-linux, os: ubuntu-24.04-arm }
+          - { platform: arm64-darwin, os: macos-latest }
+          - { platform: x64-mingw-ucrt, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ruby-gem-${{ matrix.platform }}
+          path: gems
+      - name: Install the built gem and run its selftest outside the repo
+        run: |
+          set -euo pipefail
+          gem install --local --no-document gems/*.gem
+          cd "$RUNNER_TEMP"
+          ruby -e 'require "dstu_core"; DstuCore.self_test; puts "dstu_core #{DstuCore::VERSION} loads on ruby #{RUBY_VERSION}"'
+
   sbom:
     name: CycloneDX SBOM for uacrypt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - run: rustc -vV
       - run: cargo install cargo-cyclonedx --locked --version 0.5.9
       # --target all: one SBOM covering the dependencies of every platform the binaries ship for.
       # It writes one file per workspace member; only uacrypt's is a release asset.
@@ -304,7 +361,7 @@ jobs:
   publish-release:
     name: create GitHub release
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: assemble-release-assets
+    needs: [assemble-release-assets, verify]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -330,7 +387,7 @@ jobs:
     # auto-publish just because a tag was pushed.
     name: publish to PyPI
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: build-python-wheels
+    needs: [build-python-wheels, verify]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -384,7 +441,7 @@ jobs:
     # to tolerate "already published" and pick up wherever the previous attempt stopped.
     name: publish to npm
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: build-nodejs-artifacts
+    needs: [build-nodejs-artifacts, verify]
     runs-on: ubuntu-latest
     environment: npm
     permissions:
@@ -504,7 +561,7 @@ jobs:
     # version/platform, different content).
     name: publish to RubyGems
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: build-ruby-gems
+    needs: [build-ruby-gems, load-ruby-gems, verify]
     runs-on: ubuntu-latest
     environment: rubygems
     permissions:
@@ -553,11 +610,12 @@ jobs:
     # steps must never hold back a security fix's crates.io release.
     name: publish to crates.io
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: [build-binary, package-library]
+    needs: [build-binary, package-library, verify]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - run: rustc -vV
       - run: cargo publish -p dstu-core
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

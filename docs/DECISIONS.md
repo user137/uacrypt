@@ -16547,3 +16547,58 @@ moved in the month the tag waited.
 
 **Rejected:** pinning the PHP job to `ubuntu-24.04` - it hides the mismatch until that image goes.
 The `canary` job did not catch any of this: it covers the root workspace on Linux only (T-226).
+
+## D-267: CI-drift wave - release gate, weekly runs with a report, Cargo-sourced asm paths (2026-11-24)
+
+The retrospective of D-266 (owner: "write, plan the wave, implement"). Tasks T-323..T-329.
+
+- **T-323, release gate.** `release.yml`'s `verify` job runs `cargo xtask test` and `asm-check` on
+  the release's own `dtolnay/rust-toolchain@stable`; `publish-release` and every `publish-*` need
+  it; each host-toolchain job prints `rustc -vV`. Scope, stated rather than claimed: it proves the
+  toolchain of the `uacrypt` binaries and the crates.io sources. The Python wheels (maturin-action,
+  manylinux container) and the Ruby gems (rb-sys-dock) get rustc inside their containers - known gap.
+- **T-324, weekly runs.** `rust.yml` and the eight `bindings-*.yml` run every Sunday 04:00-04:40
+  UTC. A failed scheduled run of those (and `miri`) opens or comments one issue per workflow,
+  label `scheduled-failure`, via `scheduled-failure.yml` (`workflow_run`); a green scheduled run
+  closes it. Reason: GitHub mails only the last cron editor about a failed scheduled run. GitHub
+  also disables schedules in a public repo after 60 days without activity - `canary`, `miri` and
+  these alike; the issue trail is the place to notice that too.
+- **T-325, asm-check paths.** The `.s` is found beside the `libdstu_core-<hash>.rmeta` named in
+  Cargo's own `compiler-artifact` message (`--message-format=json`), checked on 1.99 (`deps/`) and
+  1.100 (`build/dstu-core/<hash>/out/`); the mtime heuristic is gone. A cell that could not be
+  built or read prints `asm-check: TOOL ERROR` - not a constant-time finding. Hand-parsed JSON, no
+  new xtask dependency; unparseable escapes yield a tool error.
+- **T-326.** `cargo xtask canary` = `cargo update` + build + test + `asm-check`, on latest stable.
+- **T-327.** `cargo xtask go` prints rustc's `native-static-libs` next to the `#cgo` line. A
+  diagnostic, not a check: rustc lists libraries the linker already supplies (`kernel32`,
+  `dbghelp` on windows-gnu; `gcc_s`, `util`, `rt`, `c` on Linux), so an exact compare false-fails.
+- **T-328.** `registry-smoke.yml` installs the published versions from crates.io, PyPI, npm and
+  RubyGems on ubuntu/macOS/Windows after a tag release (or on dispatch for a tag), with a retry
+  loop, and runs each selftest. Windows npm is `continue-on-error` (D-189). Its first local dry run
+  found D-268.
+
+**Rejected:** pinning an exact rustc in `rust-toolchain.toml` (owner can re-add) - T-323 + T-326 give
+the main protection without a manual bump per Rust release, and the Ruby/PHP Windows legs'
+`RUSTUP_TOOLCHAIN` and the release containers would escape a pin anyway.
+
+## D-268: every precompiled Ruby gem published so far fails to load (2026-11-24)
+
+**Finding** (T-328's local dry run, Windows, Ruby 3.3.12): `gem install dstu_core -v 0.5.1` succeeds,
+`require "dstu_core"` raises `cannot load such file -- dstu_core/dstu_core_rb`. The cross-built
+gems (`oxidize-rb/actions/cross-gem`, `ruby-versions: 3.1,3.2,3.3,3.4`) ship one extension per Ruby
+minor under `lib/dstu_core/<minor>/dstu_core_rb.so`; `lib/dstu_core.rb` required the flat
+`dstu_core/dstu_core_rb`, the layout of a source build. Checked in the published `x86_64-linux` and
+`x64-mingw-ucrt` 0.5.1 gems; RubyGems lists 0.1.0, 0.5.0 and 0.5.1 with the same four platforms.
+`bindings-ruby.yml` only ever loaded a source build, and D-191's live-page check reads metadata,
+not an install.
+
+**Fix.** `lib/dstu_core.rb` requires `dstu_core/<RUBY_VERSION major.minor>/dstu_core_rb` when that
+directory exists, else the flat path - chosen by directory, not by rescuing `LoadError`, so a real
+load error is not masked (a first draft did mask one). `release.yml`'s new `load-ruby-gems` installs
+each built gem on its own OS (x86_64/aarch64 Linux, arm64 macOS, Windows) under Ruby 3.1 and 3.4 and
+runs `DstuCore.self_test` outside the repo; `publish-rubygems` needs it.
+
+**Still open.** With the loader patched into the installed 0.5.1 Windows gem, `dstu_core/3.3/
+dstu_core_rb.so` fails with `127: The specified procedure could not be found` on Ruby 3.3.12
+x64-mingw-ucrt. Not diagnosed; `load-ruby-gems`' Windows leg will show whether a fresh build has
+it. A fixed gem needs a published release (0.5.2) - owner's call (T-330).

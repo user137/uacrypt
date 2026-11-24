@@ -15,7 +15,7 @@ stay in whatever language they already use.
 
 ```bash
 cargo xtask ci            # mandatory checks + best-effort layers (miri/kani/book/fuzz/audit/deny/oracles/bindings/capi/qemu...); ends with a passed/skipped/FAILED table, exit 1 if any layer failed
-cargo xtask canary         # cargo update (fresh dependency resolution) then build+test - drift probe behind .github/workflows/canary.yml (T-226)
+cargo xtask canary         # cargo update, then build+test+asm-check on latest stable - daily drift probe, canary.yml (T-226/T-326)
 cargo xtask build          # both feature-set builds
 cargo xtask test           # full test suite
 cargo xtask clippy         # -D warnings

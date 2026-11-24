@@ -231,9 +231,10 @@ fn test() -> bool {
 /// `--locked` anywhere in `build()`/`test()`'s own call chain (checked), so this genuinely
 /// re-resolves rather than silently reusing the committed lock. Never commits the result - CI runs
 /// this on an ephemeral checkout; a local run leaves `Cargo.lock` changed on disk (`git checkout --
-/// Cargo.lock` to discard).
+/// Cargo.lock` to discard). `asm-check` too, so a new stable rustc's codegen is checked within a day
+/// of its release rather than at the next push (T-326, D-267).
 fn canary() -> bool {
-    run("cargo", &["update"], None) && build() && test()
+    run("cargo", &["update"], None) && build() && test() && asm_check::run()
 }
 
 fn fmt(check: bool) -> bool {
@@ -1278,9 +1279,81 @@ fn go() -> bool {
     }
 
     let dir = Path::new("bindings/go");
+    print_go_link_libs(dir);
     go_fmt_check(dir)
         && run("go", &["vet", "./..."], Some(dir))
         && run("go", &["test", "./..."], Some(dir))
+}
+
+/// Diagnostic only (T-327, D-267): the system libraries rustc says the capi staticlib needs, next to
+/// the ones `dstu.go`'s `#cgo` line for this OS links. Not a check - rustc also lists libraries the
+/// linker supplies anyway (`kernel32`, `dbghelp`, `gcc_s`, `c`...), so a missing name here is a
+/// lead when the Go link fails (D-266: Rust 1.100 added `synchronization`), not an error.
+fn print_go_link_libs(dir: &Path) {
+    let os = match std::env::consts::OS {
+        "windows" => "windows",
+        "linux" => "linux",
+        "macos" => "darwin",
+        other => {
+            eprintln!("xtask: go: no #cgo line to compare on {other}");
+            return;
+        }
+    };
+    let wanted = match Command::new(command_for("cargo"))
+        .args([
+            "rustc",
+            "-q",
+            "-p",
+            "dstu-core-capi",
+            "--release",
+            "--crate-type",
+            "staticlib",
+            "--",
+            "--print",
+            "native-static-libs",
+        ])
+        .output()
+    {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stderr).lines().find_map(|l| {
+            l.split_once("native-static-libs:")
+                .map(|(_, libs)| libs.trim().to_owned())
+        }),
+        Ok(o) => {
+            eprintln!(
+                "xtask: go: `cargo rustc --print native-static-libs` failed ({})",
+                o.status
+            );
+            None
+        }
+        Err(e) => {
+            eprintln!("xtask: go: `cargo rustc --print native-static-libs` did not start: {e}");
+            None
+        }
+    };
+    let source = dir.join("dstu").join("dstu.go");
+    let cgo_line = match std::fs::read_to_string(&source) {
+        Ok(text) => text
+            .lines()
+            .find(|l| l.starts_with(&format!("// #cgo {os} LDFLAGS:")))
+            .map(str::to_owned),
+        Err(e) => {
+            eprintln!("xtask: go: cannot read {}: {e}", source.display());
+            None
+        }
+    };
+    let (Some(wanted), Some(cgo_line)) = (wanted, cgo_line) else {
+        return;
+    };
+    let not_linked: Vec<&str> = wanted
+        .split_whitespace()
+        .filter(|lib| !cgo_line.split_whitespace().any(|l| l == *lib))
+        .collect();
+    println!("xtask: go: rustc native-static-libs: {wanted}");
+    println!("xtask: go: dstu.go: {cgo_line}");
+    println!(
+        "xtask: go: not on the #cgo line (usually supplied by the linker; suspect these if the link fails): {}",
+        if not_linked.is_empty() { "-".to_owned() } else { not_linked.join(" ") }
+    );
 }
 
 fn go_fmt_check(dir: &Path) -> bool {
