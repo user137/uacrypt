@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6d75f069.js";
+            window.path_to_searchindex_js = "searchindex-b8b73902.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d4c7990f.js"></script>
@@ -15407,14 +15407,18 @@ two builds, not a gem that never worked. (b) Asking the Windows loader (<code>ct
 <code>KERNEL32.dll!WaitOnAddress</code>, <code>!WakeByAddressAll</code>, <code>!WakeByAddressSingle</code> missing. KERNEL32 does not
 export them; hence <code>127</code>.</p>
 <p><strong>Cause.</strong> Rust 1.100’s std links those through a plain <code>-lsynchronization</code> (the same change that
-broke the Go link, D-266), placed after <code>-lkernel32</code>. The MinGW in rb-sys-dock’s Windows image
-lists them in <code>libkernel32.a</code>, so the linker resolved them there. A local build with the Ruby
-DevKit’s MinGW on 1.100 binds them correctly - not reproducible outside that image.</p>
+broke the Go link, D-266), placed after <code>-lkernel32</code>. Why the linker bound them to KERNEL32 is
+a hypothesis, not verified: the MinGW in rb-sys-dock’s Windows image probably lists them in
+<code>libkernel32.a</code>. A local build with the Ruby DevKit’s MinGW on 1.100 binds them correctly, so
+it is not reproducible outside that image; what is verified is that the fix below works there.</p>
 <p><strong>Fix.</strong> <code>bindings/ruby/ext/dstu_core_rb/build.rs</code> emits <code>cargo:rustc-link-lib=dylib=synchronization</code>
 for <code>windows</code>/<code>gnu</code> targets, putting it before std’s libraries. Checked locally: builds, loads,
-clippy/fmt clean; the binding inside rb-sys-dock is checked by the release dry run’s
-<code>load-ruby-gem-windows</code>. The Windows gem rejoins <code>load-ruby-gems</code> and <code>publish-rubygems</code> only once
-those cells are green.</p>
+clippy/fmt clean. Release dry run 45401473509 (built in rb-sys-dock): the Windows gem installs,
+loads and passes <code>self_test</code> on Ruby 3.1, 3.2, 3.3 and 3.4. So the D-269 addendum’s skip is
+reverted: x64-mingw-ucrt is back in <code>load-ruby-gems</code> (16 cells again) and <code>publish-rubygems</code>,
+<code>load-ruby-gem-windows</code> is gone, <code>registry-smoke</code>’s Windows Ruby step is a gate again. The yank
+goes back to D-269’s original form: 0.1.0..0.5.1 on every platform once 0.5.2 loads on all three
+OSes in <code>registry-smoke</code>.</p>
 
                     </main>
 
