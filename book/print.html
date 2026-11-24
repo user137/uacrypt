@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-dc9762d1.js";
+            window.path_to_searchindex_js = "searchindex-4d188b86.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d4c7990f.js"></script>
@@ -11459,31 +11459,38 @@ empty leftover Windows would not delete (harmless; remove by hand). Local fuzz o
 from <code>crates/dstu-core</code>. Pi: Kani per harness under <code>ulimit -v</code>, never <code>gf2m512</code> (rebooted it).</p>
 <p><strong>Code chain:</strong></p>
 <ol>
-<li><input disabled="" type="checkbox" checked=""> <strong>T-311</strong> (done 2026-10-23, D-255: native remainder after an aggressive GC, 2 MiB; Pi:
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-311</strong> (done 2026-10-23, D-255: native remainder after an aggressive GC, 2 MiB; Pi:
 normal 0.62-0.70 MB, leak control 7.9 MB) .NET leak test on the native remainder (VmRSS minus managed committed), threshold
 ~2 MiB. Committed GC memory need not be resident, so the new metric needs a deliberate-leak
 control first, as D-234 had for Java: a test-only P/Invoke allocation through capi that is never
-freed, shown to fail the new threshold (“never Dispose” is no control in .NET, T-231).</li>
-<li><input disabled="" type="checkbox" checked=""> <strong>T-310</strong> (done 2026-10-23, D-239 addendum; CHANGELOG Removed) drop <code>open_v2_legacy</code> (<code>crypto_box</code>, <code>crypto_box512</code>) and <code>run_box_open_legacy</code>. Sweep:
+freed, shown to fail the new threshold (“never Dispose” is no control in .NET, T-231).</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-310</strong> (done 2026-10-23, D-239 addendum; CHANGELOG Removed) drop <code>open_v2_legacy</code> (<code>crypto_box</code>, <code>crypto_box512</code>) and <code>run_box_open_legacy</code>. Sweep:
 <code>crypto_box384.rs</code> doc line, <code>gen_box_vectors.rs</code>, <code>tests/crypto_box{,512}.rs</code>, <code>lib.rs</code>
 (<code>box-open</code> byte-0 dispatch -&gt; unsupported version), <code>docs/CLI.md</code> (~136-139, ~408),
 CLAUDE.md “Project status” (pair the edit), D-239 addendum, ORACLES, <code>dstu-crypto-project.md</code>,
 CHANGELOG (breaking). The CLI’s v2 test becomes an “unsupported version” test, not a deletion;
-check <code>streaming-bounded</code> and smoke tests for v2 inputs.</li>
-<li><strong>T-223 + T-225 fuzz</strong> (before T-249, which runs them). New targets: <code>crypto_secretbox_open</code>,
+check <code>streaming-bounded</code> and smoke tests for v2 inputs.</p>
+</li>
+<li>
+<p><strong>T-223 + T-225 fuzz</strong> (before T-249, which runs them). New targets: <code>crypto_secretbox_open</code>,
 <code>crypto_box_open</code> / <code>crypto_box384_open</code> / <code>crypto_box512_open</code> (384 is newer than T-223),
 <code>crypto_sign_verify</code> / <code>crypto_sign257_verify</code> + <code>VerifyingKey::from_uncompressed_bytes</code>, then
 the hazmat ones without a target (<code>dstu4145</code>, <code>dstu9041</code>, <code>kalyna_cbc/ctr/ecb/ofb</code>,
 <code>kupyna_kmac/kdf</code>). Negative property (T-249 attachment): a fixed seeded key and a fixed sealed
 blob inside the target; <code>input != original =&gt; open fails</code>; also for <code>crypto_secretstream</code>.
 Three-spot sync each (<code>fuzz/Cargo.toml</code>, <code>rust.yml</code> <code>fuzz-smoke</code>, <code>FUZZ_TARGETS</code> incl. its
-<code>[&amp;str; N]</code> count).</li>
-<li><input disabled="" type="checkbox" checked=""> <strong>T-249</strong> (done 2026-10-23, D-256; findings T-312..T-316 below) second-pass audit (read-only; findings become new tasks, not fixes in the same pass):
+<code>[&amp;str; N]</code> count).</p>
+</li>
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-249</strong> (done 2026-10-23, D-256; findings T-312..T-316 below) second-pass audit (read-only; findings become new tasks, not fixes in the same pass):
 the <code>crypto_auth/kdf/generichash/pwhash/stream</code> wrappers, <code>hazmat::strumok</code>, the Kalyna key
 schedule, <code>tables.rs</code>, <code>dstu9041</code> l=512 (and l=384) line by line against l=256, D-118’s two
 pitfalls read in full in Node.js/PHP/Java/.NET/Go/C++, and actually running Miri/Kani/longer
 fuzz locally. Offer the independent reviewer subagent at the end (owner’s yes).
-<strong>T-249 findings (D-256), all Low, none advisory-relevant; in 0.8.0 (D-258), order T-312, T-313, T-315, T-314, T-316:</strong>
+<strong>T-249 findings (D-256), all Low, none advisory-relevant; in 0.8.0 (D-258), order T-312, T-313, T-315, T-314, T-316:</strong></p>
 <ul>
 <li><input disabled="" type="checkbox" checked=""> <strong>T-312</strong> (done 2026-10-23, D-259: mask-form <code>gf_mul</code>, 46 small-tables exact-count rows, negative control failed all 8 cells) (Low, constant-time) <code>tables::gf_mul</code> branches on the secret byte’s top bit in
 the source; it is production code under <code>small-tables</code> (every Kalyna/Kupyna round, Strumok’s
@@ -11515,15 +11522,27 @@ full” for Strumok’s tables (CLAUDE.md x2, <code>docs/ORACLES.md</code>, <cod
 module docs, <code>docs/pseudocode/strumok.md</code>), citing D-256.</li>
 </ul>
 </li>
-<li><input disabled="" type="checkbox" checked=""> <strong>T-264</strong> (done 2026-10-23, D-257; the precondition below failed - hidden <code>--iterations</code>/
+<li>
+<p><input disabled="" type="checkbox" checked=""> <strong>T-264</strong> (done 2026-10-23, D-257; the precondition below failed - hidden <code>--iterations</code>/
 <code>decrypt --passphrase</code>, help texts naming other commands’ flags - so the flag table came first,
 plan mode + advisor; owner: hidden stay hidden, <code>man</code> to stdout, release archives unchanged)
 completions (bash/zsh/fish/PowerShell) and a man page, hand-written generators, no
 new dependency. Source: the existing <code>COMMANDS</code> table (<code>lib.rs</code>, help text per command, already
 test-checked against <code>run</code>’s dispatch) - flags taken from each help text’s <code>--flag</code> tokens, with
 a test that every flag the parser accepts appears there. If that does not hold, a per-command
-flag table first (its own plan step, plan mode).</li>
-<li><strong>Release 0.8.0</strong> (paused 2026-10-24 until T-317; redo then: pins in <code>dstu-core</code>/<code>uacrypt</code>/capi and
+flag table first (its own plan step, plan mode).</p>
+</li>
+<li>
+<p><strong>Release 0.8.0</strong> - <strong>done 2026-11-24.</strong> Release commit <code>e968cf6</code> (dstu-core/uacrypt 0.8.0,
+bindings 0.5.1, CHANGELOG <code>[0.8.0]</code>, README and gh-pages markers). The tag step was lost across
+the 2026-10-24 <code>/compact</code> and done a month late, after CI and <code>miri</code> on <code>e968cf6</code> were green:
+tag <code>v0.8.0</code> -&gt; <code>release.yml</code> run 45353247969, every job green. Live: crates.io
+dstu-core/uacrypt 0.8.0; PyPI, RubyGems (4 platforms) and npm 0.5.1 (npm without
+<code>win32-x64-msvc</code>, D-189); GitHub release <code>v0.8.0</code> Latest, 18 assets. winget: 0.8.0 PR
+microsoft/winget-pkgs#487847 opened (manifests in <code>.claude/winget/manifests/</code>, <code>winget validate</code> OK); the 0.7.0 PR #460150 got no moderator review in a month. No GHSA (T-249 found
+none). CodeQL #102-#104 dismissed (D-254 addendum).</p>
+<p>Next: the post-0.8.0 plan: T-318, T-319, T-322 (section “Ecosystem integration” at the end).</p>
+<p>(Earlier history: paused 2026-10-24 until T-317; redo then: pins in <code>dstu-core</code>/<code>uacrypt</code>/capi and
 the five Rust bindings’ <code>Cargo.toml</code>, lockfiles via a real build / <code>cargo update -p dstu-core</code>,
 Python/Node.js/Ruby 0.5.1 - <code>pyproject.toml</code>, <code>package.json</code> + the two root entries of
 <code>package-lock.json</code>, <code>version.rb</code>, <code>Gemfile.lock</code> - and the bindings sentence folded into the
@@ -11533,7 +11552,8 @@ patch’s CHANGELOG hunks; gh-pages: the marker commit also rewords <code>index.
 mandoc/groff) passed on the T-317 push before bumping):
 version pins (7 places) + lockfiles, binding minors only if republished,
 CHANGELOG, README marker, gh-pages marker pushed <strong>before</strong> the tag (CI <code>docs-check</code> reads it),
-<code>release.yml</code> dry run, green Miri on the tag commit, winget 0.8.0, GHSA only if T-249 finds one.</li>
+<code>release.yml</code> dry run, green Miri on the tag commit, winget 0.8.0, GHSA only if T-249 finds one.</p>
+</li>
 </ol>
 <p><strong>Before step 6 (owner 2026-10-24: “призупинимо реліз 0.8.0 поки її не зробимо”):</strong></p>
 <ul>
@@ -34680,6 +34700,11 @@ summary <code>eprintln!</code> of the <code>kupyna-digest</code>/<code>strumok-c
 terminal marker - never a key or a passphrase - and does not reach these lines at all.</li>
 </ul>
 <p>Nothing to change. Dismissed as false positives with a pointer to this entry.</p>
+<p><strong>Addendum (2026-11-24): #102-#104</strong>, read against <code>e968cf6</code> (<code>v0.8.0</code>), same rule, all <code>#[cfg(test)]</code>
+in <code>crates/uacrypt/src/lib.rs</code> (now lines 10213/10395/10446): the sink is an <code>assert!</code>/<code>panic!</code>
+message formatting <code>run(...)</code>’s <code>Result&lt;(), CliError&gt;</code>, flagged because <code>run</code> can reach
+<code>run_secretstream_command</code>. No <code>CliError</code> variant carries key or passphrase bytes - only paths,
+command/flag names, lengths and static strings. Dismissed the same way.</p>
 <h2 id="d-255-net-leak-test-asserts-on-the-native-remainder-after-an-aggressive-gc-t-311-2026-10-23"><a class="header" href="#d-255-net-leak-test-asserts-on-the-native-remainder-after-an-aggressive-gc-t-311-2026-10-23">D-255: .NET leak test asserts on the native remainder, after an aggressive GC (T-311, 2026-10-23)</a></h2>
 <p><strong>Finding.</strong> <code>bindings-dotnet</code>’s <code>MemoryLeakTests</code> failed again on <code>587c148</code> (run <code>39941079817</code>,
 Xeon Platinum 8573C): VmRSS +27.68 MB, managed committed +26.80 MB, at n/2 +26.85 / +26.67 MB -
