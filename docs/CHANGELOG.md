@@ -5,6 +5,11 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-24
+
+- The Python, Node.js and Ruby packages are 0.5.2, built on `dstu-core` 0.8.1. No API change; the
+  Node.js and Ruby packages now actually load (below).
+
 ### Fixed
 
 - **Go binding on Windows links with Rust 1.100** (`docs/DECISIONS.md` D-266): the cgo link line
