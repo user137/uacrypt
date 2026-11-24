@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e3e1065d.js";
+            window.path_to_searchindex_js = "searchindex-f5454457.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d4c7990f.js"></script>
@@ -12129,7 +12129,7 @@ parsing), <code>asm-check</code> on rustc 1.99 and 1.100, <code>cargo xtask go</
 the registry smoke’s PyPI step on Windows (selftest ok), YAML of every workflow. Not verifiable
 before a run: <code>scheduled-failure.yml</code> (first Sunday), <code>verify</code>/<code>load-ruby-gems</code> (next release
 or dry run), <code>registry-smoke.yml</code> (next release or dispatch).</li>
-<li><input disabled="" type="checkbox"> <strong>T-329</strong> (owner decision) <strong>CodeQL <code>rust/cleartext-logging</code> in test code.</strong> Third wave of
+<li><input disabled="" type="checkbox" checked=""> <strong>T-329</strong> (decided D-269: keep per-alert dismissal) <strong>CodeQL <code>rust/cleartext-logging</code> in test code.</strong> Third wave of
 false positives (D-254 + addendum). Options: keep dismissing one by one (current); a CodeQL
 config that excludes <code>#[cfg(test)]</code>/<code>tests/</code> paths for that one query. Not started without the
 owner’s answer.</li>
@@ -35372,6 +35372,35 @@ x64-mingw-ucrt. Not diagnosed (a local import comparison was inconclusive and is
 either way); <code>load-ruby-gems</code>’ Windows cells will show whether a fresh build has it. Until they
 pass, a tag cannot publish to RubyGems for any platform. A fixed gem needs a release (0.5.2) -
 owner’s call (T-330).</p>
+<h2 id="d-269-owner-delegated-forks-of-the-ci-drift-wave---codeql-stays-per-alert-ruby-fixed-via-a-081-patch-release-2026-11-24"><a class="header" href="#d-269-owner-delegated-forks-of-the-ci-drift-wave---codeql-stays-per-alert-ruby-fixed-via-a-081-patch-release-2026-11-24">D-269: owner-delegated forks of the CI-drift wave - CodeQL stays per-alert; Ruby fixed via a 0.8.1 patch release (2026-11-24)</a></h2>
+<p>Owner: “the questions are yours”. Decided by project rules &gt; safety &gt; common-tool compatibility
+(the delegated-forks practice).</p>
+<ul>
+<li><strong>T-329: keep dismissing <code>rust/cleartext-logging</code> test alerts one by one</strong>, each with its reason
+and a D-entry pointer. A path exclusion for the query would be quieter but would also hide a real
+secret printed by a test or a test helper copied into production code; three waves of noise is
+the cheaper cost.</li>
+<li><strong>T-330: Ruby ships through a normal tagged patch release, <code>v0.8.1</code></strong>, not a Ruby-only
+side channel: <code>release.yml</code> publishes every registry from one tag, and a second mechanism for one
+registry is new surface for one use. <code>dstu-core</code>/<code>uacrypt</code> 0.8.1 carry the Go link fix; the
+bindings move to 0.5.2 together (Python/Node.js/Ruby), as they did for 0.5.1, so one tag maps to
+one bindings version. Preconditions: the release dry run’s <code>load-ruby-gems</code> green on all 16 cells
+(the Windows <code>127</code> of D-268 resolved), CI green on the release commit.</li>
+<li><strong>Yank the unloadable gems</strong> (0.1.0, 0.5.0, 0.5.1, all four platforms) once 0.5.2 is live and
+<code>registry-smoke</code> loads it on all three OSes: they can never work, and an install of a version that
+cannot <code>require</code> is worse than a resolver error. Not before - a yank is permanent on RubyGems.</li>
+</ul>
+<h2 id="d-270-every-npm-root-package-published-so-far-cannot-be-required-2026-11-24"><a class="header" href="#d-270-every-npm-root-package-published-so-far-cannot-be-required-2026-11-24">D-270: every npm root package published so far cannot be required (2026-11-24)</a></h2>
+<p><strong>Finding</strong> (<code>registry-smoke</code> run 45389301742, ubuntu/macOS): <code>require('dstu-core')</code> 0.5.1 fails with
+<code>Cannot find module '../native/index.js'</code>. The root tarballs of 0.2.0..0.5.1 contain only <code>js/</code>,
+<code>package.json</code>, <code>README.md</code>: <code>native/</code> (napi’s generated loader + typings) is gitignored and
+<code>publish-npm</code> never ran <code>napi build</code>, so <code>files: ["native/index.js", ...]</code> matched nothing.</p>
+<p><strong>Fix (release.yml).</strong> The ubuntu build leg uploads <code>native/index.js</code>/<code>index.d.ts</code>; <code>pack-npm</code>
+assembles and packs the root and platform packages and checks the root tarball’s contents;
+<code>load-npm-package</code> unpacks those exact tarballs on linux x64/arm64, macOS and Windows and runs
+<code>selfTest()</code>; <code>publish-npm</code> publishes those tarballs. The win32 <code>.node</code> also ships in the root’s
+<code>native/</code> - napi’s loader tries a sibling <code>.node</code> first - so Windows works without the npm-blocked
+platform package (D-189). Unverified until a run: <code>npm publish &lt;tarball&gt; --provenance</code> on a tag.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="changelog"><a class="header" href="#changelog">Changelog</a></h1>
 <p>All notable changes to this project are documented in this file. Format follows
