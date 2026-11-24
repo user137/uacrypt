@@ -413,7 +413,7 @@ fn build(target: &str, opt: &str, profile: Profile) -> Result<PathBuf, String> {
         ),
     };
     let dir = PathBuf::from("target").join("asm-check").join(dir_name);
-    let deps = dir.join(target).join("release").join("deps");
+    let release = dir.join(target).join("release");
     println!(
         "+ cargo build --release -p dstu-core --lib --no-default-features {} --target {target} (opt-level {opt}, --emit=asm)",
         features.join(" ")
@@ -437,8 +437,12 @@ fn build(target: &str, opt: &str, profile: Profile) -> Result<PathBuf, String> {
     if !ok {
         return Err("cargo build failed".to_owned());
     }
-    let hash = newest_rlib_hash(&deps)
-        .ok_or_else(|| format!("no libdstu_core-*.rlib in {}", deps.display()))?;
+    let (deps, hash) = newest_rlib(&artifact_dirs(&release)).ok_or_else(|| {
+        format!(
+            "no libdstu_core-*.rlib under {} (deps/ or build/dstu-core/*/out/)",
+            release.display()
+        )
+    })?;
     let asm = deps.join(format!("dstu_core-{hash}.s"));
     if asm.is_file() {
         Ok(asm)
@@ -450,20 +454,31 @@ fn build(target: &str, opt: &str, profile: Profile) -> Result<PathBuf, String> {
     }
 }
 
-fn newest_rlib_hash(deps: &Path) -> Option<String> {
-    std::fs::read_dir(deps)
-        .ok()?
-        .filter_map(Result::ok)
-        .filter_map(|e| {
-            let name = e.file_name().into_string().ok()?;
-            let hash = name
-                .strip_prefix("libdstu_core-")?
-                .strip_suffix(".rlib")?
-                .to_owned();
-            Some((e.metadata().ok()?.modified().ok()?, hash))
+/// Where the rlib and `.s` land: `release/deps/` up to Cargo 1.99, `release/build/dstu-core/<hash>/out/`
+/// from Cargo 1.100's build-dir layout (D-266). Both are searched, so a cache from either still works.
+fn artifact_dirs(release: &Path) -> Vec<PathBuf> {
+    let mut dirs = vec![release.join("deps")];
+    if let Ok(entries) = std::fs::read_dir(release.join("build").join("dstu-core")) {
+        dirs.extend(entries.filter_map(Result::ok).map(|e| e.path().join("out")));
+    }
+    dirs
+}
+
+fn newest_rlib(dirs: &[PathBuf]) -> Option<(PathBuf, String)> {
+    dirs.iter()
+        .filter_map(|dir| Some((dir, std::fs::read_dir(dir).ok()?)))
+        .flat_map(|(dir, entries)| {
+            entries.filter_map(Result::ok).filter_map(move |e| {
+                let name = e.file_name().into_string().ok()?;
+                let hash = name
+                    .strip_prefix("libdstu_core-")?
+                    .strip_suffix(".rlib")?
+                    .to_owned();
+                Some((e.metadata().ok()?.modified().ok()?, dir.clone(), hash))
+            })
         })
         .max()
-        .map(|(_, hash)| hash)
+        .map(|(_, dir, hash)| (dir, hash))
 }
 
 fn check_cell(asm: &str, target: &str, arch: Arch, opt: &str, profile: Profile) -> Vec<String> {

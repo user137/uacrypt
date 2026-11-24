@@ -10421,7 +10421,8 @@ from `crates/dstu-core`. Pi: Kani per harness under `ulimit -v`, never `gf2m512`
 
    CI on the docs push after the tag (`9564730`) broke from toolchain drift, not code (D-266):
    `bindings-go` windows (Rust 1.100 needs `-lsynchronization`), `bindings-php` ubuntu-26.04
-   (libclang/clang major mismatch), `bindings-php` supply chain (`zip` 9.0.5, RUSTSEC-2026-0548).
+   (libclang/clang major mismatch), `bindings-php` supply chain (`zip` 9.0.5, RUSTSEC-2026-0548),
+   `rust`'s `asm-check` (Cargo 1.100 moved the rlib/`.s` out of `deps/`).
 
    Next: the post-0.8.0 plan: T-318, T-319, T-322 (section "Ecosystem integration" at the end).
 

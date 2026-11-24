@@ -16539,5 +16539,11 @@ moved in the month the tag waited.
   `cargo update -p zip --precise 9.0.5` - the oldest fix, 5 weeks old; the newest (9.8.2) is a day
   old and drags five more crates along.
 
+- **`rust` / `asm-check`.** Cargo 1.100's build-dir layout puts a library's rlib and its
+  `--emit=asm` output under `release/build/<pkg>/<hash>/out/` instead of `release/deps/`;
+  `xtask/src/asm_check.rs` searched only `deps/` and found nothing. It now searches both and takes
+  the newest rlib's directory. Checked locally on 1.99 and 1.100: every row holds on both, so the
+  new rustc's codegen did not break a constant-time rule - only the path moved.
+
 **Rejected:** pinning the PHP job to `ubuntu-24.04` - it hides the mismatch until that image goes.
 The `canary` job did not catch any of this: it covers the root workspace on Linux only (T-226).
