@@ -10,9 +10,9 @@ All notable changes to this project are documented in this file. Format follows
 - **Go binding on Windows links with Rust 1.100** (`docs/DECISIONS.md` D-266): the cgo link line
   adds `-lsynchronization`, needed by the Rust standard library's `WaitOnAddress` on
   `windows-gnu`.
-- **Ruby: the precompiled gems load** (`docs/DECISIONS.md` D-268): `require "dstu_core"` failed
-  for every platform gem published so far, which keep one extension per Ruby minor under
-  `lib/dstu_core/<minor>/`; `lib/dstu_core.rb` now loads from there. The release now installs and
+- **Ruby: the precompiled gems load** (`docs/DECISIONS.md` D-268): the platform gems keep one
+  extension per Ruby minor under `lib/dstu_core/<minor>/`, but `lib/dstu_core.rb` looked only
+  in `lib/dstu_core/`, so `require "dstu_core"` failed; it now loads from there. The release now installs and
   loads each built gem on its own OS before pushing it.
 
 ## [0.8.0] - 2026-10-24

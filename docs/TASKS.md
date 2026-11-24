@@ -10881,7 +10881,7 @@ The 0.8.0 tag waited a month after its green CI; the published artifacts were bu
 push to show it (D-266). This wave closes those gaps. Order = execution order; T-329 is the
 owner's. Pushes batched (`rust`/`miri` are `cancel-in-progress`).
 
-- [x] **T-324** (S) **Weekly scheduled run of `rust` and every `bindings-*`, with a report.** A
+- [ ] **T-324** (S) **Weekly scheduled run of `rust` and every `bindings-*`, with a report.** A
   staggered weekly `schedule:` on `rust.yml` and the eight `bindings-*.yml`. A failure reaches the
   owner through a new `scheduled-failure.yml` (`workflow_run` on those workflows, `schedule` event,
   `failure` conclusion): it opens or comments one issue labelled `scheduled-failure` - GitHub mails
@@ -10895,7 +10895,7 @@ owner's. Pushes batched (`rust`/`miri` are `cancel-in-progress`).
   heuristic goes. A missing artifact or failed build prints `asm-check: TOOL ERROR ...`, distinct
   from a constant-time `FAILED` (both stay a failed layer in `ci()`'s `fn() -> bool` table). Unit
   test of the JSON parsing: artifact present, artifact absent.
-- [x] **T-323** (S) **Release gate on the uacrypt/crates toolchain.** `release.yml` gets a `verify`
+- [ ] **T-323** (S) **Release gate on the uacrypt/crates toolchain.** `release.yml` gets a `verify`
   job (also in the `workflow_dispatch` dry run): `cargo xtask test` + `cargo xtask asm-check` on the
   same `dtolnay/rust-toolchain@stable` as `build-binary`/`publish-crates`, asm-check's targets
   copied from `rust.yml`; `publish-release` and every `publish-*` need it. Every build job prints
@@ -10908,7 +10908,7 @@ owner's. Pushes batched (`rust`/`miri` are `cancel-in-progress`).
   hard check: the list includes libraries the linker supplies anyway (windows-gnu `kernel32`,
   `msvcrt`, `mingwex`...; Linux `gcc_s`, `util`, `rt`, `c` - folded into glibc 2.34+), so an exact
   compare false-fails; the weekly run (T-324) catches a real link break.
-- [x] **T-328** (M) **Post-publish registry smoke.** `registry-smoke.yml` (`workflow_run` on a
+- [ ] **T-328** (M) **Post-publish registry smoke.** `registry-smoke.yml` (`workflow_run` on a
   completed `release.yml` + `workflow_dispatch` with a version input): ubuntu/macos/windows install
   the published version from crates.io (`cargo install uacrypt`), PyPI, npm and RubyGems into a
   clean environment, with a retry loop (npm served 404 for minutes after publishing on 0.8.0 day),
@@ -10921,7 +10921,9 @@ owner's. Pushes batched (`rust`/`miri` are `cancel-in-progress`).
   `workflow_dispatch` dry run to see `load-ruby-gems` green on all 8 cells (incl. the Windows
   `127: procedure could not be found` from D-268), then a tag. Optionally yank 0.5.1/0.5.0/0.1.0
   gems once 0.5.2 is live.
-- **Done 2026-11-24 (T-323..T-328, D-267):** verified locally - xtask tests (3 new for the Cargo JSON
+- **State 2026-11-24 (D-267):** T-325, T-326, T-327 done; T-323/T-328 implemented, ticked only
+  once their first runs are read (release dry run, `registry-smoke` for `v0.8.0`); T-324 pending
+  its first scheduled run. Verified locally - xtask tests (3 new for the Cargo JSON
   parsing), `asm-check` on rustc 1.99 and 1.100, `cargo xtask go` with the link-lib diagnostic,
   the registry smoke's PyPI step on Windows (selftest ok), YAML of every workflow. Not verifiable
   before a run: `scheduled-failure.yml` (first Sunday), `verify`/`load-ruby-gems` (next release

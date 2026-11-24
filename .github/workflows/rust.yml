@@ -21,7 +21,7 @@ permissions:
 # one - confirmed necessary 2026-07-23/24 after three concurrent miri runs (up to ~1h each) stacked
 # up across a few pushes in one session (docs/TASKS.md T-85's follow-up).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:

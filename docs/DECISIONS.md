@@ -16560,9 +16560,11 @@ The retrospective of D-266 (owner: "write, plan the wave, implement"). Tasks T-3
 - **T-324, weekly runs.** `rust.yml` and the eight `bindings-*.yml` run every Sunday 04:00-04:40
   UTC. A failed scheduled run of those (and `miri`) opens or comments one issue per workflow,
   label `scheduled-failure`, via `scheduled-failure.yml` (`workflow_run`); a green scheduled run
-  closes it. Reason: GitHub mails only the last cron editor about a failed scheduled run. GitHub
-  also disables schedules in a public repo after 60 days without activity - `canary`, `miri` and
-  these alike; the issue trail is the place to notice that too.
+  closes it. Reason: GitHub mails only the last cron editor about a failed scheduled run.
+  Scheduled and push runs get separate concurrency groups in `rust.yml`/`miri.yml` (both
+  `cancel-in-progress`), so neither cancels the other. Accepted risk: GitHub disables schedules
+  in a public repo after 60 days without activity; a disabled schedule runs nothing, so no issue
+  appears either. Any commit resets the counter.
 - **T-325, asm-check paths.** The `.s` is found beside the `libdstu_core-<hash>.rmeta` named in
   Cargo's own `compiler-artifact` message (`--message-format=json`), checked on 1.99 (`deps/`) and
   1.100 (`build/dstu-core/<hash>/out/`); the mtime heuristic is gone. A cell that could not be
@@ -16581,14 +16583,16 @@ The retrospective of D-266 (owner: "write, plan the wave, implement"). Tasks T-3
 the main protection without a manual bump per Rust release, and the Ruby/PHP Windows legs'
 `RUSTUP_TOOLCHAIN` and the release containers would escape a pin anyway.
 
-## D-268: every precompiled Ruby gem published so far fails to load (2026-11-24)
+## D-268: the precompiled Ruby gems cannot load their extension (2026-11-24)
 
 **Finding** (T-328's local dry run, Windows, Ruby 3.3.12): `gem install dstu_core -v 0.5.1` succeeds,
 `require "dstu_core"` raises `cannot load such file -- dstu_core/dstu_core_rb`. The cross-built
 gems (`oxidize-rb/actions/cross-gem`, `ruby-versions: 3.1,3.2,3.3,3.4`) ship one extension per Ruby
 minor under `lib/dstu_core/<minor>/dstu_core_rb.so`; `lib/dstu_core.rb` required the flat
-`dstu_core/dstu_core_rb`, the layout of a source build. Checked in the published `x86_64-linux` and
-`x64-mingw-ucrt` 0.5.1 gems; RubyGems lists 0.1.0, 0.5.0 and 0.5.1 with the same four platforms.
+`dstu_core/dstu_core_rb`, the layout of a source build. Layout and loader read in the published
+`x86_64-linux` 0.1.0, 0.5.0 and 0.5.1 gems and the `x64-mingw-ucrt` 0.5.1 gem; the load failure
+itself observed on Windows. RubyGems lists 0.1.0, 0.5.0 and 0.5.1 for the same four platforms;
+`registry-smoke.yml`'s first run gives the Linux/macOS load result.
 `bindings-ruby.yml` only ever loaded a source build, and D-191's live-page check reads metadata,
 not an install.
 
@@ -16596,9 +16600,12 @@ not an install.
 directory exists, else the flat path - chosen by directory, not by rescuing `LoadError`, so a real
 load error is not masked (a first draft did mask one). `release.yml`'s new `load-ruby-gems` installs
 each built gem on its own OS (x86_64/aarch64 Linux, arm64 macOS, Windows) under Ruby 3.1 and 3.4 and
-runs `DstuCore.self_test` outside the repo; `publish-rubygems` needs it.
+runs `DstuCore.self_test` outside the repo, for each of the four Ruby minors the gem ships
+(3.1-3.4, each a separately built `.so`); `publish-rubygems` needs it.
 
 **Still open.** With the loader patched into the installed 0.5.1 Windows gem, `dstu_core/3.3/
 dstu_core_rb.so` fails with `127: The specified procedure could not be found` on Ruby 3.3.12
-x64-mingw-ucrt. Not diagnosed; `load-ruby-gems`' Windows leg will show whether a fresh build has
-it. A fixed gem needs a published release (0.5.2) - owner's call (T-330).
+x64-mingw-ucrt. Not diagnosed (a local import comparison was inconclusive and is not evidence
+either way); `load-ruby-gems`' Windows cells will show whether a fresh build has it. Until they
+pass, a tag cannot publish to RubyGems for any platform. A fixed gem needs a release (0.5.2) -
+owner's call (T-330).
