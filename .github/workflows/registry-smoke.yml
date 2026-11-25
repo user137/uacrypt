@@ -81,16 +81,20 @@ jobs:
       - name: npm - npm install dstu-core
         # Every registry reports on every run, even after another one failed.
         if: ${{ !cancelled() }}
-        # The Windows platform package is blocked by npm's spam filter (D-189): a known gap, shown
-        # as a failed step without failing the job.
-        continue-on-error: ${{ runner.os == 'Windows' }}
+        # Install and require are retried together: a platform package not yet served is skipped
+        # silently as an optional dependency, so the install itself succeeds (v0.8.2, D-272).
+        # Windows loads from the root package's own addon (D-270), so it is a gate too.
         run: |
           set -euo pipefail
           . "$RUNNER_TEMP/retry.sh"
           mkdir -p "$RUNNER_TEMP/npm" && cd "$RUNNER_TEMP/npm"
           npm init -y >/dev/null
-          retry npm install --no-audit --no-fund "dstu-core@$JS_V"
-          node -e "require('dstu-core').selfTest(); console.log('node selftest ok')"
+          install_and_load() {
+            rm -rf node_modules package-lock.json
+            npm install --prefer-online --no-audit --no-fund "dstu-core@$JS_V" &&
+              node -e "require('dstu-core').selfTest(); console.log('node selftest ok')"
+          }
+          retry install_and_load
       - uses: ruby/setup-ruby@v1
         if: ${{ !cancelled() }}
         with:
