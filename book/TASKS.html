@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b8b73902.js";
+            window.path_to_searchindex_js = "searchindex-0383b070.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d4c7990f.js"></script>
@@ -4896,7 +4896,7 @@ mdBook for the existing <code>docs/*.md</code> corpus, plus a mandatory <code>ca
 encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
 OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
 (<code>uacrypt</code>), and bindings for eight languages.</p>
-<!-- uacrypt-version: 0.8.1 -->
+<!-- uacrypt-version: 0.8.2 -->
 <p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
 <a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python, Node.js, and Ruby bindings are on
 <a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a>/
@@ -11482,7 +11482,10 @@ gap, not a pass.</li>
 0.5.2 bump (Ruby, and Python/Node.js only if the owner wants versions kept in step), a
 <code>workflow_dispatch</code> dry run to see <code>load-ruby-gems</code> green on all 8 cells (incl. the Windows
 <code>127: procedure could not be found</code> from D-268), then a tag. Optionally yank 0.5.1/0.5.0/0.1.0
-gems once 0.5.2 is live.</li>
+gems once 0.5.2 is live.
+<strong>2026-11-25:</strong> gems 0.5.2 live on all four platforms (<code>v0.8.1</code>, D-271/D-272); npm root package
+missed, so <code>v0.8.2</code> (bindings 0.5.3). Left: <code>v0.8.2</code> tag, its <code>registry-smoke</code>, then yank gems
+0.1.0..0.5.1 and <code>npm deprecate</code> 0.2.0..0.5.1 plus the orphaned platform packages 0.5.2.</li>
 <li><strong>State 2026-11-24 (D-267):</strong> T-325, T-326, T-327 done; T-323/T-328 implemented, ticked only
 once their first runs are read (release dry run, <code>registry-smoke</code> for <code>v0.8.0</code>); T-324 pending
 its first scheduled run. <code>verify</code> green in dry run 45389297215 (T-323 ticked). <code>registry-smoke</code>

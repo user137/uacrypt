@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b8b73902.js";
+            window.path_to_searchindex_js = "searchindex-0383b070.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-d4c7990f.js"></script>
@@ -11925,7 +11925,7 @@ transcludes the whole README via `# uacrypt</p>
 encryption) — in the spirit of <strong>libsodium</strong>: hard, safe defaults, hard to misuse, rather than
 OpenSSL’s flexible-but-easy-to-misconfigure API. Ships as a Rust crate (<code>dstu-core</code>), a CLI
 (<code>uacrypt</code>), and bindings for eight languages.</p>
-<!-- uacrypt-version: 0.8.1 -->
+<!-- uacrypt-version: 0.8.2 -->
 <p><strong>Pre-1.0. Not audited. Not a claim of side-channel resistance.</strong> <code>dstu-core</code>/<code>uacrypt</code> are on
 <a href="https://crates.io/crates/dstu-core">crates.io</a>; the Python, Node.js, and Ruby bindings are on
 <a href="https://pypi.org/project/dstu-core/">PyPI</a>/<a href="https://www.npmjs.com/package/dstu-core">npm</a>/
@@ -15419,6 +15419,23 @@ reverted: x64-mingw-ucrt is back in <code>load-ruby-gems</code> (16 cells again)
 <code>load-ruby-gem-windows</code> is gone, <code>registry-smoke</code>’s Windows Ruby step is a gate again. The yank
 goes back to D-269’s original form: 0.1.0..0.5.1 on every platform once 0.5.2 loads on all three
 OSes in <code>registry-smoke</code>.</p>
+<h2 id="d-272-v081-reached-npm-only-partly-082-carries-the-fix-2026-11-25"><a class="header" href="#d-272-v081-reached-npm-only-partly-082-carries-the-fix-2026-11-25">D-272: <code>v0.8.1</code> reached npm only partly; 0.8.2 carries the fix (2026-11-25)</a></h2>
+<p>Release run 45473047721 (<code>v0.8.1</code>): crates.io 0.8.1, PyPI 0.5.2 and RubyGems 0.5.2 on all four
+platforms published and checked on the registries. npm published <code>dstu-core-darwin-arm64</code>,
+<code>-linux-arm64-gnu</code> and <code>-linux-x64-gnu</code> 0.5.2, then failed on the root package with <code>EALLOWGIT</code>:
+<code>npm publish npm-dist/dstu-core-0.5.2.tgz</code> reads a one-slash relative path as a GitHub
+<code>owner/repo</code> spec (the platform tarballs, two directories deep, were unaffected). Reproduced
+locally with <code>npm publish --dry-run</code>: the bare path tries git, <code>./npm-dist/...</code> publishes the file.
+D-270’s dry runs never reached this - <code>publish-npm</code> runs only on a tag. Fix: <code>release.yml</code> passes
+<code>./$tgz</code>.</p>
+<p><strong>Getting the root package out (owner chose, 2026-11-25).</strong> A re-run of the tag’s run uses the
+tag’s own <code>release.yml</code>, so it would fail the same way; tags are not moved. Rejected: enabling
+<code>publish-npm</code> on <code>workflow_dispatch</code> from master (provenance would name a master commit, and it
+leaves a manual publish path to remove later); the owner publishing the artifact tarball by hand
+(no provenance, outside CI). Chosen: release 0.8.2 / bindings 0.5.3 with no code change, through
+the usual tag path. Left behind: npm platform packages 0.5.2 with no root package that depends on
+them - harmless, deprecated together with 0.2.0..0.5.1. <code>registry-smoke</code> did not run for <code>v0.8.1</code>
+(it triggers only on a successful release run), so the yank waits for <code>v0.8.2</code>’s smoke.</p>
 
                     </main>
 
