@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file. Format follows
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-25
+
+- The Python, Node.js and Ruby packages are 0.5.3, built on `dstu-core` 0.8.2. No code change from
+  0.8.1: this release exists so the Node.js package reaches npm (`docs/DECISIONS.md` D-272) - 0.8.1
+  published only its platform packages, not `dstu-core` itself, which stayed at the unloadable
+  0.5.1.
+
 ## [0.8.1] - 2026-11-24
 
 - The Python, Node.js and Ruby packages are 0.5.2, built on `dstu-core` 0.8.1. No API change; the

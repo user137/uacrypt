@@ -10921,6 +10921,9 @@ owner's. Pushes batched (`rust`/`miri` are `cancel-in-progress`).
   `workflow_dispatch` dry run to see `load-ruby-gems` green on all 8 cells (incl. the Windows
   `127: procedure could not be found` from D-268), then a tag. Optionally yank 0.5.1/0.5.0/0.1.0
   gems once 0.5.2 is live.
+  **2026-11-25:** gems 0.5.2 live on all four platforms (`v0.8.1`, D-271/D-272); npm root package
+  missed, so `v0.8.2` (bindings 0.5.3). Left: `v0.8.2` tag, its `registry-smoke`, then yank gems
+  0.1.0..0.5.1 and `npm deprecate` 0.2.0..0.5.1 plus the orphaned platform packages 0.5.2.
 - **State 2026-11-24 (D-267):** T-325, T-326, T-327 done; T-323/T-328 implemented, ticked only
   once their first runs are read (release dry run, `registry-smoke` for `v0.8.0`); T-324 pending
   its first scheduled run. `verify` green in dry run 45389297215 (T-323 ticked). `registry-smoke`

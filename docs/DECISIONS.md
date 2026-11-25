@@ -16683,3 +16683,23 @@ reverted: x64-mingw-ucrt is back in `load-ruby-gems` (16 cells again) and `publi
 `load-ruby-gem-windows` is gone, `registry-smoke`'s Windows Ruby step is a gate again. The yank
 goes back to D-269's original form: 0.1.0..0.5.1 on every platform once 0.5.2 loads on all three
 OSes in `registry-smoke`.
+
+## D-272: `v0.8.1` reached npm only partly; 0.8.2 carries the fix (2026-11-25)
+
+Release run 45473047721 (`v0.8.1`): crates.io 0.8.1, PyPI 0.5.2 and RubyGems 0.5.2 on all four
+platforms published and checked on the registries. npm published `dstu-core-darwin-arm64`,
+`-linux-arm64-gnu` and `-linux-x64-gnu` 0.5.2, then failed on the root package with `EALLOWGIT`:
+`npm publish npm-dist/dstu-core-0.5.2.tgz` reads a one-slash relative path as a GitHub
+`owner/repo` spec (the platform tarballs, two directories deep, were unaffected). Reproduced
+locally with `npm publish --dry-run`: the bare path tries git, `./npm-dist/...` publishes the file.
+D-270's dry runs never reached this - `publish-npm` runs only on a tag. Fix: `release.yml` passes
+`./$tgz`.
+
+**Getting the root package out (owner chose, 2026-11-25).** A re-run of the tag's run uses the
+tag's own `release.yml`, so it would fail the same way; tags are not moved. Rejected: enabling
+`publish-npm` on `workflow_dispatch` from master (provenance would name a master commit, and it
+leaves a manual publish path to remove later); the owner publishing the artifact tarball by hand
+(no provenance, outside CI). Chosen: release 0.8.2 / bindings 0.5.3 with no code change, through
+the usual tag path. Left behind: npm platform packages 0.5.2 with no root package that depends on
+them - harmless, deprecated together with 0.2.0..0.5.1. `registry-smoke` did not run for `v0.8.1`
+(it triggers only on a successful release run), so the yank waits for `v0.8.2`'s smoke.
